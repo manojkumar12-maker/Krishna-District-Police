@@ -4,158 +4,161 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Krishna District Police - PC/WPC Data Management</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, query, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyBfYqTY8A8Z9QxvAbz0VzEtzYMHI2YoTAs",
-            authDomain: "krishna-district-police.firebaseapp.com",
-            projectId: "krishna-district-police",
-            storageBucket: "krishna-district-police.firebasestorage.app",
-            messagingSenderId: "1021766844435",
-            appId: "1:1021766844435:web:7d275d71c3e60ee81bffe6"
-        };
-
-        let app, db;
-        try {
-            app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            console.log("Firebase initialized successfully");
-        } catch(e) {
-            console.error("Firebase init error:", e);
-        }
-
-        window.db = db;
-        window.firebaseModule = {
-            addPersonnel: async (data) => {
-                if (!db) return null;
-                const docRef = await addDoc(collection(db, "personnel"), {
-                    ...data,
-                    createdAt: serverTimestamp(),
-                    updatedAt: serverTimestamp()
-                });
-                return docRef.id;
-            },
-            getAllPersonnel: async () => {
-                if (!db) return [];
-                const q = query(collection(db, "personnel"), orderBy("createdAt"));
-                const snapshot = await getDocs(q);
-                return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-            },
-            updatePersonnel: async (id, data) => {
-                if (!db) return;
-                await updateDoc(doc(db, "personnel", id), {
-                    ...data,
-                    updatedAt: serverTimestamp()
-                });
-            },
-            deletePersonnel: async (id) => {
-                if (!db) return;
-                await deleteDoc(doc(db, "personnel", id));
-            }
-        };
-    </script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', sans-serif; background: #f5f5f5; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+        body { background: #f5f5f5; }
         :root { --primary: #1a237e; --secondary: #c62828; --accent: #ffd700; }
-        .header { background: linear-gradient(135deg, var(--primary) 0%, #0d1442 100%); color: white; padding: 20px; display: flex; justify-content: space-between; align-items: center; }
-        .header h1 { display: flex; align-items: center; gap: 10px; }
-        .badge { background: var(--accent); color: var(--primary); padding: 5px 15px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-        .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; }
+        
+        /* Login Modal */
+        .login-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center;
+            z-index: 1000;
+        }
+        .login-box {
+            background: white; padding: 40px; border-radius: 15px; width: 350px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        .login-box h2 { color: var(--primary); text-align: center; margin-bottom: 25px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 500; color: #555; }
+        .form-group input, .form-group select {
+            width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;
+        }
+        .login-btn {
+            width: 100%; padding: 12px; background: var(--primary); color: white;
+            border: none; border-radius: 6px; font-size: 16px; cursor: pointer; font-weight: 600;
+        }
+        .login-btn:hover { background: #0d1442; }
+        .login-info { text-align: center; margin-top: 15px; font-size: 12px; color: #888; }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--primary), #0d1442);
+            color: white; padding: 15px 30px; display: none; justify-content: space-between; align-items: center;
+        }
+        .header h1 { font-size: 20px; }
+        .header-actions { display: flex; gap: 10px; align-items: center; }
+        .badge { background: var(--accent); color: var(--primary); padding: 5px 12px; border-radius: 15px; font-size: 12px; }
+        .btn { padding: 8px 16px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; }
         .btn-primary { background: var(--primary); color: white; }
         .btn-danger { background: var(--secondary); color: white; }
+        .btn-secondary { background: #666; color: white; }
+        .record-count { background: #333; padding: 8px 12px; border-radius: 5px; }
+
+        /* Container */
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; display: none; }
+        
+        /* Nav */
         .nav-buttons { display: flex; gap: 10px; margin-bottom: 20px; }
-        .nav-btn { padding: 12px 25px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; }
-        .card { background: white; border-radius: 15px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
-        .card h2 { color: var(--primary); margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #f5f5f5; }
-        .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
-        .stat-card { background: linear-gradient(135deg, var(--primary) 0%, #0d1442 100%); color: white; padding: 20px; border-radius: 10px; text-align: center; }
-        .stat-card.accent { background: linear-gradient(135deg, var(--accent) 0%, #ffa000 100%); color: var(--primary); }
-        .stat-card .number { font-size: 32px; font-weight: 700; }
+        .nav-btn {
+            padding: 12px 24px; background: var(--primary); color: white;
+            border: none; border-radius: 8px; cursor: pointer; font-weight: 500;
+        }
+        .nav-btn:hover { background: #0d1442; }
+
+        /* Cards */
+        .card { background: white; border-radius: 15px; padding: 25px; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        .card h2 { color: var(--primary); margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #f0f0f0; }
+
+        /* Stats */
+        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
+        .stat-card {
+            background: linear-gradient(135deg, var(--primary), #0d1442); color: white;
+            padding: 20px; border-radius: 10px; text-align: center;
+        }
+        .stat-card.accent { background: linear-gradient(135deg, var(--accent), #ffa000); color: var(--primary); }
+        .stat-card .number { font-size: 36px; font-weight: bold; }
         .stat-card .label { font-size: 12px; opacity: 0.9; margin-top: 5px; }
-        .data-table { width: 100%; border-collapse: collapse; }
-        .data-table th, .data-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-        .data-table th { background: var(--primary); color: white; }
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
-        .modal-overlay.active { display: flex; }
-        .modal { background: white; border-radius: 15px; max-width: 800px; width: 90%; max-height: 90vh; overflow-y: auto; }
-        .modal-header { padding: 20px; border-bottom: 2px solid #f5f5f5; display: flex; justify-content: space-between; align-items: center; }
-        .modal-close { background: none; border: none; font-size: 24px; cursor: pointer; }
+
+        /* Tables */
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: var(--primary); color: white; }
+        tr:hover { background: #f8f9fa; }
+        .action-btn { padding: 6px 10px; margin: 2px; border: none; border-radius: 4px; cursor: pointer; }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 2000;
+        }
+        .modal { background: white; border-radius: 15px; width: 90%; max-width: 600px; max-height: 90vh; overflow-y: auto; }
+        .modal-header { padding: 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .modal-header h3 { color: var(--primary); }
+        .modal-close { background: none; border: none; font-size: 28px; cursor: pointer; color: #888; }
         .modal-body { padding: 20px; }
-        .form-group { margin-bottom: 15px; }
-        .form-group label { display: block; margin-bottom: 5px; font-weight: 500; color: #666; }
-        .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
-        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
-        .type-toggle { display: flex; gap: 15px; }
-        .type-toggle label { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px 20px; border: 2px solid #ddd; border-radius: 8px; }
-        .type-toggle input:checked + span { font-weight: 600; }
-        .modal-footer { padding: 20px; border-top: 2px solid #f5f5f5; display: flex; gap: 10px; }
-        .toast { position: fixed; bottom: 30px; right: 30px; background: var(--primary); color: white; padding: 15px 25px; border-radius: 8px; transform: translateY(100px); opacity: 0; transition: all 0.3s; z-index: 2000; }
+        .modal-footer { padding: 20px; border-top: 1px solid #eee; display: flex; gap: 10px; justify-content: flex-end; }
+        .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+        
+        /* Toast */
+        .toast {
+            position: fixed; bottom: 20px; right: 20px; padding: 15px 25px;
+            border-radius: 8px; color: white; font-weight: 500;
+            transform: translateY(100px); opacity: 0; transition: all 0.3s; z-index: 3000;
+        }
         .toast.show { transform: translateY(0); opacity: 1; }
         .toast.success { background: #2e7d32; }
         .toast.error { background: var(--secondary); }
-        .empty-state { text-align: center; padding: 40px; color: #666; }
+
+        /* Pages */
+        .page { display: none; }
+        .page.active { display: block; }
+        .empty-state { text-align: center; padding: 50px; color: #888; }
     </style>
 </head>
 <body>
-    <!-- Login Modal -->
-    <div class="modal-overlay active" id="loginModal">
-        <div class="modal" style="max-width: 400px;">
-            <div class="modal-header">
-                <h3>🔐 Login</h3>
+    <!-- Login Screen -->
+    <div class="login-overlay" id="loginScreen">
+        <div class="login-box">
+            <h2>🔐 Login</h2>
+            <div class="form-group">
+                <label>Select Role</label>
+                <select id="loginRole">
+                    <option value="admin">Admin (Full Access)</option>
+                    <option value="user">User (View & Edit)</option>
+                </select>
             </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label>Select Role</label>
-                    <select id="loginRole">
-                        <option value="admin">Admin (Full Access)</option>
-                        <option value="user">User (View & Edit)</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Username</label>
-                    <input type="text" id="loginUsername" placeholder="Enter username">
-                </div>
-                <div class="form-group">
-                    <label>Password</label>
-                    <input type="password" id="loginPassword" placeholder="Enter password">
-                </div>
-                <button class="btn btn-primary" style="width:100%" id="loginBtn">Login</button>
-                <p style="text-align:center;margin-top:15px;font-size:12px;color:#666;">
-                    Admin: admin | User: user
-                </p>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="loginUsername" placeholder="Enter username">
             </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="loginPassword" placeholder="Enter password">
+            </div>
+            <button class="login-btn" onclick="handleLogin()">Login</button>
+            <p class="login-info">Admin: admin/admin | User: user/user</p>
         </div>
     </div>
 
-    <header class="header" id="mainHeader" style="display:none;">
+    <!-- Header -->
+    <header class="header" id="mainHeader">
         <h1>🏛️ Krishna District Police <span class="badge" id="userRoleBadge">PC/WPC Data</span></h1>
-        <div id="adminActions" style="display:none;">
-            <span id="dataCount" style="background:#333;padding:8px 12px;border-radius:4px;">0 records</span>
-            <button class="btn btn-primary" onclick="exportToCSV()">📤 Export</button>
+        <div class="header-actions" id="adminActions">
+            <span class="record-count" id="dataCount">0 records</span>
+            <button class="btn btn-primary" onclick="exportCSV()">📤 Export</button>
             <button class="btn btn-danger" onclick="clearAllData()">🗑️ Clear</button>
-            <button class="btn" style="background:#666;color:white" onclick="logout()">🚪 Logout</button>
+            <button class="btn btn-secondary" onclick="handleLogout()">🚪 Logout</button>
         </div>
-        <div id="userActions" style="display:none;">
-            <span id="dataCountUser" style="background:#333;padding:8px 12px;border-radius:4px;">0 records</span>
-            <button class="btn" style="background:#666;color:white" onclick="logout()">🚪 Logout</button>
+        <div class="header-actions" id="userActions" style="display:none;">
+            <span class="record-count" id="dataCountUser">0 records</span>
+            <button class="btn btn-secondary" onclick="handleLogout()">🚪 Logout</button>
         </div>
     </header>
 
-    <div class="container" id="mainContainer" style="display:none;">
+    <!-- Main Container -->
+    <div class="container" id="mainContainer">
+        <!-- Navigation -->
         <div class="nav-buttons">
             <button class="nav-btn" onclick="showPage('dashboard')">🏠 Home</button>
             <button class="nav-btn" onclick="showPage('civil')">👮 Civil PC/WPC</button>
             <button class="nav-btn" onclick="showPage('ar')">🎖️ AR PC/WPC</button>
-            <button class="nav-btn admin-only" onclick="openAddModal()" style="display:none">➕ Add</button>
+            <button class="nav-btn admin-only" onclick="openAddModal()" style="display:none">➕ Add Personnel</button>
         </div>
 
         <!-- Dashboard -->
-        <div id="dashboard" class="page">
+        <div id="dashboard" class="page active">
             <div class="card">
                 <h2>📈 Dashboard</h2>
                 <div class="stats-row">
@@ -167,31 +170,27 @@
             </div>
         </div>
 
-        <!-- Civil Personnel -->
-        <div id="civil" class="page" style="display:none;">
+        <!-- Civil -->
+        <div id="civil" class="page">
             <div class="card">
                 <h2>👮 Civil PC/WPC</h2>
-                <div style="overflow-x:auto;">
-                    <table class="data-table" id="civilTable">
-                        <thead><tr><th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Present Working</th><th>Status</th><th>Edit</th><th>Delete</th></tr></thead>
-                        <tbody id="civilTableBody"></tbody>
-                    </table>
-                </div>
-                <div id="civilEmpty" class="empty-state">No Civil PC/WPC data. Click "Add" to add records.</div>
+                <table id="civilTable">
+                    <thead><tr><th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Present Working</th><th>Status</th><th>Actions</th></tr></thead>
+                    <tbody id="civilTableBody"></tbody>
+                </table>
+                <div id="civilEmpty" class="empty-state">No Civil PC/WPC data. Click "Add Personnel" to add records.</div>
             </div>
         </div>
 
-        <!-- AR Personnel -->
-        <div id="ar" class="page" style="display:none;">
+        <!-- AR -->
+        <div id="ar" class="page">
             <div class="card">
                 <h2>🎖️ AR PC/WPC</h2>
-                <div style="overflow-x:auto;">
-                    <table class="data-table" id="arTable">
-                        <thead><tr><th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Place of Working</th><th>Status</th><th>Edit</th><th>Delete</th></tr></thead>
-                        <tbody id="arTableBody"></tbody>
-                    </table>
-                </div>
-                <div id="arEmpty" class="empty-state">No AR PC/WPC data. Click "Add" to add records.</div>
+                <table id="arTable">
+                    <thead><tr><th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Place of Working</th><th>Status</th><th>Actions</th></tr></thead>
+                    <tbody id="arTableBody"></tbody>
+                </table>
+                <div id="arEmpty" class="empty-state">No AR PC/WPC data. Click "Add Personnel" to add records.</div>
             </div>
         </div>
     </div>
@@ -204,19 +203,17 @@
                 <button class="modal-close" onclick="closeModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <form id="personnelForm">
-                    <input type="hidden" id="personnelId">
-                    <div class="form-grid">
-                        <div class="form-group"><label>Name *</label><input type="text" id="name" required></div>
-                        <div class="form-group"><label>Rank *</label><select id="rank" required><option value="">Select</option><option>PC</option><option>WPC</option><option>HC</option><option>WHC</option><option>ARPC</option><option>ARWPC</option></select></div>
-                        <div class="form-group"><label>Genl.No. *</label><input type="text" id="genlNo" required></div>
-                        <div class="form-group"><label>Type</label><select id="personnelType"><option value="CIVIL">Civil</option><option value="AR">AR</option></select></div>
-                        <div class="form-group"><label>Present Working</label><input type="text" id="presentWorking"></div>
-                        <div class="form-group"><label>Status</label><select id="status"><option value="Present">Present</option><option value="Deserter">Deserter</option></select></div>
-                        <div class="form-group"><label>On Deputation</label><select id="isOnDeputation"><option value="no">No</option><option value="yes">Yes</option></select></div>
-                        <div class="form-group"><label>Deputation Unit</label><input type="text" id="deputationUnit"></div>
-                    </div>
-                </form>
+                <input type="hidden" id="personnelId">
+                <div class="form-grid">
+                    <div class="form-group"><label>Name *</label><input type="text" id="name" required></div>
+                    <div class="form-group"><label>Rank *</label><select id="rank" required><option value="">Select</option><option>PC</option><option>WPC</option><option>HC</option><option>WHC</option><option>ARPC</option><option>ARWPC</option><option>ARHC</option></select></div>
+                    <div class="form-group"><label>Genl.No. *</label><input type="text" id="genlNo" required></div>
+                    <div class="form-group"><label>Type *</label><select id="personnelType"><option value="CIVIL">Civil</option><option value="AR">AR</option></select></div>
+                    <div class="form-group"><label>Present Working</label><input type="text" id="presentWorking"></div>
+                    <div class="form-group"><label>Status</label><select id="status"><option value="Present">Present</option><option value="Deserter">Deserter</option></select></div>
+                    <div class="form-group"><label>On Deputation</label><select id="isOnDeputation"><option value="false">No</option><option value="true">Yes</option></select></div>
+                    <div class="form-group"><label>Deputation Unit</label><input type="text" id="deputationUnit"></div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -225,126 +222,164 @@
         </div>
     </div>
 
+    <!-- Toast -->
     <div class="toast" id="toast"></div>
 
     <script>
-        let currentUser = null, currentRole = null, allPersonnel = [], editingId = null;
+        // Data storage
+        let personnel = JSON.parse(localStorage.getItem('krishna_police_data')) || [];
+        let currentUser = null;
+        let currentRole = null;
+        let editingId = null;
 
-        document.getElementById('loginBtn').addEventListener('click', function() {
-            console.log("Login button clicked");
-            login();
-        });
-
-        function login() {
-            console.log("Login function called");
+        // Login
+        function handleLogin() {
             const role = document.getElementById('loginRole').value;
             const username = document.getElementById('loginUsername').value;
             const password = document.getElementById('loginPassword').value;
 
             if ((role === 'admin' && username === 'admin' && password === 'admin') ||
                 (role === 'user' && username === 'user' && password === 'user')) {
+                
                 currentRole = role;
                 currentUser = username;
-                document.getElementById('loginModal').style.display = 'none';
-                document.getElementById('loginModal').classList.remove('active');
+                
+                // Hide login, show main
+                document.getElementById('loginScreen').style.display = 'none';
                 document.getElementById('mainHeader').style.display = 'flex';
                 document.getElementById('mainContainer').style.display = 'block';
+                
+                // Set badge
                 document.getElementById('userRoleBadge').textContent = role === 'admin' ? 'Admin' : 'User';
-                document.getElementById(role === 'admin' ? 'adminActions' : 'userActions').style.display = 'flex';
-                document.querySelectorAll('.admin-only').forEach(el => el.style.display = role === 'admin' ? 'inline-block' : 'none');
-                loadData();
+                
+                // Show appropriate actions
+                if (role === 'admin') {
+                    document.getElementById('adminActions').style.display = 'flex';
+                    document.getElementById('userActions').style.display = 'none';
+                    document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'inline-block');
+                } else {
+                    document.getElementById('adminActions').style.display = 'none';
+                    document.getElementById('userActions').style.display = 'flex';
+                    document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+                }
+                
+                updateData();
                 showToast('Welcome ' + username + '!', 'success');
             } else {
                 showToast('Invalid credentials!', 'error');
             }
         }
 
-        function logout() {
+        // Logout
+        function handleLogout() {
             currentUser = null;
             currentRole = null;
-            document.getElementById('loginModal').style.display = 'flex';
+            document.getElementById('loginScreen').style.display = 'flex';
             document.getElementById('mainHeader').style.display = 'none';
             document.getElementById('mainContainer').style.display = 'none';
+            document.getElementById('loginUsername').value = '';
+            document.getElementById('loginPassword').value = '';
         }
 
-        function showPage(page) {
-            document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
-            document.getElementById(page).style.display = 'block';
+        // Show page
+        function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
         }
 
-        async function loadData() {
-            if (window.firebaseModule) {
-                allPersonnel = await window.firebaseModule.getAllPersonnel();
-            } else {
-                allPersonnel = JSON.parse(localStorage.getItem('personnel') || '[]');
-            }
-            updateStats();
+        // Update all data
+        function updateData() {
+            const civilCount = personnel.filter(p => p.personnelType === 'CIVIL').length;
+            const arCount = personnel.filter(p => p.personnelType === 'AR').length;
+            const depCount = personnel.filter(p => p.isOnDeputation === 'true').length;
+            
+            document.getElementById('totalCivil').textContent = civilCount;
+            document.getElementById('totalAR').textContent = arCount;
+            document.getElementById('totalPersonnel').textContent = personnel.length;
+            document.getElementById('totalDeputation').textContent = depCount;
+            
+            document.getElementById('dataCount').textContent = personnel.length + ' records';
+            document.getElementById('dataCountUser').textContent = personnel.length + ' records';
+            
             renderCivilTable();
             renderARTable();
-            document.getElementById('dataCount').textContent = allPersonnel.length + ' records';
-            document.getElementById('dataCountUser').textContent = allPersonnel.length + ' records';
         }
 
-        function updateStats() {
-            const civil = allPersonnel.filter(p => p.personnelType === 'CIVIL').length;
-            const ar = allPersonnel.filter(p => p.personnelType === 'AR').length;
-            const dep = allPersonnel.filter(p => p.isOnDeputation === true).length;
-            document.getElementById('totalCivil').textContent = civil;
-            document.getElementById('totalAR').textContent = ar;
-            document.getElementById('totalPersonnel').textContent = allPersonnel.length;
-            document.getElementById('totalDeputation').textContent = dep;
-        }
-
+        // Render civil table
         function renderCivilTable() {
-            const civil = allPersonnel.filter(p => p.personnelType === 'CIVIL');
+            const civil = personnel.filter(p => p.personnelType === 'CIVIL');
             const tbody = document.getElementById('civilTableBody');
+            
             if (civil.length === 0) {
                 document.getElementById('civilTable').style.display = 'none';
                 document.getElementById('civilEmpty').style.display = 'block';
             } else {
-                document.getElementById('civilTable').style.display = 'table');
+                document.getElementById('civilTable').style.display = 'table';
                 document.getElementById('civilEmpty').style.display = 'none';
-                tbody.innerHTML = civil.map((p, i) => `<tr>
-                    <td>${i+1}</td><td>${p.name}</td><td>${p.rank}</td><td>${p.genlNo}</td><td>${p.presentWorking || '-'}</td>
-                    <td><span style="color:${p.status === 'Present' ? 'green' : 'red'}">${p.status}</span></td>
-                    <td><button class="btn btn-primary btn-sm" onclick="editPersonnel('${p.id}')">✏️</button></td>
-                    <td><button class="btn btn-danger btn-sm" onclick="deletePersonnel('${p.id}')">🗑️</button></td>
-                </tr>`).join('');
+                
+                tbody.innerHTML = civil.map((p, i) => `
+                    <tr>
+                        <td>${i+1}</td>
+                        <td>${p.name}</td>
+                        <td>${p.rank}</td>
+                        <td>${p.genlNo}</td>
+                        <td>${p.presentWorking || '-'}</td>
+                        <td style="color:${p.status === 'Present' ? 'green' : 'red'}">${p.status}</td>
+                        <td>
+                            <button class="action-btn btn-primary" onclick="editPersonnel('${p.id}')">✏️</button>
+                            <button class="action-btn btn-danger" onclick="deletePersonnel('${p.id}')">🗑️</button>
+                        </td>
+                    </tr>
+                `).join('');
             }
         }
 
+        // Render AR table
         function renderARTable() {
-            const ar = allPersonnel.filter(p => p.personnelType === 'AR');
+            const ar = personnel.filter(p => p.personnelType === 'AR');
             const tbody = document.getElementById('arTableBody');
+            
             if (ar.length === 0) {
                 document.getElementById('arTable').style.display = 'none';
                 document.getElementById('arEmpty').style.display = 'block';
             } else {
                 document.getElementById('arTable').style.display = 'table';
                 document.getElementById('arEmpty').style.display = 'none';
-                tbody.innerHTML = ar.map((p, i) => `<tr>
-                    <td>${i+1}</td><td>${p.name}</td><td>${p.rank}</td><td>${p.genlNo}</td><td>${p.presentWorking || '-'}</td>
-                    <td><span style="color:${p.status === 'Present' ? 'green' : 'red'}">${p.status}</span></td>
-                    <td><button class="btn btn-primary btn-sm" onclick="editPersonnel('${p.id}')">✏️</button></td>
-                    <td><button class="btn btn-danger btn-sm" onclick="deletePersonnel('${p.id}')">🗑️</button></td>
-                </tr>`).join('');
+                
+                tbody.innerHTML = ar.map((p, i) => `
+                    <tr>
+                        <td>${i+1}</td>
+                        <td>${p.name}</td>
+                        <td>${p.rank}</td>
+                        <td>${p.genlNo}</td>
+                        <td>${p.presentWorking || '-'}</td>
+                        <td style="color:${p.status === 'Present' ? 'green' : 'red'}">${p.status}</td>
+                        <td>
+                            <button class="action-btn btn-primary" onclick="editPersonnel('${p.id}')">✏️</button>
+                            <button class="action-btn btn-danger" onclick="deletePersonnel('${p.id}')">🗑️</button>
+                        </td>
+                    </tr>
+                `).join('');
             }
         }
 
+        // Open add modal
         function openAddModal() {
             editingId = null;
             document.getElementById('modalTitle').textContent = 'Add Personnel';
             document.getElementById('personnelForm').reset();
             document.getElementById('personnelId').value = '';
-            document.getElementById('personnelModal').classList.add('active');
+            document.getElementById('personnelModal').style.display = 'flex';
         }
 
+        // Close modal
         function closeModal() {
-            document.getElementById('personnelModal').classList.remove('active');
+            document.getElementById('personnelModal').style.display = 'none';
         }
 
+        // Edit personnel
         function editPersonnel(id) {
-            const p = allPersonnel.find(x => x.id === id);
+            const p = personnel.find(x => x.id === id);
             if (p) {
                 editingId = id;
                 document.getElementById('modalTitle').textContent = 'Edit Personnel';
@@ -355,99 +390,94 @@
                 document.getElementById('personnelType').value = p.personnelType || 'CIVIL';
                 document.getElementById('presentWorking').value = p.presentWorking || '';
                 document.getElementById('status').value = p.status || 'Present';
-                document.getElementById('isOnDeputation').value = p.isOnDeputation ? 'yes' : 'no';
+                document.getElementById('isOnDeputation').value = p.isOnDeputation || 'false';
                 document.getElementById('deputationUnit').value = p.deputationUnit || '';
-                document.getElementById('personnelModal').classList.add('active');
+                document.getElementById('personnelModal').style.display = 'flex';
             }
         }
 
-        async function savePersonnel() {
+        // Save personnel
+        function savePersonnel() {
             const data = {
+                id: editingId || Date.now().toString(),
                 name: document.getElementById('name').value,
                 rank: document.getElementById('rank').value,
                 genlNo: document.getElementById('genlNo').value,
                 personnelType: document.getElementById('personnelType').value,
                 presentWorking: document.getElementById('presentWorking').value,
                 status: document.getElementById('status').value,
-                isOnDeputation: document.getElementById('isOnDeputation').value === 'yes',
+                isOnDeputation: document.getElementById('isOnDeputation').value,
                 deputationUnit: document.getElementById('deputationUnit').value
             };
 
             if (!data.name || !data.rank || !data.genlNo) {
-                showToast('Please fill required fields', 'error');
+                showToast('Please fill required fields!', 'error');
                 return;
             }
 
-            if (window.firebaseModule) {
-                if (editingId) {
-                    await window.firebaseModule.updatePersonnel(editingId, data);
-                } else {
-                    await window.firebaseModule.addPersonnel(data);
-                }
+            if (editingId) {
+                const idx = personnel.findIndex(x => x.id === editingId);
+                if (idx !== -1) personnel[idx] = data;
             } else {
-                if (editingId) {
-                    const idx = allPersonnel.findIndex(x => x.id === editingId);
-                    if (idx !== -1) allPersonnel[idx] = { ...allPersonnel[idx], ...data };
-                } else {
-                    data.id = Date.now().toString();
-                    allPersonnel.push(data);
-                }
-                localStorage.setItem('personnel', JSON.stringify(allPersonnel));
+                personnel.push(data);
             }
 
+            localStorage.setItem('krishna_police_data', JSON.stringify(personnel));
             closeModal();
-            loadData();
+            updateData();
             showToast('Saved successfully!', 'success');
         }
 
-        async function deletePersonnel(id) {
+        // Delete personnel
+        function deletePersonnel(id) {
             if (!confirm('Delete this record?')) return;
-            if (window.firebaseModule) {
-                await window.firebaseModule.deletePersonnel(id);
-            } else {
-                allPersonnel = allPersonnel.filter(p => p.id !== id);
-                localStorage.setItem('personnel', JSON.stringify(allPersonnel));
-            }
-            loadData();
+            personnel = personnel.filter(p => p.id !== id);
+            localStorage.setItem('krishna_police_data', JSON.stringify(personnel));
+            updateData();
             showToast('Deleted!', 'success');
         }
 
-        async function clearAllData() {
+        // Clear all data
+        function clearAllData() {
             if (!confirm('Delete ALL data? This cannot be undone!')) return;
-            if (window.firebaseModule) {
-                for (const p of allPersonnel) {
-                    await window.firebaseModule.deletePersonnel(p.id);
-                }
-            } else {
-                allPersonnel = [];
-                localStorage.setItem('personnel', JSON.stringify([]));
-            }
-            loadData();
+            personnel = [];
+            localStorage.setItem('krishna_police_data', JSON.stringify(personnel));
+            updateData();
             showToast('All data cleared!', 'success');
         }
 
-        function exportToCSV() {
+        // Export CSV
+        function exportCSV() {
             let csv = 'Name,Rank,Genl.No,Type,Present Working,Status,On Deputation\n';
-            allPersonnel.forEach(p => {
+            personnel.forEach(p => {
                 csv += `${p.name},${p.rank},${p.genlNo},${p.personnelType},${p.presentWorking || ''},${p.status},${p.isOnDeputation}\n`;
             });
+            
             const blob = new Blob([csv], { type: 'text/csv' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
             a.download = 'personnel.csv';
             a.click();
+            URL.revokeObjectURL(url);
+            showToast('Exported to CSV!', 'success');
         }
 
-        function showToast(message, type = 'info') {
+        // Toast
+        function showToast(message, type) {
             const toast = document.getElementById('toast');
             toast.textContent = message;
             toast.className = 'toast ' + type + ' show';
             setTimeout(() => toast.classList.remove('show'), 3000);
         }
 
-        // Load data on start
-        loadData();
+        // Allow Enter key to login
+        document.getElementById('loginPassword').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') handleLogin();
+        });
+
+        // Initialize
+        updateData();
     </script>
 </body>
 </html>
