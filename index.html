@@ -33,6 +33,11 @@
 
         // Database functions
         window.db = db;
+        window.login = login;
+        window.logout = logout;
+        window.showAdminControls = showAdminControls;
+        window.isAdmin = isAdmin;
+        
         window.firebaseModule = {
             addPersonnel: async (data) => {
                 if (!db) return null;
@@ -81,10 +86,6 @@
                 const q = query(collection(db, "settings"));
                 const snapshot = await getDocs(q);
                 return snapshot.empty ? null : snapshot.docs[0].data();
-            }
-        };
-                if (snapshot.empty) return null;
-                return snapshot.docs[0].data();
             }
         };
     </script>
