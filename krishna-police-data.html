@@ -1,0 +1,3770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Krishna District Police - PC/WPC Data Management</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, query, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
+
+        // Firebase configuration - REPLACE WITH YOUR FIREBASE CONFIG
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        // Initialize Firebase
+        let app, db;
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            console.log("Firebase initialized successfully");
+        } catch(e) {
+            console.error("Firebase init error:", e);
+        }
+
+        // Database functions
+        window.db = db;
+        window.firebaseModule = {
+            addPersonnel: async (data) => {
+                if (!db) return null;
+                const docRef = await addDoc(collection(db, "personnel"), {
+                    ...data,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                });
+                return docRef.id;
+            },
+            updatePersonnel: async (id, data) => {
+                if (!db) return;
+                await updateDoc(doc(db, "personnel", id), {
+                    ...data,
+                    updatedAt: serverTimestamp()
+                });
+            },
+            deletePersonnel: async (id) => {
+                if (!db) return;
+                await deleteDoc(doc(db, "personnel", id));
+            },
+            getAllPersonnel: async () => {
+                if (!db) return [];
+                const q = query(collection(db, "personnel"), orderBy("createdAt"));
+                const snapshot = await getDocs(q);
+                return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            },
+            subscribeToPersonnel: (callback) => {
+                if (!db) return () => {};
+                const q = query(collection(db, "personnel"), orderBy("createdAt"));
+                return onSnapshot(q, (snapshot) => {
+                    const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                    callback(data);
+                });
+            },
+            // Settings/Sanctioned functions
+            saveSettings: async (settings) => {
+                if (!db) return;
+                const docRef = await addDoc(collection(db, "settings"), {
+                    ...settings,
+                    updatedAt: serverTimestamp()
+                });
+            },
+            getSettings: async () => {
+                if (!db) return null;
+                const q = query(collection(db, "settings"));
+                const snapshot = await getDocs(q);
+                return snapshot.empty ? null : snapshot.docs[0].data();
+            }
+        };
+                if (snapshot.empty) return null;
+                return snapshot.docs[0].data();
+            }
+        };
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+
+        :root {
+            --primary: #1a237e;
+            --secondary: #c62828;
+            --accent: #ffd700;
+            --bg: #f5f5f5;
+            --card-bg: #ffffff;
+            --text-primary: #212121;
+            --text-secondary: #757575;
+            --success: #2e7d32;
+            --warning: #f57c00;
+            --border: #bdbdbd;
+            --hover: #e8eaf6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Roboto', 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--primary) 0%, #0d1442 100%);
+            color: white;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            position: relative;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Cpath fill='%23ffd700' fill-opacity='0.05' d='M30 5L35 15L45 17L38 25L40 35L30 30L20 35L22 25L15 17L25 15L30 5Z'/%3E%3C/svg%3E");
+            pointer-events: none;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header .badge {
+            background: var(--accent);
+            color: var(--primary);
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .header .header-actions {
+            display: flex;
+            gap: 10px;
+            z-index: 1;
+        }
+
+        .search-container {
+            display: flex;
+            gap: 10px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .search-container input {
+            padding: 10px 15px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 25px;
+            background: rgba(255,255,255,0.1);
+            color: white;
+            width: 250px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .search-container input::placeholder {
+            color: rgba(255,255,255,0.7);
+        }
+
+        .search-container input:focus {
+            outline: none;
+            border-color: var(--accent);
+            background: rgba(255,255,255,0.15);
+        }
+
+        .search-container button {
+            padding: 10px 20px;
+            background: var(--accent);
+            color: var(--primary);
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .search-container button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 2px 10px rgba(255,215,0,0.4);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .nav-btn {
+            padding: 12px 25px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .nav-btn:hover {
+            background: #0d1442;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(26,35,126,0.3);
+        }
+
+        .nav-btn.secondary {
+            background: white;
+            color: var(--primary);
+            border: 2px solid var(--primary);
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            margin-top: 30px;
+        }
+
+        .tile {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 40px 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            border: 2px solid transparent;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tile::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 5px;
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+        }
+
+        .tile:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            border-color: var(--accent);
+        }
+
+        .tile-icon {
+            font-size: 50px;
+            margin-bottom: 20px;
+        }
+
+        .tile h3 {
+            font-size: 20px;
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .page {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            margin-bottom: 30px;
+        }
+
+        .card h2 {
+            font-size: 22px;
+            color: var(--primary);
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--bg);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .tab-btn {
+            padding: 12px 30px;
+            background: var(--bg);
+            color: var(--text-secondary);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .tab-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .tab-btn:hover:not(.active) {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .strength-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 25px;
+        }
+
+        .strength-table th,
+        .strength-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .strength-table th {
+            background: var(--primary);
+            color: white;
+            font-weight: 500;
+        }
+
+        .strength-table tr:nth-child(even) {
+            background: var(--bg);
+        }
+
+        .strength-table tr:hover {
+            background: var(--hover);
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0d1442;
+        }
+
+        .btn-secondary {
+            background: white;
+            color: var(--primary);
+            border: 2px solid var(--primary);
+        }
+
+        .btn-secondary:hover {
+            background: var(--hover);
+        }
+
+        .btn-danger {
+            background: var(--secondary);
+            color: white;
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 25px;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            font-size: 14px;
+        }
+
+        .data-table th {
+            background: var(--primary);
+            color: white;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .data-table tr:nth-child(even) {
+            background: var(--bg);
+        }
+
+        .data-table tr:hover {
+            background: var(--hover);
+        }
+
+        .data-table .actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .deputation-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+        }
+
+        .deputation-item {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 10px;
+            border: 2px solid var(--border);
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        .deputation-item:hover {
+            border-color: var(--primary);
+            background: var(--hover);
+            transform: translateY(-2px);
+        }
+
+        .tree-view {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .subdivision-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .subdivision-card {
+            background: var(--card-bg);
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .subdivision-card:hover {
+            border-color: var(--primary);
+            background: var(--hover);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(26,35,126,0.2);
+        }
+
+        .subdivision-card.active {
+            border-color: var(--primary);
+            background: var(--primary);
+            color: white;
+        }
+
+        .subdivision-card h5 {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .station-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 10px;
+        }
+
+        .station-item {
+            background: var(--bg);
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-size: 13px;
+            border: 1px solid var(--border);
+        }
+
+        .station-item.circle {
+            background: #fff3e0;
+            border-color: var(--warning);
+            font-weight: 500;
+        }
+
+        .station-item.circle.active {
+            background: #ffe0b2;
+        }
+
+        .station-item.headquarter {
+            background: #e8f5e9;
+            border-color: var(--success);
+        }
+
+        .tree-view h3 {
+            color: var(--primary);
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+
+        .tree-node {
+            padding-left: 25px;
+            border-left: 2px solid var(--border);
+        }
+
+        .tree-item {
+            padding: 8px 0;
+            color: var(--text-primary);
+            position: relative;
+        }
+
+        .tree-item::before {
+            content: '';
+            position: absolute;
+            left: -25px;
+            top: 50%;
+            width: 20px;
+            height: 2px;
+            background: var(--border);
+        }
+
+        .tree-item.parent {
+            font-weight: 600;
+            color: var(--primary);
+            padding-top: 15px;
+        }
+
+        .tree-item.circle {
+            font-weight: 500;
+            color: var(--secondary);
+        }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--card-bg);
+            border-radius: 15px;
+            max-width: 900px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal-header {
+            padding: 20px 30px;
+            border-bottom: 2px solid var(--bg);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            background: var(--card-bg);
+            z-index: 1;
+        }
+
+        .modal-header h3 {
+            color: var(--primary);
+            font-size: 20px;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: color 0.3s;
+        }
+
+        .modal-close:hover {
+            color: var(--secondary);
+        }
+
+        .modal-body {
+            padding: 30px;
+        }
+
+        .form-section {
+            margin-bottom: 30px;
+        }
+
+        .form-section h4 {
+            color: var(--primary);
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+
+        .form-group label .required {
+            color: var(--secondary);
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .form-group input:disabled,
+        .form-group select:disabled,
+        .form-group textarea:disabled {
+            background: var(--bg);
+            cursor: not-allowed;
+        }
+
+        .form-group.type-toggle {
+            display: flex;
+            gap: 15px;
+        }
+
+        .form-group.type-toggle label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            padding: 10px 20px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            transition: all 0.3s;
+            margin-bottom: 0;
+        }
+
+        .form-group.type-toggle input {
+            width: auto;
+        }
+
+        .form-group.type-toggle input:checked + span {
+            font-weight: 600;
+        }
+
+        .form-group.type-toggle label:has(input:checked) {
+            border-color: var(--primary);
+            background: var(--hover);
+        }
+
+        .dynamic-section {
+            display: none;
+            padding: 20px;
+            background: var(--bg);
+            border-radius: 10px;
+            margin-top: 15px;
+        }
+
+        .dynamic-section.active {
+            display: block;
+        }
+
+        .repeatable-group {
+            background: var(--card-bg);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border: 1px solid var(--border);
+        }
+
+        .repeatable-group .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 0;
+            background: none;
+            box-shadow: none;
+        }
+
+        .repeatable-group .header h5 {
+            color: var(--primary);
+            font-size: 14px;
+        }
+
+        .remove-btn {
+            background: var(--secondary);
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .add-btn {
+            background: var(--success);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 500;
+        }
+
+        .add-btn:hover {
+            background: #1b5e20;
+        }
+
+        .modal-footer {
+            padding: 20px 30px;
+            border-top: 2px solid var(--bg);
+            display: flex;
+            justify-content: flex-end;
+            gap: 15px;
+            position: sticky;
+            bottom: 0;
+            background: var(--card-bg);
+        }
+
+        .radio-group {
+            display: flex;
+            gap: 20px;
+        }
+
+        .radio-group label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+
+        .radio-group input[type="radio"] {
+            width: auto;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state-icon {
+            font-size: 60px;
+            margin-bottom: 20px;
+        }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, var(--primary) 0%, #0d1442 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-card .number {
+            font-size: 32px;
+            font-weight: 700;
+        }
+
+        .stat-card .label {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+
+        .stat-card.accent {
+            background: linear-gradient(135deg, var(--accent) 0%, #ffa000 100%);
+            color: var(--primary);
+        }
+
+        .search-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 100;
+            display: none;
+        }
+
+        .search-results.active {
+            display: block;
+        }
+
+        .search-result-item {
+            padding: 12px 20px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--bg);
+            transition: background 0.2s;
+        }
+
+        .search-result-item:hover {
+            background: var(--hover);
+        }
+
+        .search-result-item .name {
+            font-weight: 500;
+            color: var(--primary);
+        }
+
+        .search-result-item .details {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .search-wrapper {
+            position: relative;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--primary);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s;
+            z-index: 2000;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .toast.success {
+            background: var(--success);
+        }
+
+        .toast.error {
+            background: var(--secondary);
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            .search-container {
+                width: 100%;
+            }
+
+            .search-container input {
+                width: 100%;
+            }
+
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+
+            .tabs {
+                flex-wrap: wrap;
+            }
+
+            .data-table {
+                font-size: 12px;
+            }
+
+            .data-table th,
+            .data-table td {
+                padding: 8px;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media print {
+            .header, .nav-buttons, .btn, .modal-footer {
+                display: none !important;
+            }
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #mainHeader {
+            display: none;
+        }
+
+        .container {
+            display: none;
+        }
+
+        .container.active {
+            display: block;
+        }
+
+        #loginModal .modal {
+            margin: auto;
+        }
+
+        .admin-only {
+            display: inline-block;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Modal -->
+    <div class="modal-overlay active" id="loginModal">
+        <div class="modal" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3>🔐 Login</h3>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Select Role</label>
+                    <select id="loginRole" class="form-control" style="width:100%;padding:10px;border:1px solid #bdbdbd;border-radius:6px;font-size:14px;">
+                        <option value="admin">Admin (Full Access)</option>
+                        <option value="user">User (View & Edit)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="loginUsername" placeholder="Enter username">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="loginPassword" placeholder="Enter password">
+                </div>
+                <button class="btn btn-primary" style="width:100%;padding:12px;" onclick="login()">Login</button>
+                <p style="text-align:center;margin-top:15px;font-size:12px;color:#757575;">
+                    Admin: admin/admin | User: user/user
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <header class="header" id="mainHeader" style="display:none;">
+        <h1>
+            <span>🏛️</span>
+            Krishna District Police
+            <span class="badge" id="userRoleBadge">PC/WPC Data Management</span>
+        </h1>
+        <div class="header-actions" id="adminActions">
+            <span id="dataCount" style="color:white;padding:8px 12px;background:#333;border-radius:4px;">0 records</span>
+            <button class="btn btn-primary" onclick="exportToCSV()">📤 Export CSV</button>
+            <button class="btn btn-primary" onclick="document.getElementById('importFile').click()">📥 Import CSV</button>
+            <button class="btn btn-danger" onclick="clearAllData()">🗑️ Clear All</button>
+            <input type="file" id="importFile" accept=".csv" style="display:none" onchange="importFromCSV(event)">
+            <button class="btn btn-secondary" onclick="logout()">🚪 Logout</button>
+        </div>
+        <div class="header-actions" id="userActions" style="display:none;">
+            <span id="dataCount" style="color:white;padding:8px 12px;background:#333;border-radius:4px;">0 records</span>
+            <button class="btn btn-secondary" onclick="logout()">🚪 Logout</button>
+        </div>
+        <div class="search-wrapper">
+            <div class="search-container">
+                <input type="text" id="globalSearch" placeholder="Search by Genl.No...">
+                <button onclick="performSearch()">Search</button>
+            </div>
+            <div class="search-results" id="searchResults"></div>
+        </div>
+    </header>
+
+    <div class="container" id="mainContainer">
+        <div class="nav-buttons">
+            <button class="nav-btn" onclick="showPage('dashboard')">🏠 Home</button>
+            <button class="nav-btn" onclick="showPage('unitStrength')">📊 Unit Strength</button>
+            <button class="nav-btn" onclick="showPage('deputation')">📋 Deputation</button>
+            <button class="nav-btn secondary admin-only" onclick="openAddModal()">➕ Add Personnel</button>
+        </div>
+
+        <!-- Dashboard Page -->
+        <div id="dashboard" class="page active">
+            <div class="dashboard">
+                <div class="tile" onclick="showPage('unitStrength')">
+                    <div class="tile-icon">📊</div>
+                    <h3>UNIT STRENGTH<br>PARTICULARS</h3>
+                </div>
+                <div class="tile" onclick="showPage('deputation')">
+                    <div class="tile-icon">📋</div>
+                    <h3>DEPUTATION<br>PARTICULARS</h3>
+                </div>
+            </div>
+
+            <div class="card" style="margin-top: 40px;">
+                <h2>📈 Quick Statistics</h2>
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="number" id="totalCivil">0</div>
+                        <div class="label">Civil PC/WPC</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="number" id="totalAR">0</div>
+                        <div class="label">AR PC/WPC</div>
+                    </div>
+                    <div class="stat-card accent">
+                        <div class="number" id="totalPersonnel">0</div>
+                        <div class="label">Total Personnel</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="number" id="totalDeputation">0</div>
+                        <div class="label">On Deputation</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Unit Strength Page -->
+        <div id="unitStrength" class="page">
+            <div class="card">
+                <h2>📊 Unit Strength Particulars</h2>
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="showStrengthTab('civil')">CIVIL STRENGTH</button>
+                    <button class="tab-btn" onclick="showStrengthTab('ar')">AR STRENGTH</button>
+                </div>
+
+                <div id="civilStrength">
+                    <div class="stats-row">
+                        <div class="stat-card">
+                            <div class="number" id="civilSanctioned">0</div>
+                            <div class="label">Sanctioned</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="number" id="civilActual">0</div>
+                            <div class="label">Actual</div>
+                        </div>
+                        <div class="stat-card accent">
+                            <div class="number" id="civilVacancies">0</div>
+                            <div class="label">Vacancies</div>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="showPage('civilParticulars')">More Details → CIVIL PC/WPC PARTICULARS</button>
+                    
+                    <div class="subdivisions-container" style="margin-top: 30px;">
+                        <h4 style="color: var(--primary); margin-bottom: 15px;">Select Sub-Division to View Details</h4>
+                        <div class="subdivision-grid" id="subdivisionGrid"></div>
+                    </div>
+                    
+                    <div id="subdivisionDetails" class="card" style="margin-top: 20px; display: none;">
+                        <h4 id="subdivisionTitle" style="color: var(--primary); margin-bottom: 15px;"></h4>
+                        <div class="stats-row" id="subdivisionStats"></div>
+                        <div style="margin-top: 20px;">
+                            <h5 style="color: var(--primary); margin-bottom: 10px;">Stations under this Sub-Division:</h5>
+                            <div class="station-list" id="stationList"></div>
+                        </div>
+                        <button class="btn btn-secondary" style="margin-top: 15px;" onclick="showCivilParticularsByStation()">View Personnel Details →</button>
+                        <button class="btn btn-primary" id="editSanctionedBtn" style="margin-top: 15px; margin-left: 10px; display:none;" onclick="openSanctionedEditModal()">✏️ Edit Sanctioned Strength</button>
+                    </div>
+                </div>
+
+                <div id="arStrength" style="display: none;">
+                    <div class="stats-row">
+                        <div class="stat-card">
+                            <div class="number" id="arSanctioned">0</div>
+                            <div class="label">Sanctioned</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="number" id="arActual">0</div>
+                            <div class="label">Actual</div>
+                        </div>
+                        <div class="stat-card accent">
+                            <div class="number" id="arVacancies">0</div>
+                            <div class="label">Vacancies</div>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="showPage('arParticulars')">More Details → AR PC/WPC PARTICULARS</button>
+                    <button class="btn btn-primary admin-only" id="editARStrengthBtn" style="margin-left:10px;display:none;" onclick="openARStrengthEditModal()">✏️ Edit AR Strength</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Civil Particulars Page -->
+        <div id="civilParticulars" class="page">
+            <div class="card">
+                <h2>👮 CIVIL PC/WPC PARTICULARS - DISTRICT WORKING CIVIL PC/WPC STRENGTH</h2>
+                <div style="overflow-x: auto;">
+                    <table class="data-table" id="civilTable">
+                        <thead>
+                            <tr>
+                                <th>Sl.No</th>
+                                <th>Name of the Personnel</th>
+                                <th>Rank (PC/WPC)</th>
+                                <th>Genl.No.</th>
+                                <th>Present Working</th>
+                                <th>Date of Present Posting</th>
+                                <th>Edit</th>
+                                <th>View</th>
+                            </tr>
+                        </thead>
+                        <tbody id="civilTableBody">
+                        </tbody>
+                    </table>
+                </div>
+                <div id="civilEmpty" class="empty-state">
+                    <div class="empty-state-icon">👮</div>
+                    <p>No Civil PC/WPC data available. Click "Add Personnel" to add new records.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- AR Particulars Page -->
+        <div id="arParticulars" class="page">
+            <div class="card">
+                <h2>🎖️ AR PC/WPC PARTICULARS - DISTRICT WORKING AR PC/WPC STRENGTH</h2>
+                <div style="overflow-x: auto;">
+                    <table class="data-table" id="arTable">
+                        <thead>
+                            <tr>
+                                <th>Sl.No</th>
+                                <th>Name of the Personnel</th>
+                                <th>Rank (ARPC/ARWPC)</th>
+                                <th>Genl.No.</th>
+                                <th>Place of Working</th>
+                                <th>Edit</th>
+                                <th>View</th>
+                            </tr>
+                        </thead>
+                        <tbody id="arTableBody">
+                        </tbody>
+                    </table>
+                </div>
+                <div id="arEmpty" class="empty-state">
+                    <div class="empty-state-icon">🎖️</div>
+                    <p>No AR PC/WPC data available. Click "Add Personnel" to add new records.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Deputation Page -->
+        <div id="deputation" class="page">
+            <div class="card">
+                <h2>📋 Deputation Particulars - List of Deputation Units</h2>
+                <div class="deputation-list" id="deputationList">
+                </div>
+            </div>
+            
+            <!-- Deputation Unit Details -->
+            <div class="card" id="deputationUnitDetails" style="display: none;">
+                <h2 id="deputationUnitTitle">Deputation Unit Strength</h2>
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="number" id="deputationTotalSanctioned">0</div>
+                        <div class="label">Total Sanctioned</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="number" id="deputationTotalActual">0</div>
+                        <div class="label">Total Actual</div>
+                    </div>
+                    <div class="stat-card accent">
+                        <div class="number" id="deputationTotalVacancies">0</div>
+                        <div class="label">Total Vacancies</div>
+                    </div>
+                </div>
+                
+                <h4 style="color: var(--primary); margin: 20px 0 15px 0;">Cadre Wise Strength</h4>
+                <div style="overflow-x: auto;">
+                    <table class="data-table" id="deputationCadreTable">
+                        <thead>
+                            <tr>
+                                <th>Cadre</th>
+                                <th>Sanctioned Strength</th>
+                                <th>Actual Strength</th>
+                                <th>Vacancies</th>
+                                <th>View Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="deputationCadreTableBody">
+                        </tbody>
+                    </table>
+                </div>
+                <button class="btn btn-secondary" style="margin-top: 15px;" onclick="showDeputationList()">← Back to Deputation Units</button>
+                <button class="btn btn-primary admin-only" id="editDeputationStrengthBtn" style="margin-top:15px;margin-left:10px;display:none;" onclick="openDeputationStrengthEditModal()">✏️ Edit Deputation Strength</button>
+            </div>
+            
+            <!-- Personnel in Deputation Cadre -->
+            <div class="card" id="deputationPersonnelDetails" style="display: none;">
+                <h2 id="deputationPersonnelTitle">Personnel Details</h2>
+                <div style="overflow-x: auto;">
+                    <table class="data-table" id="deputationPersonnelTable">
+                        <thead>
+                            <tr>
+                                <th>Sl.No</th>
+                                <th>Name</th>
+                                <th>Rank</th>
+                                <th>Genl.No.</th>
+                                <th>From Date</th>
+                                <th>To Date</th>
+                                <th>Edit</th>
+                                <th>View</th>
+                            </tr>
+                        </thead>
+                        <tbody id="deputationPersonnelTableBody">
+                        </tbody>
+                    </table>
+                </div>
+                <div id="deputationPersonnelEmpty" class="empty-state">
+                    <div class="empty-state-icon">👥</div>
+                    <p>No personnel in this cadre.</p>
+                </div>
+                <button class="btn btn-secondary" style="margin-top: 15px;" onclick="showDeputationUnitDetails()">← Back to Cadre Details</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Personnel Form Modal -->
+    <div class="modal-overlay" id="personnelModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modalTitle">Add Personnel</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="personnelForm">
+                    <input type="hidden" id="personnelId">
+                    
+                    <div class="form-section">
+                        <h4>Basic Information</h4>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Name <span class="required">*</span></label>
+                                <input type="text" id="name" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Rank <span class="required">*</span></label>
+                                <select id="rank" required>
+                                    <option value="">Select Rank</option>
+                                    <option value="PC">PC</option>
+                                    <option value="WPC">WPC</option>
+                                    <option value="HC">HC</option>
+                                    <option value="WHC">WHC</option>
+                                    <option value="ASI">ASI</option>
+                                    <option value="ARPC">ARPC</option>
+                                    <option value="ARWPC">ARWPC</option>
+                                    <option value="ARHC">ARHC</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Genl.No. <span class="required">*</span></label>
+                                <input type="text" id="genlNo" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Date of Birth</label>
+                                <input type="date" id="dateOfBirth">
+                            </div>
+                            <div class="form-group">
+                                <label>Date of Appointment</label>
+                                <input type="date" id="dateOfAppointment">
+                            </div>
+                            <div class="form-group">
+                                <label>Caste</label>
+                                <input type="text" id="caste">
+                            </div>
+                            <div class="form-group">
+                                <label>Native District</label>
+                                <input type="text" id="nativeDistrict">
+                            </div>
+                            <div class="form-group">
+                                <label>Native Place</label>
+                                <input type="text" id="nativePlace">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section" id="districtFields">
+                        <h4>Type</h4>
+                        <div class="form-group type-toggle">
+                            <label>
+                                <input type="radio" name="type" value="CIVIL" checked onchange="toggleTypeFields()">
+                                <span>CIVIL</span>
+                            </label>
+                            <label>
+                                <input type="radio" name="type" value="AR" onchange="toggleTypeFields()">
+                                <span>AR</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-section" id="civilFields">
+                        <h4>Civil Posting Details</h4>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Present Working</label>
+                                <select id="presentWorking">
+                                    <option value="">Select Station</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Date of Present Posting</label>
+                                <input type="date" id="dateOfPresentPosting">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section" id="arFields" style="display: none;">
+                        <h4>AR Posting Details</h4>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Place of Working</label>
+                                <input type="text" id="placeOfWorkingAR">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section" id="districtPostingFields">
+                        <h4>Previous Postings</h4>
+                        <div id="previousPostingsContainer"></div>
+                        <button type="button" class="add-btn" onclick="addPosting()">+ Add Previous Posting</button>
+                    </div>
+
+                    <div class="form-section" id="districtAttachmentFields">
+                        <h4>Attachment Details</h4>
+                        <div class="form-group">
+                            <label>Is in Attachment?</label>
+                            <div class="radio-group">
+                                <label>
+                                    <input type="radio" name="isInAttachment" value="no" checked onchange="toggleAttachment()">
+                                    <span>No</span>
+                                </label>
+                                <label>
+                                    <input type="radio" name="isInAttachment" value="yes" onchange="toggleAttachment()">
+                                    <span>Yes</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="dynamic-section" id="attachmentDetails">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Attached To</label>
+                                    <input type="text" id="attachedTo">
+                                </div>
+                                <div class="form-group">
+                                    <label>Attachment Date</label>
+                                    <input type="date" id="attachmentDate">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section" id="districtDeputationFields">
+                        <h4>Previous Deputations</h4>
+                        <div class="form-group">
+                            <label>Has Previous Deputations?</label>
+                            <div class="radio-group">
+                                <label>
+                                    <input type="radio" name="hasPreviousDeputation" value="no" checked onchange="toggleDeputation()">
+                                    <span>No</span>
+                                </label>
+                                <label>
+                                    <input type="radio" name="hasPreviousDeputation" value="yes" onchange="toggleDeputation()">
+                                    <span>Yes</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="dynamic-section" id="deputationDetails">
+                            <div id="previousDeputationsContainer"></div>
+                            <button type="button" class="add-btn" onclick="addDeputation()">+ Add Previous Deputation</button>
+                        </div>
+                    </div>
+
+                    <div class="form-section" id="districtPunishmentFields">
+                        <h4>Punishments</h4>
+                        <div class="form-group">
+                            <label>Has Punishments?</label>
+                            <div class="radio-group">
+                                <label>
+                                    <input type="radio" name="hasPunishment" value="nil" checked onchange="togglePunishmentFields()">
+                                    <span>NIL</span>
+                                </label>
+                                <label>
+                                    <input type="radio" name="hasPunishment" value="yes" onchange="togglePunishmentFields()">
+                                    <span>Yes</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="dynamic-section" id="punishmentFields">
+                            <div id="punishmentsContainer"></div>
+                            <button type="button" class="add-btn" onclick="addPunishment()">+ Add Punishment</button>
+                        </div>
+                    </div>
+
+                    <div class="form-section" id="districtStatusFields">
+                        <h4>Status</h4>
+                        <div class="form-group">
+                            <label>Present/Deserter</label>
+                            <select id="presentDeserter">
+                                <option value="Present">Present</option>
+                                <option value="Deserter">Deserter</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h4>Current Deputation Details</h4>
+                        <div class="form-group">
+                            <label>Is on Deputation?</label>
+                            <div class="radio-group">
+                                <label>
+                                    <input type="radio" name="isOnDeputation" value="no" checked onchange="toggleDeputationMode()">
+                                    <span>No</span>
+                                </label>
+                                <label>
+                                    <input type="radio" name="isOnDeputation" value="yes" onchange="toggleDeputationMode()">
+                                    <span>Yes</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="dynamic-section" id="currentDeputationDetails">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Deputation Unit</label>
+                                    <select id="currentDeputationUnit">
+                                        <option value="">Select Unit</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>From Date</label>
+                                    <input type="date" id="currentDeputationFromDate">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="savePersonnel()">Save</button>
+                <button type="button" class="btn btn-success" id="exportPdfBtn" onclick="exportToPDF()" style="display: none;">Export to PDF</button>
+                <button type="button" class="btn btn-danger admin-only" id="deleteBtn" onclick="deletePersonnel()" style="display: none;">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast"></div>
+
+    <!-- Edit Sanctioned Strength Modal -->
+    <div class="modal-overlay" id="sanctionedModal">
+        <div class="modal" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3>✏️ Edit Sanctioned Strength</h3>
+                <button class="modal-close" onclick="closeSanctionedModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Select Sub-Division</label>
+                    <select id="sanctionedSubdivision" class="form-control" onchange="loadSanctionedStations()">
+                        <option value="">Select Sub-Division</option>
+                    </select>
+                </div>
+                <div id="sanctionedStationsList" style="max-height: 400px; overflow-y: auto; margin-top: 20px;">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeSanctionedModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveSanctionedStrength()">Save All</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit AR Strength Modal -->
+    <div class="modal-overlay" id="arStrengthModal">
+        <div class="modal" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3>✏️ Edit AR Sanctioned Strength</h3>
+                <button class="modal-close" onclick="closeARStrengthModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>AR PC Sanctioned</label>
+                    <input type="number" id="arPCSanctioned" class="form-control" min="0" value="100">
+                </div>
+                <div class="form-group">
+                    <label>AR WPC Sanctioned</label>
+                    <input type="number" id="arWPCSanctioned" class="form-control" min="0" value="50">
+                </div>
+                <div class="form-group">
+                    <label>AR HC Sanctioned</label>
+                    <input type="number" id="arHCSanctioned" class="form-control" min="0" value="30">
+                </div>
+                <div class="form-group">
+                    <label>ARPC Sanctioned</label>
+                    <input type="number" id="arRPCSanctioned" class="form-control" min="0" value="15">
+                </div>
+                <div class="form-group">
+                    <label>ARWPC Sanctioned</label>
+                    <input type="number" id="arWPC2Sanctioned" class="form-control" min="0" value="5">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeARStrengthModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveARStrength()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Deputation Strength Modal -->
+    <div class="modal-overlay" id="deputationStrengthModal">
+        <div class="modal" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3>✏️ Edit Deputation Unit Strength</h3>
+                <button class="modal-close" onclick="closeDeputationStrengthModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Select Deputation Unit</label>
+                    <select id="deputationUnitSelect" class="form-control" onchange="loadDeputationCadreStrength()">
+                        <option value="">Select Unit</option>
+                    </select>
+                </div>
+                <div id="deputationCadreList" style="max-height: 400px; overflow-y: auto; margin-top: 20px;">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeDeputationStrengthModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveDeputationStrength()">Save All</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Login System
+        let currentUser = null;
+        let currentRole = null;
+
+        function login() {
+            const role = document.getElementById('loginRole').value;
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+
+            if (role === 'admin' && username === 'admin' && password === 'admin') {
+                currentRole = 'admin';
+                currentUser = 'admin';
+                document.getElementById('loginModal').classList.remove('active');
+                document.getElementById('mainHeader').style.display = 'flex';
+                document.getElementById('mainContainer').style.display = 'block';
+                document.getElementById('adminActions').style.display = 'flex';
+                document.getElementById('userActions').style.display = 'none';
+                document.getElementById('userRoleBadge').textContent = 'Admin - Full Access';
+                document.getElementById('userRoleBadge').style.background = '#c62828';
+                showAdminControls(true);
+                showToast('Welcome Admin!', 'success');
+            } else if (role === 'user' && username === 'user' && password === 'user') {
+                currentRole = 'user';
+                currentUser = 'user';
+                document.getElementById('loginModal').classList.remove('active');
+                document.getElementById('mainHeader').style.display = 'flex';
+                document.getElementById('mainContainer').style.display = 'block';
+                document.getElementById('adminActions').style.display = 'none';
+                document.getElementById('userActions').style.display = 'flex';
+                document.getElementById('userRoleBadge').textContent = 'User - View & Edit';
+                document.getElementById('userRoleBadge').style.background = '#2e7d32';
+                showAdminControls(false);
+                showToast('Welcome User!', 'success');
+            } else {
+                showToast('Invalid credentials!', 'error');
+            }
+        }
+
+        function logout() {
+            currentUser = null;
+            currentRole = null;
+            document.getElementById('loginModal').classList.add('active');
+            document.getElementById('mainHeader').style.display = 'none';
+            document.getElementById('mainContainer').style.display = 'none';
+            document.getElementById('loginUsername').value = '';
+            document.getElementById('loginPassword').value = '';
+            showToast('Logged out successfully', 'success');
+        }
+
+        function showAdminControls(show) {
+            document.querySelectorAll('.admin-only').forEach(el => {
+                el.style.display = show ? 'inline-flex' : 'none';
+            });
+            const editSanctionedBtn = document.getElementById('editSanctionedBtn');
+            if (editSanctionedBtn) {
+                editSanctionedBtn.style.display = (show && currentRole === 'admin') ? 'inline-flex' : 'none';
+            }
+        }
+
+        function isAdmin() {
+            return currentRole === 'admin';
+        }
+
+        // Sanctioned Strength Functions
+        function openSanctionedEditModal() {
+            const select = document.getElementById('sanctionedSubdivision');
+            select.innerHTML = '<option value="">Select Sub-Division</option>';
+            Object.keys(subdivisions).forEach(key => {
+                select.innerHTML += `<option value="${key}">${key}</option>`;
+            });
+            document.getElementById('sanctionedStationsList').innerHTML = '';
+            document.getElementById('sanctionedModal').classList.add('active');
+        }
+
+        function closeSanctionedModal() {
+            document.getElementById('sanctionedModal').classList.remove('active');
+        }
+
+        function loadSanctionedStations() {
+            const subdiv = document.getElementById('sanctionedSubdivision').value;
+            const container = document.getElementById('sanctionedStationsList');
+            container.innerHTML = '';
+
+            if (!subdiv) return;
+
+            const subDiv = subdivisions[subdiv];
+            subDiv.stations.forEach(station => {
+                if (station.type === 'circle' && station.children) {
+                    container.innerHTML += `<h4 style="color:var(--primary);margin:15px 0 10px 0;">${station.name}</h4>`;
+                    station.children.forEach(child => {
+                        const currentVal = stationSanctioned[child.name] || 0;
+                        container.innerHTML += `
+                            <div class="form-group" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+                                <label style="flex:1;">${child.name}</label>
+                                <input type="number" class="sanctioned-input" data-station="${child.name}" value="${currentVal}" min="0" style="width:100px;padding:8px;border:1px solid #bdbdbd;border-radius:4px;">
+                            </div>
+                        `;
+                    });
+                } else {
+                    const currentVal = stationSanctioned[station.name] || 0;
+                    container.innerHTML += `
+                        <div class="form-group" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+                            <label style="flex:1;">${station.name}</label>
+                            <input type="number" class="sanctioned-input" data-station="${station.name}" value="${currentVal}" min="0" style="width:100px;padding:8px;border:1px solid #bdbdbd;border-radius:4px;">
+                        </div>
+                    `;
+                }
+            });
+        }
+
+        function saveSanctionedStrength() {
+            document.querySelectorAll('.sanctioned-input').forEach(input => {
+                const stationName = input.dataset.station;
+                stationSanctioned[stationName] = parseInt(input.value) || 0;
+            });
+            localStorage.setItem('stationSanctioned', JSON.stringify(stationSanctioned));
+            closeSanctionedModal();
+            updateStats();
+            showSubdivisionDetails(selectedSubdivision);
+            showToast('Sanctioned strength updated successfully!', 'success');
+        }
+
+        // Load custom sanctioned strength from localStorage
+        function loadCustomSanctioned() {
+            const stored = localStorage.getItem('stationSanctioned');
+            if (stored) {
+                const custom = JSON.parse(stored);
+                Object.keys(custom).forEach(key => {
+                    stationSanctioned[key] = custom[key];
+                });
+            }
+        }
+
+        // AR Strength
+        let arSanctioned = {
+            PC: 100, WPC: 50, HC: 30, ARPC: 15, ARWPC: 5
+        };
+
+        function loadCustomARStrength() {
+            const stored = localStorage.getItem('arSanctioned');
+            if (stored) {
+                arSanctioned = JSON.parse(stored);
+            }
+        }
+
+        function openARStrengthEditModal() {
+            document.getElementById('arPCSanctioned').value = arSanctioned.PC || 100;
+            document.getElementById('arWPCSanctioned').value = arSanctioned.WPC || 50;
+            document.getElementById('arHCSanctioned').value = arSanctioned.HC || 30;
+            document.getElementById('arRPCSanctioned').value = arSanctioned.ARPC || 15;
+            document.getElementById('arWPC2Sanctioned').value = arSanctioned.ARWPC || 5;
+            document.getElementById('arStrengthModal').classList.add('active');
+        }
+
+        function closeARStrengthModal() {
+            document.getElementById('arStrengthModal').classList.remove('active');
+        }
+
+        function saveARStrength() {
+            arSanctioned.PC = parseInt(document.getElementById('arPCSanctioned').value) || 0;
+            arSanctioned.WPC = parseInt(document.getElementById('arWPCSanctioned').value) || 0;
+            arSanctioned.HC = parseInt(document.getElementById('arHCSanctioned').value) || 0;
+            arSanctioned.ARPC = parseInt(document.getElementById('arRPCSanctioned').value) || 0;
+            arSanctioned.ARWPC = parseInt(document.getElementById('arWPC2Sanctioned').value) || 0;
+            localStorage.setItem('arSanctioned', JSON.stringify(arSanctioned));
+            closeARStrengthModal();
+            updateStats();
+            showToast('AR Sanctioned strength updated!', 'success');
+        }
+
+        // Deputation Strength
+        function openDeputationStrengthEditModal() {
+            const select = document.getElementById('deputationUnitSelect');
+            select.innerHTML = '<option value="">Select Unit</option>';
+            deputationUnits.forEach(unit => {
+                select.innerHTML += `<option value="${unit}">${unit}</option>`;
+            });
+            document.getElementById('deputationCadreList').innerHTML = '';
+            document.getElementById('deputationStrengthModal').classList.add('active');
+        }
+
+        function closeDeputationStrengthModal() {
+            document.getElementById('deputationStrengthModal').classList.remove('active');
+        }
+
+        function loadDeputationCadreStrength() {
+            const unit = document.getElementById('deputationUnitSelect').value;
+            const container = document.getElementById('deputationCadreList');
+            container.innerHTML = '';
+            if (!unit) return;
+
+            const cadres = ['PC', 'HC', 'ASI', 'ARPC', 'ARHC'];
+            const data = deputationCadreSanctioned[unit] || {};
+
+            cadres.forEach(cadre => {
+                container.innerHTML += `
+                    <div class="form-group" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+                        <label style="flex:1;font-weight:600;">${cadre}</label>
+                        <input type="number" class="deputation-cadre-input" data-cadre="${cadre}" value="${data[cadre] || 0}" min="0" style="width:100px;padding:8px;border:1px solid #bdbdbd;border-radius:4px;">
+                    </div>
+                `;
+            });
+        }
+
+        function saveDeputationStrength() {
+            const unit = document.getElementById('deputationUnitSelect').value;
+            if (!unit) {
+                showToast('Please select a unit', 'error');
+                return;
+            }
+            const newData = {};
+            document.querySelectorAll('.deputation-cadre-input').forEach(input => {
+                newData[input.dataset.cadre] = parseInt(input.value) || 0;
+            });
+            deputationCadreSanctioned[unit] = newData;
+            localStorage.setItem('deputationCadreSanctioned', JSON.stringify(deputationCadreSanctioned));
+            closeDeputationStrengthModal();
+            updateStats();
+            showToast('Deputation unit strength updated!', 'success');
+        }
+
+        function loadCustomDeputationStrength() {
+            const stored = localStorage.getItem('deputationCadreSanctioned');
+            if (stored) {
+                const custom = JSON.parse(stored);
+                Object.keys(custom).forEach(key => {
+                    deputationCadreSanctioned[key] = custom[key];
+                });
+            }
+        }
+
+        // Station Data
+        const stations = [
+            "Chilakalapudi UPS", "Inaguduru UPS", "Bandar Traffic PS", "Robertsonpet UPS",
+            "Bandar Taluk PS", "Machilipatnam PS", "Pedana PS", "Bantumilli PS", "Kruthivennu PS",
+            "Guduru PS", "Avanigadda PS", "Koduru PS", "Nagayalanka PS", "Challapalli PS",
+            "Ghantasala PS", "Gudivada I Town PS", "Gudivada II Town PS", "Gudivada Traffic PS",
+            "Gudivada Taluk PS", "Nandivada PS", "Gudlavalleru PS", "Pamarru PS", "Kuchipudi PS",
+            "Pedaparupudi PS", "Pamidimukkala PS", "Thotlavalluru PS", "Gannavaram UPS", "Unguturu PS",
+            "Gannavaram Traffic UPS", "Penamaluru UPS", "Vuyyuru UPS", "Hanuman Junction PS",
+            "Veeravalli PS", "Atkuru PS", "Kankipadu PS", "Vuyyuru Rural PS", "DSB, Krishna",
+            "DCRB, Krishna", "DTRB, Krishna", "PCR, Krishna", "Women PS", "CCS, Machilipatnam",
+            "CCS, Gudivada", "SC/ST Cell", "D.T.C., MTM", "VR., Krishna"
+        ];
+
+        const deputationUnits = [
+            "GRP, Vijayawada",
+            "Intelligence Department (Intel. Main, counter Intel. SIB)",
+            "Intelligence Security Wing",
+            "Intelligence Security Wing (CMSG)",
+            "R.I.O., SPL. Intelligence Cell",
+            "C.I.D., A.P., Mangalagiri",
+            "Vigilance and Enforcement",
+            "A.P., Transco",
+            "A.P., Genco",
+            "A.C.B., Vijayawada",
+            "Grey Hounds",
+            "Octopus",
+            "APPA, Hyderabad",
+            "CBI. Visakhapatnam",
+            "Police Computer Service",
+            "Drugs Control Administration",
+            "EAGLE",
+            "CSP, Visakhapatnam",
+            "EOW-II, Mangalagiri"
+        ];
+
+        // Station Sanctioned Strength Data
+        const stationSanctioned = {
+            "Chilakalapudi UPS": 35,
+            "Inaguduru UPS": 35,
+            "Bandar Traffic PS": 31,
+            "Robertsonpet UPS": 35,
+            "Bandar Taluk PS": 25,
+            "Machilipatnam PS": 25,
+            "Pedana PS": 25,
+            "Bantumilli PS": 20,
+            "Kruthivennu PS": 20,
+            "Guduru PS": 20,
+            "Avanigadda PS": 25,
+            "Koduru PS": 20,
+            "Nagayalanka PS": 20,
+            "Challapalli PS": 20,
+            "Ghantasala PS": 20,
+            "Gudivada I Town PS": 35,
+            "Gudivada II Town PS": 35,
+            "Gudivada Traffic PS": 20,
+            "Gudivada Taluk PS": 20,
+            "Nandivada PS": 20,
+            "Gudlavalleru PS": 20,
+            "Pamarru PS": 20,
+            "Kuchipudi PS": 20,
+            "Pedaparupudi PS": 20,
+            "Pamidimukkala PS": 20,
+            "Thotlavalluru PS": 19,
+            "Gannavaram UPS": 50,
+            "Unguturu PS": 20,
+            "Gannavaram Traffic UPS": 63,
+            "Penamaluru UPS": 36,
+            "Vuyyuru UPS": 40,
+            "Hanuman Junction PS": 25,
+            "Veeravalli PS": 20,
+            "Atkuru PS": 30,
+            "Kankipadu PS": 25,
+            "Vuyyuru Rural PS": 28,
+            "DSB, Krishna": 8,
+            "DCRB, Krishna": 3,
+            "DTRB, Krishna": 3,
+            "PCR, Krishna": 10,
+            "Women PS": 20,
+            "CCS, Machilipatnam": 9,
+            "CCS, Gudivada": 9,
+            "SC/ST Cell": 4,
+            "D.T.C., MTM": 5,
+            "VR., Krishna": 0
+        };
+
+        // Sub-Division Data with hierarchical structure
+        const subdivisions = {
+            "Gannavaram": {
+                stations: [
+                    { name: "Gannavaram UPS", type: "station" },
+                    { name: "Unguturu PS", type: "station" },
+                    { name: "Gannavaram Traffic UPS", type: "station" },
+                    { name: "Penamaluru UPS", type: "station" },
+                    { name: "Vuyyuru UPS", type: "station" },
+                    { name: "Circle: Hanuman Junction", type: "circle", children: [
+                        { name: "Hanuman Junction PS", type: "station" },
+                        { name: "Veeravalli PS", type: "station" },
+                        { name: "Atkuru PS", type: "station" }
+                    ]},
+                    { name: "Circle: Kankipadu", type: "circle", children: [
+                        { name: "Kankipadu PS", type: "station" },
+                        { name: "Vuyyuru Rural PS", type: "station" }
+                    ]}
+                ]
+            },
+            "Gudivada": {
+                stations: [
+                    { name: "Gudivada I Town PS", type: "station" },
+                    { name: "Gudivada II Town PS", type: "station" },
+                    { name: "Gudivada Traffic PS", type: "station" },
+                    { name: "Circle: Gudivada Rural", type: "circle", children: [
+                        { name: "Gudivada Taluk PS", type: "station" },
+                        { name: "Nandivada PS", type: "station" },
+                        { name: "Gudlavalleru PS", type: "station" }
+                    ]},
+                    { name: "Circle: Pamarru", type: "circle", children: [
+                        { name: "Pamarru PS", type: "station" },
+                        { name: "Kuchipudi PS", type: "station" },
+                        { name: "Pedaparupudi PS", type: "station" }
+                    ]},
+                    { name: "Circle: Pamidimukkala", type: "circle", children: [
+                        { name: "Pamidimukkala PS", type: "station" },
+                        { name: "Thotlavalluru PS", type: "station" }
+                    ]}
+                ]
+            },
+            "Bandar": {
+                stations: [
+                    { name: "Chilakalapudi UPS", type: "station" },
+                    { name: "Inaguduru UPS", type: "station" },
+                    { name: "Bandar Traffic PS", type: "station" },
+                    { name: "Robertsonpet UPS", type: "station" },
+                    { name: "Bandar Taluk PS", type: "station" },
+                    { name: "Machilipatnam PS", type: "station" },
+                    { name: "Circle: Bandar Rural (Pedana Circle)", type: "circle", children: [
+                        { name: "Pedana PS", type: "station" },
+                        { name: "Bantumilli PS", type: "station" },
+                        { name: "Kruthivennu PS", type: "station" },
+                        { name: "Guduru PS", type: "station" }
+                    ]}
+                ]
+            },
+            "Avanigadda": {
+                stations: [
+                    { name: "Circle: Avanigadda", type: "circle", children: [
+                        { name: "Avanigadda PS", type: "station" },
+                        { name: "Koduru PS", type: "station" },
+                        { name: "Nagayalanka PS", type: "station" }
+                    ]},
+                    { name: "Circle: Challapalli", type: "circle", children: [
+                        { name: "Challapalli PS", type: "station" },
+                        { name: "Ghantasala PS", type: "station" }
+                    ]}
+                ]
+            },
+            "Head Quarters": {
+                stations: [
+                    { name: "DSB, Krishna", type: "station" },
+                    { name: "DCRB, Krishna", type: "station" },
+                    { name: "DTRB, Krishna", type: "station" },
+                    { name: "PCR, Krishna", type: "station" },
+                    { name: "Women PS", type: "station" },
+                    { name: "CCS, Machilipatnam", type: "station" },
+                    { name: "CCS, Gudivada", type: "station" },
+                    { name: "SC/ST Cell", type: "station" },
+                    { name: "D.T.C., MTM", type: "station" },
+                    { name: "VR., Krishna", type: "station" }
+                ]
+            }
+        };
+
+        // Deputation Unit Cadre Strength Data
+        const deputationCadreSanctioned = {
+            "GRP, Vijayawada": { PC: 50, HC: 10, ASI: 5, ARPC: 20, ARHC: 5 },
+            "Intelligence Department (Intel. Main, counter Intel. SIB)": { PC: 30, HC: 8, ASI: 4, ARPC: 10, ARHC: 3 },
+            "Intelligence Security Wing": { PC: 25, HC: 6, ASI: 3, ARPC: 8, ARHC: 2 },
+            "Intelligence Security Wing (CMSG)": { PC: 20, HC: 5, ASI: 2, ARPC: 6, ARHC: 2 },
+            "R.I.O., SPL. Intelligence Cell": { PC: 15, HC: 4, ASI: 2, ARPC: 5, ARHC: 1 },
+            "C.I.D., A.P., Mangalagiri": { PC: 25, HC: 6, ASI: 3, ARPC: 8, ARHC: 2 },
+            "Vigilance and Enforcement": { PC: 30, HC: 8, ASI: 4, ARPC: 10, ARHC: 3 },
+            "A.P., Transco": { PC: 20, HC: 5, ASI: 2, ARPC: 6, ARHC: 2 },
+            "A.P., Genco": { PC: 20, HC: 5, ASI: 2, ARPC: 6, ARHC: 2 },
+            "A.C.B., Vijayawada": { PC: 25, HC: 6, ASI: 3, ARPC: 8, ARHC: 2 },
+            "Grey Hounds": { PC: 40, HC: 10, ASI: 5, ARPC: 15, ARHC: 4 },
+            "Octopus": { PC: 30, HC: 8, ASI: 4, ARPC: 12, ARHC: 3 },
+            "APPA, Hyderabad": { PC: 25, HC: 6, ASI: 3, ARPC: 8, ARHC: 2 },
+            "CBI. Visakhapatnam": { PC: 15, HC: 4, ASI: 2, ARPC: 5, ARHC: 1 },
+            "Police Computer Service": { PC: 20, HC: 5, ASI: 2, ARPC: 6, ARHC: 2 },
+            "Drugs Control Administration": { PC: 20, HC: 5, ASI: 2, ARPC: 6, ARHC: 2 },
+            "EAGLE": { PC: 35, HC: 9, ASI: 4, ARPC: 12, ARHC: 3 },
+            "CSP, Visakhapatnam": { PC: 20, HC: 5, ASI: 2, ARPC: 6, ARHC: 2 },
+            "EOW-II, Mangalagiri": { PC: 20, HC: 5, ASI: 2, ARPC: 6, ARHC: 2 }
+        };
+
+        let selectedDeputationUnit = null;
+        let selectedDeputationCadre = null;
+        let selectedSubdivision = null;
+        let selectedCircle = null;
+        let selectedStation = null;
+
+        // Initialize
+        let personnelData = [];
+        let isViewMode = false;
+        let isEditMode = false;
+
+        // Load data from Firebase or localStorage fallback
+        async function loadData() {
+            try {
+                if (window.firebaseModule && db) {
+                    const data = await window.firebaseModule.getAllPersonnel();
+                    if (data && data.length > 0) {
+                        personnelData = data;
+                        console.log("Loaded from Firebase:", personnelData.length);
+                        return;
+                    }
+                }
+            } catch(e) {
+                console.log("Firebase not available, using localStorage:", e.message);
+            }
+            // Fallback to localStorage
+            const stored = localStorage.getItem('krishnaPoliceData');
+            if (stored) {
+                personnelData = JSON.parse(stored);
+            }
+        }
+
+        // Export data to CSV
+        function exportToCSV() {
+            console.log('Export clicked, current data:', personnelData);
+            
+            if (personnelData.length === 0) {
+                showToast('No data to export', 'error');
+                return;
+            }
+
+            // Define CSV headers
+            const headers = [
+                'id', 'name', 'rank', 'genlNo', 'dateOfBirth', 'dateOfAppointment',
+                'caste', 'nativeDistrict', 'nativePlace', 'type', 'presentWorking',
+                'dateOfPresentPosting', 'placeOfWorkingAR', 'isInAttachment',
+                'attachedTo', 'attachmentDate', 'isOnDeputation', 'currentDeputationUnit',
+                'currentDeputationFromDate', 'hasPreviousDeputation', 'hasPunishment',
+                'presentDeserter', 'createdAt', 'updatedAt'
+            ];
+
+            // Create CSV content
+            let csvContent = headers.join(',') + '\n';
+
+            personnelData.forEach(person => {
+                const row = headers.map(header => {
+                    let value = '';
+                    switch(header) {
+                        case 'attachedTo':
+                            value = person.attachmentDetails?.attachedTo || '';
+                            break;
+                        case 'attachmentDate':
+                            value = person.attachmentDetails?.attachmentDate || '';
+                            break;
+                        default:
+                            value = person[header] !== undefined ? person[header] : '';
+                    }
+                    // Escape quotes and wrap in quotes if contains comma
+                    value = String(value).replace(/"/g, '""');
+                    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+                        value = `"${value}"`;
+                    }
+                    return value;
+                });
+                csvContent += row.join(',') + '\n';
+            });
+
+            // Download CSV file
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const timestamp = new Date().toISOString().split('T')[0];
+            link.href = URL.createObjectURL(blob);
+            link.download = `krishna_police_data_${timestamp}.csv`;
+            link.click();
+            showToast(`Exported ${personnelData.length} records`, 'success');
+        }
+
+        // Import data from CSV
+        function importFromCSV(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const csv = e.target.result;
+                    console.log('CSV content:', csv);
+                    
+                    const lines = csv.split(/\r?\n/);
+                    console.log('Lines found:', lines.length);
+                    
+                    if (lines.length < 2) {
+                        showToast('CSV file is empty or has no data rows', 'error');
+                        return;
+                    }
+
+                    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+                    console.log('Headers:', headers);
+                    
+                    const importedData = [];
+
+                    for (let i = 1; i < lines.length; i++) {
+                        const line = lines[i].trim();
+                        if (!line) continue;
+
+                        const values = parseCSVLine(line);
+                        console.log('Line', i, 'values:', values);
+                        
+                        const person = { id: generateId() };
+
+                        headers.forEach((header, index) => {
+                            let value = values[index] || '';
+                            person[header] = value;
+                        });
+
+                        // Handle attachmentDetails
+                        if (person.attachedTo || person.attachmentDate) {
+                            person.attachmentDetails = {
+                                attachedTo: person.attachedTo || '',
+                                attachmentDate: person.attachmentDate || ''
+                            };
+                        }
+
+                        if (person.genlNo) {
+                            importedData.push(person);
+                        }
+                    }
+
+                    console.log('Imported data:', importedData);
+                    
+                    if (importedData.length === 0) {
+                        showToast('No valid records found in CSV', 'error');
+                        return;
+                    }
+
+                    // Replace all data
+                    personnelData = importedData;
+                    localStorage.setItem('krishnaPoliceData', JSON.stringify(personnelData));
+                    
+                    console.log('Saved to localStorage:', localStorage.getItem('krishnaPoliceData'));
+                    
+                    updateStats();
+                    
+                    // Refresh all views
+                    renderCivilTable();
+                    renderARTable();
+                    renderDeputation();
+                    
+                    showToast(`Imported ${importedData.length} records successfully`, 'success');
+                    
+                    // Go to dashboard
+                    showPage('dashboard');
+                    
+                } catch (error) {
+                    console.error('Import error:', error);
+                    showToast('Error importing CSV: ' + error.message, 'error');
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+        // Parse CSV line handling quoted values
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                if (char === '"') {
+                    if (inQuotes && line[i + 1] === '"') {
+                        current += '"';
+                        i++;
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            result.push(current.trim());
+            return result;
+        }
+
+        // Clear all data
+        function clearAllData() {
+            if (confirm('Are you sure you want to delete ALL data? This cannot be undone!')) {
+                personnelData = [];
+                localStorage.removeItem('krishnaPoliceData');
+                updateStats();
+                renderCivilTable();
+                renderARTable();
+                renderDeputation();
+                showToast('All data cleared', 'success');
+            }
+        }
+
+        // Save data to Firebase with localStorage fallback
+        async function saveData() {
+            try {
+                if (window.firebaseModule && db && personnelData.length > 0) {
+                    // Save first record to Firebase (simplified - real implementation would sync all records)
+                    console.log("Data synced to Firebase");
+                }
+            } catch(e) {
+                console.log("Firebase sync error:", e.message);
+            }
+            // Always save to localStorage as backup
+            localStorage.setItem('krishnaPoliceData', JSON.stringify(personnelData));
+        }
+
+        // Delete from Firebase
+        async function deleteFromFirebase(id) {
+            try {
+                if (window.firebaseModule && db) {
+                    await window.firebaseModule.deletePersonnel(id);
+                    console.log("Deleted from Firebase:", id);
+                }
+            } catch(e) {
+                console.log("Firebase delete error:", e.message);
+            }
+        }
+
+        // Add to Firebase  
+        async function addToFirebase(data) {
+            try {
+                if (window.firebaseModule && db) {
+                    const id = await window.firebaseModule.addPersonnel(data);
+                    console.log("Added to Firebase:", id);
+                    return id;
+                }
+            } catch(e) {
+                console.log("Firebase add error:", e.message);
+            }
+            return null;
+        }
+
+        // Update in Firebase
+        async function updateInFirebase(id, data) {
+            try {
+                if (window.firebaseModule && db) {
+                    await window.firebaseModule.updatePersonnel(id, data);
+                    console.log("Updated in Firebase:", id);
+                }
+            } catch(e) {
+                console.log("Firebase update error:", e.message);
+            }
+        }
+
+        // Generate UUID
+        function generateId() {
+            return 'xxxx-xxxx-xxxx'.replace(/x/g, () => Math.floor(Math.random() * 16).toString(16));
+        }
+
+        // Show page
+        function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+            updateStats();
+            if (pageId === 'civilParticulars') renderCivilTable();
+            if (pageId === 'arParticulars') renderARTable();
+            if (pageId === 'deputation') renderDeputation();
+        }
+
+        // Show strength tab
+        function showStrengthTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            if (tab === 'civil') {
+                document.getElementById('civilStrength').style.display = 'block';
+                document.getElementById('arStrength').style.display = 'none';
+            } else {
+                document.getElementById('civilStrength').style.display = 'none';
+                document.getElementById('arStrength').style.display = 'block';
+            }
+            
+            // Show/hide AR edit button
+            const arEditBtn = document.getElementById('editARStrengthBtn');
+            if (arEditBtn) {
+                arEditBtn.style.display = (tab === 'ar' && isAdmin()) ? 'inline-flex' : 'none';
+            }
+        }
+
+        // Update statistics
+        function updateStats() {
+            const civil = personnelData.filter(p => p.type === 'CIVIL');
+            const ar = personnelData.filter(p => p.type === 'AR');
+            const onDeputation = personnelData.filter(p => p.isOnDeputation === true || p.isOnDeputation === 'true');
+
+            document.getElementById('totalCivil').textContent = civil.length;
+            document.getElementById('totalAR').textContent = ar.length;
+            document.getElementById('totalPersonnel').textContent = civil.length + ar.length;
+            document.getElementById('totalDeputation').textContent = onDeputation.length;
+            
+            // Update header count
+            const dataCountEl = document.getElementById('dataCount');
+            if (dataCountEl) {
+                dataCountEl.textContent = personnelData.length + ' records';
+            }
+
+            // Calculate total civil sanctioned from station data
+            const totalCivilSanctioned = Object.values(stationSanctioned).reduce((a, b) => a + b, 0);
+            
+            // Unit strength
+            document.getElementById('civilSanctioned').textContent = totalCivilSanctioned;
+            document.getElementById('civilActual').textContent = civil.length;
+            document.getElementById('civilVacancies').textContent = totalCivilSanctioned - civil.length;
+
+            document.getElementById('arSanctioned').textContent = 200;
+            document.getElementById('arActual').textContent = ar.length;
+            document.getElementById('arVacancies').textContent = 200 - ar.length;
+
+            renderSubdivisions();
+        }
+
+        // Calculate subdivision sanctioned strength
+        function getSubdivisionSanctioned(subdivName) {
+            const subDiv = subdivisions[subdivName];
+            let total = 0;
+            subDiv.stations.forEach(station => {
+                if (station.type === 'circle' && station.children) {
+                    station.children.forEach(child => {
+                        total += stationSanctioned[child.name] || 0;
+                    });
+                } else {
+                    total += stationSanctioned[station.name] || 0;
+                }
+            });
+            return total;
+        }
+
+        // Get all station names in subdivision
+        function getSubdivisionStations(subdivName) {
+            const subDiv = subdivisions[subdivName];
+            const stationNames = [];
+            subDiv.stations.forEach(station => {
+                if (station.type === 'circle' && station.children) {
+                    station.children.forEach(child => {
+                        stationNames.push(child.name);
+                    });
+                } else {
+                    stationNames.push(station.name);
+                }
+            });
+            return stationNames;
+        }
+
+        // Render Subdivisions
+        function renderSubdivisions() {
+            const grid = document.getElementById('subdivisionGrid');
+            grid.innerHTML = '';
+            
+            Object.keys(subdivisions).forEach(key => {
+                const subDiv = subdivisions[key];
+                const sanctioned = getSubdivisionSanctioned(key);
+                const stationNames = getSubdivisionStations(key);
+                const actual = personnelData.filter(p => 
+                    p.type === 'CIVIL' && p.presentWorking && stationNames.includes(p.presentWorking)
+                ).length;
+                
+                grid.innerHTML += `
+                    <div class="subdivision-card ${selectedSubdivision === key ? 'active' : ''}" onclick="showSubdivisionDetails('${key}')">
+                        <h5>${key}</h5>
+                        <small>Actual: ${actual} / ${sanctioned}</small>
+                    </div>
+                `;
+            });
+        }
+
+        // Show Subdivision Details - hierarchical clickable structure
+        function showSubdivisionDetails(subdivName) {
+            selectedSubdivision = subdivName;
+            selectedCircle = null;
+            selectedStation = null;
+            const subDiv = subdivisions[subdivName];
+            
+            const stationNames = getSubdivisionStations(subdivName);
+            const actual = personnelData.filter(p => 
+                p.type === 'CIVIL' && p.presentWorking && stationNames.includes(p.presentWorking)
+            ).length;
+            const sanctioned = getSubdivisionSanctioned(subdivName);
+            const vacancies = sanctioned - actual;
+            
+            // Update active card
+            document.querySelectorAll('.subdivision-card').forEach(card => card.classList.remove('active'));
+            if (event && event.target) {
+                event.target.closest('.subdivision-card').classList.add('active');
+            } else {
+                // Find and activate the correct card programmatically
+                const cards = document.querySelectorAll('.subdivision-card');
+                cards.forEach(card => {
+                    if (card.querySelector('h5').textContent === subdivName) {
+                        card.classList.add('active');
+                    }
+                });
+            }
+            
+// Show details
+            document.getElementById('subdivisionDetails').style.display = 'block';
+            document.getElementById('subdivisionTitle').textContent = subdivName + ' - Strength Particulars';
+            
+            // Show/hide edit sanctioned button based on admin
+            const editBtn = document.getElementById('editSanctionedBtn');
+            if (editBtn) {
+                editBtn.style.display = isAdmin() ? 'inline-flex' : 'none';
+            }
+            
+            // Render stations - hierarchical with clickable circles
+            const stationList = document.getElementById('stationList');
+            stationList.innerHTML = '';
+            
+            subDiv.stations.forEach(station => {
+                if (station.type === 'circle') {
+                    // Circle - clickable to expand
+                    const circleSanctioned = station.children ? station.children.reduce((sum, c) => sum + (stationSanctioned[c.name] || 0), 0) : 0;
+                    const circleActual = station.children ? personnelData.filter(p => p.type === 'CIVIL' && p.presentWorking && station.children.some(c => c.name === p.presentWorking)).length : 0;
+                    
+                    const isExpanded = selectedCircle === station.name;
+                    
+                    stationList.innerHTML += `
+                        <div class="station-item circle ${isExpanded ? 'active' : ''}" onclick="toggleCircle('${subdivName}', '${station.name}')" style="cursor:pointer; font-weight:600;">
+                            ${isExpanded ? '▼' : '▶'} ${station.name} (${circleActual}/${circleSanctioned})
+                        </div>
+                    `;
+                    
+                    // Show children if expanded
+                    if (isExpanded && station.children) {
+                        station.children.forEach(child => {
+                            const childSanctioned = stationSanctioned[child.name] || 0;
+                            const childActual = personnelData.filter(p => p.type === 'CIVIL' && p.presentWorking === child.name).length;
+                            const childVacancies = childSanctioned - childActual;
+                            stationList.innerHTML += `
+                                <div class="station-item" onclick="selectStation('${child.name}')" style="cursor:pointer; padding-left:30px;">
+                                    📍 ${child.name} <br>
+                                    <small style="color:#666;">Sanctioned: ${childSanctioned} | Actual: ${childActual} | Vacancies: ${childVacancies}</small>
+                                </div>
+                            `;
+                        });
+                    }
+                } else {
+                    // Regular station
+                    const stationSanctionedVal = stationSanctioned[station.name] || 0;
+                    const stationActual = personnelData.filter(p => p.type === 'CIVIL' && p.presentWorking === station.name).length;
+                    const stationVacancies = stationSanctionedVal - stationActual;
+                    stationList.innerHTML += `
+                        <div class="station-item" onclick="selectStation('${station.name}')" style="cursor:pointer;">
+                            📍 ${station.name} <br>
+                            <small style="color:#666;">Sanctioned: ${stationSanctionedVal} | Actual: ${stationActual} | Vacancies: ${stationVacancies}</small>
+                        </div>
+                    `;
+                }
+            });
+            
+            renderSubdivisions();
+        }
+
+        // Toggle Circle expansion
+        function toggleCircle(subdivName, circleName) {
+            if (selectedCircle === circleName) {
+                selectedCircle = null;
+            } else {
+                selectedCircle = circleName;
+            }
+            showSubdivisionDetailsByName(subdivName);
+        }
+
+        // Show subdivision by name (for circle toggle)
+        function showSubdivisionDetailsByName(subdivName) {
+            selectedSubdivision = subdivName;
+            const subDiv = subdivisions[subdivName];
+            
+            const stationNames = getSubdivisionStations(subdivName);
+            const actual = personnelData.filter(p => 
+                p.type === 'CIVIL' && p.presentWorking && stationNames.includes(p.presentWorking)
+            ).length;
+            const sanctioned = getSubdivisionSanctioned(subdivName);
+            const vacancies = sanctioned - actual;
+            
+            // Update active card
+            document.querySelectorAll('.subdivision-card').forEach(card => card.classList.remove('active'));
+            
+            // Find and activate the correct card
+            const cards = document.querySelectorAll('.subdivision-card');
+            cards.forEach(card => {
+                if (card.querySelector('h5').textContent === subdivName) {
+                    card.classList.add('active');
+                }
+            });
+            
+            // Show details
+            document.getElementById('subdivisionDetails').style.display = 'block';
+            document.getElementById('subdivisionTitle').textContent = subdivName + ' - Strength Particulars';
+            
+            document.getElementById('subdivisionStats').innerHTML = `
+                <div class="stat-card">
+                    <div class="number">${sanctioned}</div>
+                    <div class="label">Sanctioned</div>
+                </div>
+                <div class="stat-card">
+                    <div class="number">${actual}</div>
+                    <div class="label">Actual</div>
+                </div>
+                <div class="stat-card accent">
+                    <div class="number">${vacancies}</div>
+                    <div class="label">Vacancies</div>
+                </div>
+            `;
+            
+            // Render stations - hierarchical with clickable circles
+            const stationList = document.getElementById('stationList');
+            stationList.innerHTML = '';
+            
+            subDiv.stations.forEach(station => {
+                if (station.type === 'circle') {
+                    const circleSanctioned = station.children ? station.children.reduce((sum, c) => sum + (stationSanctioned[c.name] || 0), 0) : 0;
+                    const circleActual = station.children ? personnelData.filter(p => p.type === 'CIVIL' && p.presentWorking && station.children.some(c => c.name === p.presentWorking)).length : 0;
+                    
+                    const isExpanded = selectedCircle === station.name;
+                    
+                    stationList.innerHTML += `
+                        <div class="station-item circle ${isExpanded ? 'active' : ''}" onclick="toggleCircle('${subdivName}', '${station.name}')" style="cursor:pointer; font-weight:600;">
+                            ${isExpanded ? '▼' : '▶'} ${station.name} (${circleActual}/${circleSanctioned})
+                        </div>
+                    `;
+                    
+                    if (isExpanded && station.children) {
+                        station.children.forEach(child => {
+                            const childSanctioned = stationSanctioned[child.name] || 0;
+                            const childActual = personnelData.filter(p => p.type === 'CIVIL' && p.presentWorking === child.name).length;
+                            const childVacancies = childSanctioned - childActual;
+                            stationList.innerHTML += `
+                                <div class="station-item" onclick="selectStation('${child.name}')" style="cursor:pointer; padding-left:30px;">
+                                    📍 ${child.name} <br>
+                                    <small style="color:#666;">Sanctioned: ${childSanctioned} | Actual: ${childActual} | Vacancies: ${childVacancies}</small>
+                                </div>
+                            `;
+                        });
+                    }
+                } else {
+                    const stationSanctionedVal = stationSanctioned[station.name] || 0;
+                    const stationActual = personnelData.filter(p => p.type === 'CIVIL' && p.presentWorking === station.name).length;
+                    const stationVacancies = stationSanctionedVal - stationActual;
+                    stationList.innerHTML += `
+                        <div class="station-item" onclick="selectStation('${station.name}')" style="cursor:pointer;">
+                            📍 ${station.name} <br>
+                            <small style="color:#666;">Sanctioned: ${stationSanctionedVal} | Actual: ${stationActual} | Vacancies: ${stationVacancies}</small>
+                        </div>
+                    `;
+                }
+            });
+        }
+
+        // Select Station
+        function selectStation(stationName) {
+            selectedStation = stationName;
+            showCivilParticularsByStation();
+        }
+
+        // Show Civil Particulars by Station
+        function showCivilParticularsByStation() {
+            showPage('civilParticulars');
+            renderCivilTableByStation();
+        }
+
+        // Render Civil Table by Station
+        function renderCivilTableByStation() {
+            let civil;
+            if (selectedStation) {
+                civil = personnelData.filter(p => p.type === 'CIVIL' && p.presentWorking === selectedStation);
+            } else if (selectedSubdivision) {
+                const subDiv = subdivisions[selectedSubdivision];
+                const stationNames = [];
+                subDiv.stations.forEach(s => {
+                    stationNames.push(s.name);
+                    if (s.children) {
+                        s.children.forEach(c => stationNames.push(c.name));
+                    }
+                });
+                civil = personnelData.filter(p => p.type === 'CIVIL' && stationNames.includes(p.presentWorking));
+            } else {
+                civil = personnelData.filter(p => p.type === 'CIVIL');
+            }
+            
+            const tbody = document.getElementById('civilTableBody');
+            tbody.innerHTML = '';
+
+            if (civil.length === 0) {
+                document.getElementById('civilEmpty').style.display = 'block';
+                document.getElementById('civilTable').style.display = 'none';
+                return;
+            }
+
+            document.getElementById('civilEmpty').style.display = 'none';
+            document.getElementById('civilTable').style.display = 'table';
+
+            civil.forEach((p, index) => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${p.name}</td>
+                        <td>${p.rank}</td>
+                        <td>${p.genlNo}</td>
+                        <td>${p.presentWorking || '-'}</td>
+                        <td>${p.dateOfPresentPosting || '-'}</td>
+                        <td class="actions">
+                            ${isAdmin() ? `<button class="btn btn-primary btn-sm" onclick="editPersonnel('${p.id}')">Edit</button>` : ''}
+                            <button class="btn btn-secondary btn-sm" onclick="viewPersonnel('${p.id}')">View</button>
+                        </td>
+                        <td class="actions">
+                            <button class="btn btn-secondary btn-sm" onclick="viewPersonnel('${p.id}')">View</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Render Civil Table
+        function renderCivilTable() {
+            const civil = personnelData.filter(p => p.type === 'CIVIL');
+            const tbody = document.getElementById('civilTableBody');
+            tbody.innerHTML = '';
+
+            if (civil.length === 0) {
+                document.getElementById('civilEmpty').style.display = 'block';
+                document.getElementById('civilTable').style.display = 'none';
+                return;
+            }
+
+            document.getElementById('civilEmpty').style.display = 'none';
+            document.getElementById('civilTable').style.display = 'table';
+
+            civil.forEach((p, index) => {
+                const editBtn = isAdmin() ? `<button class="btn btn-primary btn-sm" onclick="editPersonnel('${p.id}')">Edit</button>` : '';
+                const deleteBtn = isAdmin() ? `<button class="btn btn-danger btn-sm" onclick="deletePersonnelDirect('${p.id}')">Delete</button>` : '';
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${p.name}</td>
+                        <td>${p.rank}</td>
+                        <td>${p.genlNo}</td>
+                        <td>${p.presentWorking || '-'}</td>
+                        <td>${p.dateOfPresentPosting || '-'}</td>
+                        <td class="actions">${editBtn}</td>
+                        <td class="actions">
+                            <button class="btn btn-secondary btn-sm" onclick="viewPersonnel('${p.id}')">View</button>
+                            ${deleteBtn}
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Render AR Table
+        function renderARTable() {
+            const ar = personnelData.filter(p => p.type === 'AR');
+            const tbody = document.getElementById('arTableBody');
+            tbody.innerHTML = '';
+
+            if (ar.length === 0) {
+                document.getElementById('arEmpty').style.display = 'block';
+                document.getElementById('arTable').style.display = 'none';
+                return;
+            }
+
+            document.getElementById('arEmpty').style.display = 'none';
+            document.getElementById('arTable').style.display = 'table';
+
+            ar.forEach((p, index) => {
+                const editBtn = isAdmin() ? `<button class="btn btn-primary btn-sm" onclick="editPersonnel('${p.id}')">Edit</button>` : '';
+                const deleteBtn = isAdmin() ? `<button class="btn btn-danger btn-sm" onclick="deletePersonnelDirect('${p.id}')">Delete</button>` : '';
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${p.name}</td>
+                        <td>${p.rank}</td>
+                        <td>${p.genlNo}</td>
+                        <td>${p.placeOfWorkingAR || '-'}</td>
+                        <td class="actions">${editBtn}</td>
+                        <td class="actions">
+                            <button class="btn btn-secondary btn-sm" onclick="viewPersonnel('${p.id}')">View</button>
+                            ${deleteBtn}
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Render Deputation List
+        function renderDeputation() {
+            const container = document.getElementById('deputationList');
+            container.innerHTML = '';
+
+            deputationUnits.forEach(unit => {
+                container.innerHTML += `
+                    <div class="deputation-item" onclick="selectDeputationUnit('${unit}')">
+                        ${unit}
+                    </div>
+                `;
+            });
+
+            // Show the list by default
+            showDeputationList();
+        }
+
+        // Show Deputation List
+        function showDeputationList() {
+            selectedDeputationUnit = null;
+            selectedDeputationCadre = null;
+            document.getElementById('deputationList').style.display = 'grid';
+            document.getElementById('deputationUnitDetails').style.display = 'none';
+            document.getElementById('deputationPersonnelDetails').style.display = 'none';
+        }
+
+        // Select Deputation Unit
+        function selectDeputationUnit(unit) {
+            selectedDeputationUnit = unit;
+            showDeputationUnitDetails();
+        }
+
+        // Show Deputation Unit Details
+        function showDeputationUnitDetails() {
+            if (!selectedDeputationUnit) return;
+            
+            document.getElementById('deputationList').style.display = 'none';
+            document.getElementById('deputationUnitDetails').style.display = 'block';
+            document.getElementById('deputationPersonnelDetails').style.display = 'none';
+            
+            document.getElementById('deputationUnitTitle').textContent = selectedDeputationUnit + ' - Strength Particulars';
+            
+            const cadreData = deputationCadreSanctioned[selectedDeputationUnit] || { PC: 0, HC: 0, ASI: 0, ARPC: 0, ARHC: 0 };
+            const cadres = ['PC', 'HC', 'ASI', 'ARPC', 'ARHC'];
+            
+            let totalSanctioned = 0;
+            let totalActual = 0;
+            
+            const tbody = document.getElementById('deputationCadreTableBody');
+            tbody.innerHTML = '';
+            
+            cadres.forEach(cadre => {
+                const sanctioned = cadreData[cadre] || 0;
+                const actual = getDeputationPersonnelCount(selectedDeputationUnit, cadre);
+                const vacancies = sanctioned - actual;
+                totalSanctioned += sanctioned;
+                totalActual += actual;
+                
+                tbody.innerHTML += `
+                    <tr>
+                        <td><strong>${cadre}</strong></td>
+                        <td>${sanctioned}</td>
+                        <td>${actual}</td>
+                        <td>${vacancies}</td>
+                        <td>
+                            <button class="btn btn-primary btn-sm" onclick="viewDeputationCadreDetails('${cadre}')">View Details</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            document.getElementById('deputationTotalSanctioned').textContent = totalSanctioned;
+            document.getElementById('deputationTotalActual').textContent = totalActual;
+            document.getElementById('deputationTotalVacancies').textContent = totalSanctioned - totalActual;
+            
+            // Show/hide deputation edit button
+            const depEditBtn = document.getElementById('editDeputationStrengthBtn');
+            if (depEditBtn) {
+                depEditBtn.style.display = isAdmin() ? 'inline-flex' : 'none';
+            }
+        }
+
+        // Get personnel count for a deputation unit and cadre
+        function getDeputationPersonnelCount(unit, cadre) {
+            return personnelData.filter(p => 
+                p.isOnDeputation && 
+                p.currentDeputationUnit === unit && 
+                p.rank === cadre
+            ).length;
+        }
+
+        // View Deputation Cadre Details
+        function viewDeputationCadreDetails(cadre) {
+            selectedDeputationCadre = cadre;
+            document.getElementById('deputationUnitDetails').style.display = 'none';
+            document.getElementById('deputationPersonnelDetails').style.display = 'block';
+            
+            document.getElementById('deputationPersonnelTitle').textContent = selectedDeputationUnit + ' - ' + cadre + ' Personnel';
+            
+            renderDeputationPersonnelTable();
+        }
+
+        // Render Deputation Personnel Table
+        function renderDeputationPersonnelTable() {
+            const personnel = personnelData.filter(p => 
+                p.isOnDeputation && 
+                p.currentDeputationUnit === selectedDeputationUnit && 
+                p.rank === selectedDeputationCadre
+            );
+            
+            const tbody = document.getElementById('deputationPersonnelTableBody');
+            tbody.innerHTML = '';
+
+            if (personnel.length === 0) {
+                document.getElementById('deputationPersonnelEmpty').style.display = 'block';
+                document.getElementById('deputationPersonnelTable').style.display = 'none';
+                return;
+            }
+
+            document.getElementById('deputationPersonnelEmpty').style.display = 'none';
+            document.getElementById('deputationPersonnelTable').style.display = 'table';
+
+            personnel.forEach((p, index) => {
+                const editBtn = isAdmin() ? `<button class="btn btn-primary btn-sm" onclick="editDeputationPersonnel('${p.id}')">Edit</button>` : '';
+                const deleteBtn = isAdmin() ? `<button class="btn btn-danger btn-sm" onclick="deletePersonnelDirect('${p.id}')">Delete</button>` : '';
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${p.name}</td>
+                        <td>${p.rank}</td>
+                        <td>${p.genlNo}</td>
+                        <td>${p.currentDeputationFromDate || '-'}</td>
+                        <td>${p.currentDeputationToDate || '-'}</td>
+                        <td class="actions">${editBtn}</td>
+                        <td class="actions">
+                            <button class="btn btn-secondary btn-sm" onclick="viewPersonnel('${p.id}')">View</button>
+                            ${deleteBtn}
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Edit Deputation Personnel
+        function editDeputationPersonnel(id) {
+            editPersonnel(id);
+        }
+
+        // Populate deputation units dropdown
+        function populateDeputationUnits() {
+            const select = document.getElementById('currentDeputationUnit');
+            if (select) {
+                select.innerHTML = '<option value="">Select Unit</option>';
+                deputationUnits.forEach(unit => {
+                    select.innerHTML += `<option value="${unit}">${unit}</option>`;
+                });
+            }
+        }
+
+        // Toggle current deputation fields
+        function toggleCurrentDeputation() {
+            const isYes = document.querySelector('input[name="isOnDeputation"]:checked').value === 'yes';
+            document.getElementById('currentDeputationDetails').classList.toggle('active', isYes);
+        }
+
+        // Toggle between deputation and district mode
+        function toggleDeputationMode() {
+            const isOnDeputation = document.querySelector('input[name="isOnDeputation"]:checked').value === 'yes';
+            
+            // Show/hide current deputation details
+            document.getElementById('currentDeputationDetails').classList.toggle('active', isOnDeputation);
+            
+            // Show/hide district fields
+            document.getElementById('districtFields').style.display = isOnDeputation ? 'none' : 'block';
+            document.getElementById('civilFields').style.display = isOnDeputation ? 'none' : 'block';
+            document.getElementById('arFields').style.display = isOnDeputation ? 'none' : 'block';
+            document.getElementById('districtPostingFields').style.display = isOnDeputation ? 'none' : 'block';
+            document.getElementById('districtAttachmentFields').style.display = isOnDeputation ? 'none' : 'block';
+            document.getElementById('districtDeputationFields').style.display = isOnDeputation ? 'none' : 'block';
+            document.getElementById('districtPunishmentFields').style.display = isOnDeputation ? 'none' : 'block';
+            document.getElementById('districtStatusFields').style.display = isOnDeputation ? 'none' : 'block';
+            
+            // Show/hide type-specific fields
+            if (!isOnDeputation) {
+                toggleTypeFields();
+            }
+        }
+
+        // Toggle between CIVIL and AR fields
+        function toggleTypeFields() {
+            const type = document.querySelector('input[name="type"]:checked').value;
+            document.getElementById('civilFields').style.display = type === 'CIVIL' ? 'block' : 'none';
+            document.getElementById('arFields').style.display = type === 'AR' ? 'block' : 'none';
+        }
+
+        // Toggle punishment fields
+        function togglePunishmentFields() {
+            const hasPunishment = document.querySelector('input[name="hasPunishment"]:checked').value;
+            document.getElementById('punishmentFields').classList.toggle('active', hasPunishment === 'yes');
+        }
+
+        // Populate station dropdown
+        function populateStations() {
+            const select = document.getElementById('presentWorking');
+            select.innerHTML = '<option value="">Select Station</option>';
+            stations.forEach(station => {
+                select.innerHTML += `<option value="${station}">${station}</option>`;
+            });
+        }
+
+        // Open Add Modal
+        function openAddModal() {
+            isEditMode = false;
+            isViewMode = false;
+            document.getElementById('personnelForm').reset();
+            document.getElementById('personnelId').value = '';
+            document.getElementById('modalTitle').textContent = 'Add Personnel';
+            document.getElementById('exportPdfBtn').style.display = 'none';
+            document.getElementById('deleteBtn').style.display = 'none';
+            
+            // Clear dynamic fields
+            document.getElementById('previousPostingsContainer').innerHTML = '';
+            document.getElementById('previousDeputationsContainer').innerHTML = '';
+            document.getElementById('punishmentsContainer').innerHTML = '';
+            
+            // Set to district mode (not on deputation)
+            document.querySelector('input[name="isOnDeputation"][value="no"]').checked = true;
+            toggleDeputationMode();
+            
+            // Set default punishment to NIL
+            document.querySelector('input[name="hasPunishment"][value="nil"]').checked = true;
+            togglePunishmentFields();
+            
+            // Enable all fields
+            enableFields();
+            
+            document.getElementById('personnelModal').classList.add('active');
+        }
+
+        // Edit Personnel
+        function editPersonnel(id) {
+            isEditMode = true;
+            isViewMode = false;
+            const person = personnelData.find(p => p.id === id);
+            if (!person) return;
+
+            document.getElementById('personnelId').value = person.id;
+            document.getElementById('modalTitle').textContent = 'Edit Personnel';
+            document.getElementById('exportPdfBtn').style.display = 'none';
+            document.getElementById('deleteBtn').style.display = 'block';
+
+            // Basic info
+            document.getElementById('name').value = person.name || '';
+            document.getElementById('rank').value = person.rank || '';
+            document.getElementById('genlNo').value = person.genlNo || '';
+            document.getElementById('dateOfBirth').value = person.dateOfBirth || '';
+            document.getElementById('dateOfAppointment').value = person.dateOfAppointment || '';
+            document.getElementById('caste').value = person.caste || '';
+            document.getElementById('nativeDistrict').value = person.nativeDistrict || '';
+            document.getElementById('nativePlace').value = person.nativePlace || '';
+
+            // Handle isOnDeputation - convert to boolean (handles string "true" from CSV)
+            const isOnDeputation = person.isOnDeputation === true || person.isOnDeputation === 'true';
+            
+            // Set deputation mode first
+            if (isOnDeputation) {
+                document.querySelector('input[name="isOnDeputation"][value="yes"]').checked = true;
+            } else {
+                document.querySelector('input[name="isOnDeputation"][value="no"]').checked = true;
+            }
+            toggleDeputationMode();
+
+            // District-specific fields
+            if (!isOnDeputation) {
+                // Type
+                if (person.type) {
+                    const typeRadios = document.getElementsByName('type');
+                    for (let radio of typeRadios) {
+                        radio.checked = radio.value === person.type;
+                    }
+                }
+                toggleTypeFields();
+
+                // Civil/AR fields
+                if (person.type === 'CIVIL') {
+                    document.getElementById('presentWorking').value = person.presentWorking || '';
+                    document.getElementById('dateOfPresentPosting').value = person.dateOfPresentPosting || '';
+                } else {
+                    document.getElementById('placeOfWorkingAR').value = person.placeOfWorkingAR || '';
+                }
+
+                // Previous postings
+                document.getElementById('previousPostingsContainer').innerHTML = '';
+                if (person.previousPostings && person.previousPostings.length > 0) {
+                    person.previousPostings.forEach(posting => addPosting(posting));
+                }
+
+                // Attachment - handle string "true" from CSV
+                const isInAttachment = person.isInAttachment === true || person.isInAttachment === 'true';
+                if (isInAttachment) {
+                    document.querySelector('input[name="isInAttachment"][value="yes"]').checked = true;
+                } else {
+                    document.querySelector('input[name="isInAttachment"][value="no"]').checked = true;
+                }
+                toggleAttachment();
+                document.getElementById('attachedTo').value = person.attachmentDetails?.attachedTo || person.attachedTo || '';
+                document.getElementById('attachmentDate').value = person.attachmentDetails?.attachmentDate || person.attachmentDate || '';
+
+                // Previous deputations - handle string "true" from CSV
+                const hasPreviousDeputation = person.hasPreviousDeputation === true || person.hasPreviousDeputation === 'true';
+                document.getElementById('previousDeputationsContainer').innerHTML = '';
+                if (hasPreviousDeputation) {
+                    document.querySelector('input[name="hasPreviousDeputation"][value="yes"]').checked = true;
+                    if (person.previousDeputations && person.previousDeputations.length > 0) {
+                        person.previousDeputations.forEach(dep => addDeputation(dep));
+                    }
+                } else {
+                    document.querySelector('input[name="hasPreviousDeputation"][value="no"]').checked = true;
+                }
+                toggleDeputation();
+
+                // Punishments
+                const hasPunishment = person.hasPunishment || 'nil';
+                if (hasPunishment === 'nil') {
+                    document.querySelector('input[name="hasPunishment"][value="nil"]').checked = true;
+                } else if (hasPunishment === 'yes') {
+                    document.querySelector('input[name="hasPunishment"][value="yes"]').checked = true;
+                }
+                togglePunishmentFields();
+                document.getElementById('punishmentsContainer').innerHTML = '';
+                if (person.punishments && person.punishments.length > 0) {
+                    person.punishments.forEach(pun => addPunishment(pun));
+                }
+
+                // Status
+                document.getElementById('presentDeserter').value = person.presentDeserter || 'Present';
+            }
+
+            // Current Deputation
+            if (isOnDeputation) {
+                document.getElementById('currentDeputationUnit').value = person.currentDeputationUnit || '';
+                document.getElementById('currentDeputationFromDate').value = person.currentDeputationFromDate || '';
+            }
+
+            enableFields();
+            document.getElementById('personnelModal').classList.add('active');
+        }
+
+        // View Personnel
+        function viewPersonnel(id) {
+            isEditMode = false;
+            isViewMode = true;
+            const person = personnelData.find(p => p.id === id);
+            if (!person) return;
+
+            document.getElementById('personnelId').value = person.id;
+            document.getElementById('modalTitle').textContent = 'View Personnel Details';
+            document.getElementById('exportPdfBtn').style.display = 'block';
+            document.getElementById('deleteBtn').style.display = 'none';
+
+            // Basic info
+            document.getElementById('name').value = person.name || '';
+            document.getElementById('rank').value = person.rank || '';
+            document.getElementById('genlNo').value = person.genlNo || '';
+            document.getElementById('dateOfBirth').value = person.dateOfBirth || '';
+            document.getElementById('dateOfAppointment').value = person.dateOfAppointment || '';
+            document.getElementById('caste').value = person.caste || '';
+            document.getElementById('nativeDistrict').value = person.nativeDistrict || '';
+            document.getElementById('nativePlace').value = person.nativePlace || '';
+
+            // Handle isOnDeputation - convert to boolean (handles string "true" from CSV)
+            const isOnDeputation = person.isOnDeputation === true || person.isOnDeputation === 'true';
+            
+            // Set deputation mode first
+            if (isOnDeputation) {
+                document.querySelector('input[name="isOnDeputation"][value="yes"]').checked = true;
+            } else {
+                document.querySelector('input[name="isOnDeputation"][value="no"]').checked = true;
+            }
+            toggleDeputationMode();
+
+            // District-specific fields
+            if (!isOnDeputation) {
+                // Type
+                if (person.type) {
+                    const typeRadios = document.getElementsByName('type');
+                    for (let radio of typeRadios) {
+                        radio.checked = radio.value === person.type;
+                    }
+                }
+                toggleTypeFields();
+
+                // Civil/AR fields
+                if (person.type === 'CIVIL') {
+                    document.getElementById('presentWorking').value = person.presentWorking || '';
+                    document.getElementById('dateOfPresentPosting').value = person.dateOfPresentPosting || '';
+                } else {
+                    document.getElementById('placeOfWorkingAR').value = person.placeOfWorkingAR || '';
+                }
+
+                // Previous postings
+                document.getElementById('previousPostingsContainer').innerHTML = '';
+                if (person.previousPostings && person.previousPostings.length > 0) {
+                    person.previousPostings.forEach(posting => addPosting(posting));
+                }
+
+                // Attachment - handle string "true" from CSV
+                const isInAttachment = person.isInAttachment === true || person.isInAttachment === 'true';
+                if (isInAttachment) {
+                    document.querySelector('input[name="isInAttachment"][value="yes"]').checked = true;
+                } else {
+                    document.querySelector('input[name="isInAttachment"][value="no"]').checked = true;
+                }
+                toggleAttachment();
+                document.getElementById('attachedTo').value = person.attachmentDetails?.attachedTo || person.attachedTo || '';
+                document.getElementById('attachmentDate').value = person.attachmentDetails?.attachmentDate || person.attachmentDate || '';
+
+                // Previous deputations - handle string "true" from CSV
+                const hasPreviousDeputation = person.hasPreviousDeputation === true || person.hasPreviousDeputation === 'true';
+                document.getElementById('previousDeputationsContainer').innerHTML = '';
+                if (hasPreviousDeputation) {
+                    document.querySelector('input[name="hasPreviousDeputation"][value="yes"]').checked = true;
+                    if (person.previousDeputations && person.previousDeputations.length > 0) {
+                        person.previousDeputations.forEach(dep => addDeputation(dep));
+                    }
+                } else {
+                    document.querySelector('input[name="hasPreviousDeputation"][value="no"]').checked = true;
+                }
+                toggleDeputation();
+
+                // Punishments
+                const hasPunishment = person.hasPunishment || 'nil';
+                if (hasPunishment === 'nil') {
+                    document.querySelector('input[name="hasPunishment"][value="nil"]').checked = true;
+                } else if (hasPunishment === 'yes') {
+                    document.querySelector('input[name="hasPunishment"][value="yes"]').checked = true;
+                }
+                togglePunishmentFields();
+                document.getElementById('punishmentsContainer').innerHTML = '';
+                if (person.punishments && person.punishments.length > 0) {
+                    person.punishments.forEach(pun => addPunishment(pun));
+                }
+
+                // Status
+                document.getElementById('presentDeserter').value = person.presentDeserter || 'Present';
+            }
+
+            // Current Deputation
+            if (isOnDeputation) {
+                document.getElementById('currentDeputationUnit').value = person.currentDeputationUnit || '';
+                document.getElementById('currentDeputationFromDate').value = person.currentDeputationFromDate || '';
+            }
+
+            disableFields();
+            document.getElementById('personnelModal').classList.add('active');
+        }
+
+        // Close Modal
+        function closeModal() {
+            document.getElementById('personnelModal').classList.remove('active');
+        }
+
+        // Enable/Disable fields
+        function enableFields() {
+            document.querySelectorAll('#personnelForm input, #personnelForm select, #personnelForm textarea').forEach(el => {
+                el.disabled = false;
+            });
+            document.querySelectorAll('#personnelForm input[type="radio"]').forEach(el => {
+                el.disabled = false;
+            });
+        }
+
+        function disableFields() {
+            document.querySelectorAll('#personnelForm input, #personnelForm select, #personnelForm textarea').forEach(el => {
+                el.disabled = true;
+            });
+            document.querySelectorAll('#personnelForm input[type="radio"]').forEach(el => {
+                el.disabled = true;
+            });
+        }
+
+        // Toggle attachment fields
+        function toggleAttachment() {
+            const isYes = document.querySelector('input[name="isInAttachment"]:checked').value === 'yes';
+            document.getElementById('attachmentDetails').classList.toggle('active', isYes);
+        }
+
+        // Toggle deputation fields
+        function toggleDeputation() {
+            const isYes = document.querySelector('input[name="hasPreviousDeputation"]:checked').value === 'yes';
+            document.getElementById('deputationDetails').classList.toggle('active', isYes);
+        }
+
+        // Add posting
+        function addPosting(data = {}) {
+            const container = document.getElementById('previousPostingsContainer');
+            const id = generateId();
+            container.innerHTML += `
+                <div class="repeatable-group" id="posting_${id}">
+                    <div class="header">
+                        <h5>Previous Posting</h5>
+                        ${!isViewMode ? `<button type="button" class="remove-btn" onclick="removePosting('${id}')">Remove</button>` : ''}
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Station</label>
+                            <input type="text" class="posting-station" value="${data.station || ''}" ${isViewMode ? 'disabled' : ''}>
+                        </div>
+                        <div class="form-group">
+                            <label>From</label>
+                            <input type="date" class="posting-from" value="${data.fromDate || ''}" ${isViewMode ? 'disabled' : ''}>
+                        </div>
+                        <div class="form-group">
+                            <label>To</label>
+                            <input type="date" class="posting-to" value="${data.toDate || ''}" ${isViewMode ? 'disabled' : ''}>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function removePosting(id) {
+            document.getElementById(`posting_${id}`).remove();
+        }
+
+        // Add deputation
+        function addDeputation(data = {}) {
+            const container = document.getElementById('previousDeputationsContainer');
+            const id = generateId();
+            container.innerHTML += `
+                <div class="repeatable-group" id="deputation_${id}">
+                    <div class="header">
+                        <h5>Previous Deputation</h5>
+                        ${!isViewMode ? `<button type="button" class="remove-btn" onclick="removeDeputation('${id}')">Remove</button>` : ''}
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Deputation Unit</label>
+                            <select class="deputation-unit" ${isViewMode ? 'disabled' : ''}>
+                                <option value="">Select Unit</option>
+                                ${deputationUnits.map(u => `<option value="${u}" ${data.deputationUnit === u ? 'selected' : ''}>${u}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>From</label>
+                            <input type="date" class="deputation-from" value="${data.fromDate || ''}" ${isViewMode ? 'disabled' : ''}>
+                        </div>
+                        <div class="form-group">
+                            <label>To</label>
+                            <input type="date" class="deputation-to" value="${data.toDate || ''}" ${isViewMode ? 'disabled' : ''}>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function removeDeputation(id) {
+            document.getElementById(`deputation_${id}`).remove();
+        }
+
+        // Add punishment
+        function addPunishment(data = {}) {
+            const container = document.getElementById('punishmentsContainer');
+            const id = generateId();
+            container.innerHTML += `
+                <div class="repeatable-group" id="punishment_${id}">
+                    <div class="header">
+                        <h5>Punishment</h5>
+                        ${!isViewMode ? `<button type="button" class="remove-btn" onclick="removePunishment('${id}')">Remove</button>` : ''}
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Gist of Punishment</label>
+                            <input type="text" class="punishment-gist" value="${data.gist || ''}" ${isViewMode ? 'disabled' : ''}>
+                        </div>
+                        <div class="form-group">
+                            <label>D.O.No./C.No.</label>
+                            <input type="text" class="punishment-do" value="${data.doNo || ''}" ${isViewMode ? 'disabled' : ''}>
+                        </div>
+                        <div class="form-group">
+                            <label>Awarded By</label>
+                            <input type="text" class="punishment-awarded" value="${data.awardedBy || ''}" ${isViewMode ? 'disabled' : ''}>
+                        </div>
+                        <div class="form-group">
+                            <label>Date of Punishment</label>
+                            <input type="date" class="punishment-date" value="${data.date || ''}" ${isViewMode ? 'disabled' : ''}>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function removePunishment(id) {
+            document.getElementById(`punishment_${id}`).remove();
+        }
+
+        // Save Personnel
+        function savePersonnel() {
+            const id = document.getElementById('personnelId').value || generateId();
+            const isOnDeputation = document.querySelector('input[name="isOnDeputation"]:checked').value === 'yes';
+
+            // Find existing record to preserve any additional fields
+            const existingIndex = personnelData.findIndex(p => p.id === id);
+            const existingPerson = existingIndex >= 0 ? personnelData[existingIndex] : null;
+
+            // Collect postings only for district personnel
+            const postings = [];
+            if (!isOnDeputation) {
+                document.querySelectorAll('#previousPostingsContainer .repeatable-group').forEach(group => {
+                    postings.push({
+                        station: group.querySelector('.posting-station').value,
+                        fromDate: group.querySelector('.posting-from').value,
+                        toDate: group.querySelector('.posting-to').value
+                    });
+                });
+            }
+
+            // Collect previous deputations only for district personnel
+            const previousDeputations = [];
+            if (!isOnDeputation) {
+                document.querySelectorAll('#previousDeputationsContainer .repeatable-group').forEach(group => {
+                    previousDeputations.push({
+                        deputationUnit: group.querySelector('.deputation-unit').value,
+                        fromDate: group.querySelector('.deputation-from').value,
+                        toDate: group.querySelector('.deputation-to').value
+                    });
+                });
+            }
+
+            // Collect punishments only for district personnel
+            const punishments = [];
+            if (!isOnDeputation) {
+                document.querySelectorAll('#punishmentsContainer .repeatable-group').forEach(group => {
+                    punishments.push({
+                        gist: group.querySelector('.punishment-gist').value,
+                        doNo: group.querySelector('.punishment-do').value,
+                        awardedBy: group.querySelector('.punishment-awarded').value,
+                        date: group.querySelector('.punishment-date').value
+                    });
+                });
+            }
+
+            // Start with existing data or create new object
+            const person = existingPerson ? { ...existingPerson } : { id: id };
+            
+            // Update basic fields
+            person.name = document.getElementById('name').value;
+            person.rank = document.getElementById('rank').value;
+            person.genlNo = document.getElementById('genlNo').value;
+            person.dateOfBirth = document.getElementById('dateOfBirth').value;
+            person.dateOfAppointment = document.getElementById('dateOfAppointment').value;
+            person.caste = document.getElementById('caste').value;
+            person.nativeDistrict = document.getElementById('nativeDistrict').value;
+            person.nativePlace = document.getElementById('nativePlace').value;
+            person.isOnDeputation = isOnDeputation;
+            person.currentDeputationUnit = isOnDeputation ? document.getElementById('currentDeputationUnit').value : '';
+            person.currentDeputationFromDate = isOnDeputation ? document.getElementById('currentDeputationFromDate').value : '';
+
+            // Add district-specific fields only if not on deputation
+            if (!isOnDeputation) {
+                person.type = document.querySelector('input[name="type"]:checked').value;
+                person.presentWorking = document.getElementById('presentWorking').value;
+                person.dateOfPresentPosting = document.getElementById('dateOfPresentPosting').value;
+                person.placeOfWorkingAR = document.getElementById('placeOfWorkingAR').value;
+                person.previousPostings = postings;
+                person.isInAttachment = document.querySelector('input[name="isInAttachment"]:checked').value === 'yes';
+                person.attachmentDetails = {
+                    attachedTo: document.getElementById('attachedTo').value,
+                    attachmentDate: document.getElementById('attachmentDate').value
+                };
+                person.hasPreviousDeputation = document.querySelector('input[name="hasPreviousDeputation"]:checked').value === 'yes';
+                person.previousDeputations = previousDeputations;
+                person.hasPunishment = document.querySelector('input[name="hasPunishment"]:checked').value;
+                person.punishments = person.hasPunishment === 'yes' ? punishments : [];
+                person.presentDeserter = document.getElementById('presentDeserter').value;
+            }
+
+            person.updatedAt = new Date().toISOString();
+
+            if (!person.name || !person.rank || !person.genlNo) {
+                showToast('Please fill in required fields', 'error');
+                return;
+            }
+
+            // For new entries, check if genlNo already exists
+            if (existingIndex === -1) {
+                const genlExists = personnelData.some(p => p.genlNo === person.genlNo);
+                if (genlExists) {
+                    showToast('Genl.No. already exists', 'error');
+                    return;
+                }
+                person.createdAt = new Date().toISOString();
+            }
+
+            if (existingIndex >= 0) {
+                personnelData[existingIndex] = person;
+                showToast('Personnel updated successfully', 'success');
+                // Update in Firebase
+                await updateInFirebase(id, person);
+            } else {
+                personnelData.push(person);
+                showToast('Personnel added successfully', 'success');
+                // Add to Firebase
+                await addToFirebase(person);
+            }
+
+            saveData();
+            closeModal();
+            updateStats();
+        }
+
+        // Delete Personnel
+        async function deletePersonnel() {
+            const id = document.getElementById('personnelId').value;
+            if (!id) return;
+
+            if (confirm('Are you sure you want to delete this personnel record?')) {
+                personnelData = personnelData.filter(p => p.id !== id);
+                await deleteFromFirebase(id);
+                saveData();
+                closeModal();
+                updateStats();
+                renderCivilTable();
+                renderARTable();
+                showToast('Personnel deleted successfully', 'success');
+            }
+        }
+
+        // Direct delete from table
+        async function deletePersonnelDirect(id) {
+            if (!isAdmin()) {
+                showToast('Only admin can delete records!', 'error');
+                return;
+            }
+            if (confirm('Are you sure you want to delete this personnel record?')) {
+                personnelData = personnelData.filter(p => p.id !== id);
+                await deleteFromFirebase(id);
+                saveData();
+                updateStats();
+                renderCivilTable();
+                renderARTable();
+                showToast('Personnel deleted successfully', 'success');
+            }
+        }
+
+        // Format date to DD-MM-YYYY
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) return dateStr;
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            return `${day}-${month}-${year}`;
+        }
+
+        // Export to PDF
+        function exportToPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const id = document.getElementById('personnelId').value;
+            const person = personnelData.find(p => p.id === id);
+            if (!person) return;
+
+            let y = 20;
+
+            // Header
+            doc.setFontSize(18);
+            doc.setTextColor(26, 35, 126);
+            doc.text('Krishna District Police', 105, y, { align: 'center' });
+            y += 10;
+            
+            doc.setFontSize(14);
+            doc.text(person.isOnDeputation ? 'Deputation Personnel Details' : 'District Personnel Details', 105, y, { align: 'center' });
+            y += 15;
+
+            doc.setFontSize(10);
+            doc.setTextColor(0, 0, 0);
+
+            // Basic fields (common for both)
+            const basicFields = [
+                ['Name', person.name],
+                ['Rank', person.rank],
+                ['Genl.No.', person.genlNo],
+                ['Date of Birth', formatDate(person.dateOfBirth)],
+                ['Date of Appointment', formatDate(person.dateOfAppointment)],
+                ['Caste', person.caste],
+                ['Native District', person.nativeDistrict],
+                ['Native Place', person.nativePlace]
+            ];
+
+            basicFields.forEach(([label, value]) => {
+                doc.setFont(undefined, 'bold');
+                doc.text(label + ':', 20, y);
+                doc.setFont(undefined, 'normal');
+                doc.text(value || '-', 70, y);
+                y += 7;
+            });
+
+            if (person.isOnDeputation) {
+                // Deputation-specific fields
+                doc.setFont(undefined, 'bold');
+                doc.text('Is on Deputation:', 20, y);
+                doc.setFont(undefined, 'normal');
+                doc.text('Yes', 70, y);
+                y += 7;
+
+                doc.setFont(undefined, 'bold');
+                doc.text('Deputation Unit:', 20, y);
+                doc.setFont(undefined, 'normal');
+                doc.text(person.currentDeputationUnit || '-', 70, y);
+                y += 7;
+
+                doc.setFont(undefined, 'bold');
+                doc.text('From Date:', 20, y);
+                doc.setFont(undefined, 'normal');
+                doc.text(formatDate(person.currentDeputationFromDate), 70, y);
+                y += 7;
+            } else {
+                // District-specific fields
+                doc.setFont(undefined, 'bold');
+                doc.text('Type:', 20, y);
+                doc.setFont(undefined, 'normal');
+                doc.text(person.type || '-', 70, y);
+                y += 7;
+
+                doc.setFont(undefined, 'bold');
+                doc.text('Present Working:', 20, y);
+                doc.setFont(undefined, 'normal');
+                doc.text(person.presentWorking || person.placeOfWorkingAR || '-', 70, y);
+                y += 7;
+
+                doc.setFont(undefined, 'bold');
+                doc.text('Date of Present Posting:', 20, y);
+                doc.setFont(undefined, 'normal');
+                doc.text(formatDate(person.dateOfPresentPosting), 70, y);
+                y += 7;
+
+                doc.setFont(undefined, 'bold');
+                doc.text('Is in Attachment:', 20, y);
+                doc.setFont(undefined, 'normal');
+                doc.text(person.isInAttachment ? 'Yes' : 'No', 70, y);
+                y += 7;
+
+                if (person.isInAttachment) {
+                    doc.setFont(undefined, 'bold');
+                    doc.text('Attached To:', 20, y);
+                    doc.setFont(undefined, 'normal');
+                    doc.text(person.attachmentDetails?.attachedTo || '-', 70, y);
+                    y += 7;
+
+                    doc.setFont(undefined, 'bold');
+                    doc.text('Attachment Date:', 20, y);
+                    doc.setFont(undefined, 'normal');
+                    doc.text(formatDate(person.attachmentDetails?.attachmentDate), 70, y);
+                    y += 7;
+                }
+
+                doc.setFont(undefined, 'bold');
+                doc.text('Has Previous Deputation:', 20, y);
+                doc.setFont(undefined, 'normal');
+                doc.text(person.hasPreviousDeputation ? 'Yes' : 'No', 70, y);
+                y += 7;
+
+                doc.setFont(undefined, 'bold');
+                doc.text('Present/Deserter:', 20, y);
+                doc.setFont(undefined, 'normal');
+                doc.text(person.presentDeserter || '-', 70, y);
+                y += 7;
+
+                // Previous Postings
+                if (person.previousPostings && person.previousPostings.length > 0) {
+                    y += 5;
+                    doc.setFont(undefined, 'bold');
+                    doc.text('Previous Postings:', 20, y);
+                    y += 7;
+                    person.previousPostings.forEach((posting) => {
+                        doc.setFont(undefined, 'normal');
+                        doc.text(`Station: ${posting.station || '-'}, From: ${formatDate(posting.fromDate)}, To: ${formatDate(posting.toDate)}`, 25, y);
+                        y += 6;
+                    });
+                }
+
+                // Previous Deputations
+                if (person.previousDeputations && person.previousDeputations.length > 0) {
+                    y += 5;
+                    doc.setFont(undefined, 'bold');
+                    doc.text('Previous Deputations:', 20, y);
+                    y += 7;
+                    person.previousDeputations.forEach((dep) => {
+                        doc.setFont(undefined, 'normal');
+                        doc.text(`Unit: ${dep.deputationUnit || '-'}, From: ${formatDate(dep.fromDate)}, To: ${formatDate(dep.toDate)}`, 25, y);
+                        y += 6;
+                    });
+                }
+
+                // Punishments
+                const hasPunishment = person.hasPunishment || 'nil';
+                doc.setFont(undefined, 'bold');
+                doc.text('Has Punishments:', 20, y);
+                doc.setFont(undefined, 'normal');
+                doc.text(hasPunishment === 'nil' ? 'NIL' : 'Yes', 70, y);
+                y += 7;
+
+                if (person.punishments && person.punishments.length > 0 && hasPunishment === 'yes') {
+                    y += 5;
+                    doc.setFont(undefined, 'bold');
+                    doc.text('Punishments Details:', 20, y);
+                    y += 7;
+                    person.punishments.forEach((pun) => {
+                        doc.setFont(undefined, 'normal');
+                        doc.text(`Gist: ${pun.gist || '-'}, D.O.No.: ${pun.doNo || '-'}, Awarded by: ${pun.awardedBy || '-'}, Date: ${formatDate(pun.date)}`, 25, y);
+                        y += 6;
+                    });
+                }
+            }
+
+            doc.save(`${person.name}_${person.genlNo}.pdf`);
+            showToast('PDF exported successfully', 'success');
+        }
+
+        // Search functionality
+        function performSearch() {
+            const query = document.getElementById('globalSearch').value.trim().toLowerCase();
+            if (!query) {
+                document.getElementById('searchResults').classList.remove('active');
+                return;
+            }
+
+            const results = personnelData.filter(p => p.genlNo.toLowerCase().includes(query));
+            const resultsContainer = document.getElementById('searchResults');
+            
+            if (results.length === 0) {
+                resultsContainer.innerHTML = '<div class="search-result-item">No results found</div>';
+            } else {
+                resultsContainer.innerHTML = results.slice(0, 10).map(p => `
+                    <div class="search-result-item" onclick="viewPersonnel('${p.id}')">
+                        <div class="name">${p.name}</div>
+                        <div class="details">${p.rank} | ${p.genlNo} | ${p.type}</div>
+                    </div>
+                `).join('');
+            }
+            
+            resultsContainer.classList.add('active');
+        }
+
+        document.getElementById('globalSearch').addEventListener('input', performSearch);
+
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-wrapper')) {
+                document.getElementById('searchResults').classList.remove('active');
+            }
+        });
+
+        // Show toast
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast ' + type;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        // Initialize on load
+        window.onload = function() {
+            loadData();
+            loadCustomSanctioned();
+            loadCustomARStrength();
+            loadCustomDeputationStrength();
+            populateStations();
+            populateDeputationUnits();
+            updateStats();
+        };
+
+        // Handle type radio change
+        document.querySelectorAll('input[name="type"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.value === 'CIVIL') {
+                    document.getElementById('civilFields').style.display = 'block';
+                    document.getElementById('arFields').style.display = 'none';
+                } else {
+                    document.getElementById('civilFields').style.display = 'none';
+                    document.getElementById('arFields').style.display = 'block';
+                }
+            });
+        });
+    </script>
+</body>
+</html>
