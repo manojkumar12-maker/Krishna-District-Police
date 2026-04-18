@@ -1061,7 +1061,7 @@
                     <label>Password</label>
                     <input type="password" id="loginPassword" placeholder="Enter password">
                 </div>
-                <button class="btn btn-primary" style="width:100%;padding:12px;" onclick="login()">Login</button>
+                <button class="btn btn-primary" style="width:100%;padding:12px;" id="loginBtn">Login</button>
                 <p style="text-align:center;margin-top:15px;font-size:12px;color:#757575;">
                     Admin: admin/admin | User: user/user
                 </p>
@@ -3747,6 +3747,7 @@
 
         // Initialize on load
         window.onload = function() {
+            document.getElementById('loginBtn').addEventListener('click', login);
             loadData();
             loadCustomSanctioned();
             loadCustomARStrength();
