@@ -230,9 +230,13 @@
     <script>
         let currentUser = null, currentRole = null, allPersonnel = [], editingId = null;
 
-        document.getElementById('loginBtn').addEventListener('click', login);
+        document.getElementById('loginBtn').addEventListener('click', function() {
+            console.log("Login button clicked");
+            login();
+        });
 
         function login() {
+            console.log("Login function called");
             const role = document.getElementById('loginRole').value;
             const username = document.getElementById('loginUsername').value;
             const password = document.getElementById('loginPassword').value;
@@ -242,6 +246,7 @@
                 currentRole = role;
                 currentUser = username;
                 document.getElementById('loginModal').style.display = 'none';
+                document.getElementById('loginModal').classList.remove('active');
                 document.getElementById('mainHeader').style.display = 'flex';
                 document.getElementById('mainContainer').style.display = 'block';
                 document.getElementById('userRoleBadge').textContent = role === 'admin' ? 'Admin' : 'User';
