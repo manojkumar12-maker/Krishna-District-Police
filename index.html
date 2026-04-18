@@ -1658,6 +1658,7 @@
         let currentRole = null;
 
         function login() {
+            alert("Login clicked!");
             const role = document.getElementById('loginRole').value;
             const username = document.getElementById('loginUsername').value;
             const password = document.getElementById('loginPassword').value;
@@ -1665,7 +1666,7 @@
             if (role === 'admin' && username === 'admin' && password === 'admin') {
                 currentRole = 'admin';
                 currentUser = 'admin';
-                document.getElementById('loginModal').classList.remove('active');
+                document.getElementById('loginModal').style.display = 'none';
                 document.getElementById('mainHeader').style.display = 'flex';
                 document.getElementById('mainContainer').style.display = 'block';
                 document.getElementById('adminActions').style.display = 'flex';
@@ -1677,7 +1678,7 @@
             } else if (role === 'user' && username === 'user' && password === 'user') {
                 currentRole = 'user';
                 currentUser = 'user';
-                document.getElementById('loginModal').classList.remove('active');
+                document.getElementById('loginModal').style.display = 'none';
                 document.getElementById('mainHeader').style.display = 'flex';
                 document.getElementById('mainContainer').style.display = 'block';
                 document.getElementById('adminActions').style.display = 'none';
@@ -1694,7 +1695,7 @@
         function logout() {
             currentUser = null;
             currentRole = null;
-            document.getElementById('loginModal').classList.add('active');
+            document.getElementById('loginModal').style.display = 'flex';
             document.getElementById('mainHeader').style.display = 'none';
             document.getElementById('mainContainer').style.display = 'none';
             document.getElementById('loginUsername').value = '';
