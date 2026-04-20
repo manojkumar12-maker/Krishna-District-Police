@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Krishna District Police - PC/WPC Data Management</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Bookman Old Style', 'Palatino Linotype', 'Georgia', serif; }
         body { background: #f5f5f5; }
         :root { --primary: #1a237e; --secondary: #c62828; --accent: #ffd700; }
         
@@ -105,13 +105,73 @@
         .page { display: none; }
         .page.active { display: block; }
         .empty-state { text-align: center; padding: 50px; color: #888; }
+
+        /* District Tiles */
+        .district-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; margin-top: 25px; }
+        .district-tile {
+            background: linear-gradient(135deg, var(--primary), #283593);
+            color: white; padding: 50px 30px; border-radius: 15px; text-align: center;
+            cursor: pointer; transition: all 0.3s ease; position: relative; overflow: hidden;
+        }
+        .district-tile::before {
+            content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 60%);
+            opacity: 0; transition: opacity 0.3s;
+        }
+        .district-tile:hover::before { opacity: 1; }
+        .district-tile:hover { transform: translateY(-3px); box-shadow: 0 10px 25px rgba(26,35,126,0.3); }
+        .district-tile h3 { font-size: 18px; margin-bottom: 8px; }
+        .district-tile .tile-count { font-size: 32px; font-weight: bold; margin-top: 10px; }
+        .district-tile .tile-label { font-size: 13px; opacity: 0.8; margin-top: 5px; }
+        .district-tile:nth-child(2) { background: linear-gradient(135deg, #1b5e20, #2e7d32); }
+        .district-tile:nth-child(2):hover { box-shadow: 0 15px 35px rgba(27,94,32,0.4); }
+        .district-tile:nth-child(3) { background: linear-gradient(135deg, #e65100, #ff8f00); }
+        .district-tile:nth-child(3):hover { box-shadow: 0 15px 35px rgba(230,81,0,0.4); }
+        .back-btn { margin-bottom: 20px; padding: 10px 20px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
+        .back-btn:hover { background: #0d1442; }
+
+        /* Sub Tiles */
+        .sub-tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px; }
+        .sub-tiles.dep-grid { grid-template-columns: repeat(4, 1fr); }
+        .sub-tile {
+            background: #f0f0f0; border: 2px solid #ddd; padding: 20px 15px; border-radius: 10px;
+            text-align: center; cursor: pointer; transition: all 0.2s ease; font-weight: 600;
+            color: #333; font-size: 14px;
+        }
+        .sub-tile:hover { background: #e0e0e0; border-color: var(--primary); color: var(--primary); }
+        .sub-tile.active { background: var(--primary); color: white; border-color: var(--primary); }
+        .sub-tile .sub-count { font-size: 22px; font-weight: bold; margin-top: 6px; }
+        .detail-section { display: none; }
+        .detail-section.visible { display: block; }
+
+        /* Rank Tiles */
+        .rank-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 15px; }
+        .rank-tile {
+            background: #f5f5f5; border: 2px solid #ddd; padding: 14px 8px; border-radius: 8px;
+            text-align: center; cursor: pointer; transition: all 0.2s; font-weight: 600;
+            font-size: 13px; color: #333;
+        }
+        .rank-tile:hover { background: #e8e8e8; border-color: var(--primary); color: var(--primary); }
+        .rank-tile.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+        /* Strength Card */
+        .strength-card { background: #fafafa; border: 1px solid #e0e0e0; border-radius: 10px; padding: 25px; margin-top: 20px; }
+        .strength-card h3 { color: var(--primary); margin-bottom: 15px; font-size: 16px; text-align: center; }
+        .strength-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
+        .strength-item { text-align: center; padding: 15px; background: white; border-radius: 8px; border: 1px solid #eee; }
+        .strength-label { font-size: 12px; color: #666; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .strength-value { font-size: 28px; font-weight: bold; color: var(--primary); }
+        .strength-value.vacancy { color: var(--secondary); }
+        .strength-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+        .sanctioned-input { width: 80px; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; text-align: center; font-size: 14px; margin-top: 5px; }
+        .ps-link { margin-top: 20px; padding-top: 15px; border-top: 2px solid #eee; }
     </style>
 </head>
 <body>
     <!-- Login Screen -->
     <div class="login-overlay" id="loginScreen">
         <div class="login-box">
-            <h2>🔐 Login</h2>
+            <h2>Login</h2>
             <div class="form-group">
                 <label>Select Role</label>
                 <select id="loginRole">
@@ -134,16 +194,16 @@
 
     <!-- Header -->
     <header class="header" id="mainHeader">
-        <h1>🏛️ Krishna District Police <span class="badge" id="userRoleBadge">PC/WPC Data</span></h1>
+        <h1>Krishna District Police <span class="badge" id="userRoleBadge">PC/WPC Data</span></h1>
         <div class="header-actions" id="adminActions">
             <span class="record-count" id="dataCount">0 records</span>
-            <button class="btn btn-primary" onclick="exportCSV()">📤 Export</button>
-            <button class="btn btn-danger" onclick="clearAllData()">🗑️ Clear</button>
-            <button class="btn btn-secondary" onclick="handleLogout()">🚪 Logout</button>
+            <button class="btn btn-primary" onclick="exportCSV()">Export</button>
+            <button class="btn btn-danger" onclick="clearAllData()">Clear All</button>
+            <button class="btn btn-secondary" onclick="handleLogout()">Logout</button>
         </div>
         <div class="header-actions" id="userActions" style="display:none;">
             <span class="record-count" id="dataCountUser">0 records</span>
-            <button class="btn btn-secondary" onclick="handleLogout()">🚪 Logout</button>
+            <button class="btn btn-secondary" onclick="handleLogout()">Logout</button>
         </div>
     </header>
 
@@ -151,46 +211,149 @@
     <div class="container" id="mainContainer">
         <!-- Navigation -->
         <div class="nav-buttons">
-            <button class="nav-btn" onclick="showPage('dashboard')">🏠 Home</button>
-            <button class="nav-btn" onclick="showPage('civil')">👮 Civil PC/WPC</button>
-            <button class="nav-btn" onclick="showPage('ar')">🎖️ AR PC/WPC</button>
-            <button class="nav-btn admin-only" onclick="openAddModal()" style="display:none">➕ Add Personnel</button>
+            <button class="nav-btn" onclick="showPage('dashboard')">Home</button>
+            <button class="nav-btn admin-only" onclick="openAddModal()" style="display:none">+ Add Personnel</button>
         </div>
 
         <!-- Dashboard -->
         <div id="dashboard" class="page active">
             <div class="card">
-                <h2>📈 Dashboard</h2>
-                <div class="stats-row">
-                    <div class="stat-card"><div class="number" id="totalCivil">0</div><div class="label">Civil PC/WPC</div></div>
-                    <div class="stat-card"><div class="number" id="totalAR">0</div><div class="label">AR PC/WPC</div></div>
-                    <div class="stat-card accent"><div class="number" id="totalPersonnel">0</div><div class="label">Total</div></div>
-                    <div class="stat-card"><div class="number" id="totalDeputation">0</div><div class="label">On Deputation</div></div>
+                <h2>Dashboard</h2>
+                <div class="district-tiles">
+                    <div class="district-tile" onclick="showPage('erstwhile')">
+                        <h3>Erstwhile Krishna District</h3>
+                        <div class="tile-count" id="erstwhileCount">0</div>
+                        <div class="tile-label">Personnel Records</div>
+                    </div>
+                    <div class="district-tile" onclick="showPage('krishnaNew')">
+                        <h3>Krishna District (New)</h3>
+                        <div class="tile-count" id="krishnaNewCount">0</div>
+                        <div class="tile-label">Personnel Records</div>
+                    </div>
+                    <div class="district-tile" onclick="showPage('deputation')">
+                        <h3>Deputation</h3>
+                        <div class="tile-count" id="deputationCount">0</div>
+                        <div class="tile-label">Personnel on Deputation</div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Civil -->
-        <div id="civil" class="page">
+        <!-- Erstwhile Krishna District -->
+        <div id="erstwhile" class="page">
+            <button class="back-btn" onclick="showPage('dashboard')">← Back to Dashboard</button>
             <div class="card">
-                <h2>👮 Civil PC/WPC</h2>
-                <table id="civilTable">
-                    <thead><tr><th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Present Working</th><th>Status</th><th>Actions</th></tr></thead>
-                    <tbody id="civilTableBody"></tbody>
-                </table>
-                <div id="civilEmpty" class="empty-state">No Civil PC/WPC data. Click "Add Personnel" to add records.</div>
+                <h2>Erstwhile Krishna District</h2>
+                <div class="sub-tiles">
+                    <div class="sub-tile" onclick="showSubData('erstwhile','CIVIL',this)">CIVIL Strength<div class="sub-count" id="erstwhileCivilCount">0</div></div>
+                    <div class="sub-tile" onclick="showSubData('erstwhile','AR',this)">AR Strength<div class="sub-count" id="erstwhileArCount">0</div></div>
+                </div>
+                <div class="detail-section" id="erstwhileDetail">
+                    <table id="erstwhileTable">
+                        <thead><tr><th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Present Working</th><th>Status</th><th>Actions</th></tr></thead>
+                        <tbody id="erstwhileTableBody"></tbody>
+                    </table>
+                    <div id="erstwhileEmpty" class="empty-state">No records found.</div>
+                </div>
             </div>
         </div>
 
-        <!-- AR -->
-        <div id="ar" class="page">
+        <!-- Krishna District (New) -->
+        <div id="krishnaNew" class="page">
+            <button class="back-btn" onclick="showPage('dashboard')">← Back to Dashboard</button>
             <div class="card">
-                <h2>🎖️ AR PC/WPC</h2>
-                <table id="arTable">
-                    <thead><tr><th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Place of Working</th><th>Status</th><th>Actions</th></tr></thead>
-                    <tbody id="arTableBody"></tbody>
-                </table>
-                <div id="arEmpty" class="empty-state">No AR PC/WPC data. Click "Add Personnel" to add records.</div>
+                <h2>Krishna District (New)</h2>
+                <div class="sub-tiles">
+                    <div class="sub-tile" onclick="showKNRanks('CIVIL',this)">CIVIL Strength<div class="sub-count" id="krishnaNewCivilCount">0</div></div>
+                    <div class="sub-tile" onclick="showKNRanks('AR',this)">AR Strength<div class="sub-count" id="krishnaNewArCount">0</div></div>
+                </div>
+
+                <div class="detail-section" id="knRankSection">
+                    <div class="rank-tiles" id="knRankTiles"></div>
+
+                    <div id="knPSLink" class="ps-link" style="display:none;">
+                        <div class="sub-tile" onclick="showPage('policeStation')" style="max-width:280px;">Police Station Data</div>
+                    </div>
+
+                    <div class="detail-section" id="knStrengthSection">
+                        <div class="strength-card">
+                            <h3 id="knStrengthTitle"></h3>
+                            <div class="strength-row">
+                                <div class="strength-item">
+                                    <div class="strength-label">Sanctioned Strength</div>
+                                    <div class="strength-value" id="knSanctioned">0</div>
+                                    <input type="number" id="knSanctionedInput" class="sanctioned-input admin-only" style="display:none" min="0" onchange="saveSanctionedKN()">
+                                </div>
+                                <div class="strength-item">
+                                    <div class="strength-label">Actual Strength</div>
+                                    <div class="strength-value" id="knActual">0</div>
+                                </div>
+                                <div class="strength-item">
+                                    <div class="strength-label">Vacancies</div>
+                                    <div class="strength-value vacancy" id="knVacancies">0</div>
+                                </div>
+                            </div>
+                            <div class="strength-actions">
+                                <button class="btn btn-primary" onclick="showKNPersonnel()">More Details</button>
+                                <button class="btn btn-secondary" onclick="exportKNExcel()">Export to Excel</button>
+                                <button class="btn btn-secondary" onclick="exportKNPDF()">Export to PDF</button>
+                            </div>
+                        </div>
+
+                        <div class="detail-section" id="knPersonnelSection">
+                            <table id="knPersonnelTable">
+                                <thead><tr><th>Sl.No</th><th>Name</th><th>Genl.No</th><th>Present Working</th><th>Status</th><th>Actions</th></tr></thead>
+                                <tbody id="knPersonnelBody"></tbody>
+                            </table>
+                            <div id="knPersonnelEmpty" class="empty-state">No personnel found for this rank.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Police Station Data -->
+        <div id="policeStation" class="page">
+            <button class="back-btn" onclick="showPage('krishnaNew')">← Back to Krishna District (New)</button>
+            <div class="card">
+                <h2>Police Station Data</h2>
+                <div class="empty-state">Police Station data management coming soon.</div>
+            </div>
+        </div>
+
+        <!-- Deputation -->
+        <div id="deputation" class="page">
+            <button class="back-btn" onclick="showPage('dashboard')">← Back to Dashboard</button>
+            <div class="card">
+                <h2>Deputation</h2>
+                <div class="sub-tiles dep-grid" id="depSubTiles">
+                    <div class="sub-tile" onclick="showDepUnit('GRP., Vijayawada',this)">GRP., Vijayawada</div>
+                    <div class="sub-tile" onclick="showDepUnit('Intelligence Dept, VJA.',this)">Intelligence Dept, VJA.</div>
+                    <div class="sub-tile" onclick="showDepUnit('I.S.W.',this)">I.S.W.</div>
+                    <div class="sub-tile" onclick="showDepUnit('I.S.W. (CMSG)',this)">I.S.W. (CMSG)</div>
+                    <div class="sub-tile" onclick="showDepUnit('R.I.O., SPL. Intelligence Cell',this)">R.I.O., SPL. Intelligence Cell</div>
+                    <div class="sub-tile" onclick="showDepUnit('C.I.D. A.P., Mangalagiri',this)">C.I.D. A.P., Mangalagiri</div>
+                    <div class="sub-tile" onclick="showDepUnit('Vigilance and Enforcement',this)">Vigilance and Enforcement</div>
+                    <div class="sub-tile" onclick="showDepUnit('A.P., Transco',this)">A.P., Transco</div>
+                    <div class="sub-tile" onclick="showDepUnit('A.P., Genco',this)">A.P., Genco</div>
+                    <div class="sub-tile" onclick="showDepUnit('A.C.B., Vijayawada',this)">A.C.B., Vijayawada</div>
+                    <div class="sub-tile" onclick="showDepUnit('Grey Hounds',this)">Grey Hounds</div>
+                    <div class="sub-tile" onclick="showDepUnit('Octopus',this)">Octopus</div>
+                    <div class="sub-tile" onclick="showDepUnit('APPA., Hyderabad',this)">APPA., Hyderabad</div>
+                    <div class="sub-tile" onclick="showDepUnit('Police Computer Service',this)">Police Computer Service</div>
+                    <div class="sub-tile" onclick="showDepUnit('CBI. Visakhapatnam',this)">CBI. Visakhapatnam</div>
+                    <div class="sub-tile" onclick="showDepUnit('Drugs Control Administration',this)">Drugs Control Administration</div>
+                    <div class="sub-tile" onclick="showDepUnit('Eagle',this)">Eagle</div>
+                    <div class="sub-tile" onclick="showDepUnit('CSPS, Visakhapatnam',this)">CSPS, Visakhapatnam</div>
+                    <div class="sub-tile" onclick="showDepUnit('EOW-II, Mangalagiri',this)">EOW-II, Mangalagiri</div>
+                </div>
+                <div class="detail-section" id="deputationDetail">
+                    <table id="deputationTable">
+                        <thead><tr><th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Type</th><th>District</th><th>Status</th><th>Actions</th></tr></thead>
+                        <tbody id="deputationTableBody"></tbody>
+                    </table>
+                    <div id="deputationEmpty" class="empty-state">No personnel in this unit.</div>
+                </div>
             </div>
         </div>
     </div>
@@ -206,13 +369,14 @@
                 <input type="hidden" id="personnelId">
                 <div class="form-grid">
                     <div class="form-group"><label>Name *</label><input type="text" id="name" required></div>
-                    <div class="form-group"><label>Rank *</label><select id="rank" required><option value="">Select</option><option>PC</option><option>WPC</option><option>HC</option><option>WHC</option><option>ARPC</option><option>ARWPC</option><option>ARHC</option></select></div>
+                    <div class="form-group"><label>Rank *</label><select id="rank" required><option value="">Select</option></select></div>
                     <div class="form-group"><label>Genl.No. *</label><input type="text" id="genlNo" required></div>
-                    <div class="form-group"><label>Type *</label><select id="personnelType"><option value="CIVIL">Civil</option><option value="AR">AR</option></select></div>
+                    <div class="form-group"><label>Type *</label><select id="personnelType" onchange="updateRankOptions()"><option value="CIVIL">Civil</option><option value="AR">AR</option></select></div>
+                    <div class="form-group"><label>District *</label><select id="district" onchange="updateRankOptions()"><option value="ERSTWHILE">Erstwhile Krishna District</option><option value="NEW">Krishna District (New)</option></select></div>
                     <div class="form-group"><label>Present Working</label><input type="text" id="presentWorking"></div>
                     <div class="form-group"><label>Status</label><select id="status"><option value="Present">Present</option><option value="Deserter">Deserter</option></select></div>
-                    <div class="form-group"><label>On Deputation</label><select id="isOnDeputation"><option value="false">No</option><option value="true">Yes</option></select></div>
-                    <div class="form-group"><label>Deputation Unit</label><input type="text" id="deputationUnit"></div>
+                    <div class="form-group"><label>On Deputation</label><select id="isOnDeputation" onchange="updateRankOptions()"><option value="false">No</option><option value="true">Yes</option></select></div>
+                    <div class="form-group"><label>Deputation Unit</label><select id="deputationUnit"><option value="">Select Unit</option><option>GRP., Vijayawada</option><option>Intelligence Dept, VJA.</option><option>I.S.W.</option><option>I.S.W. (CMSG)</option><option>R.I.O., SPL. Intelligence Cell</option><option>C.I.D. A.P., Mangalagiri</option><option>Vigilance and Enforcement</option><option>A.P., Transco</option><option>A.P., Genco</option><option>A.C.B., Vijayawada</option><option>Grey Hounds</option><option>Octopus</option><option>APPA., Hyderabad</option><option>Police Computer Service</option><option>CBI. Visakhapatnam</option><option>Drugs Control Administration</option><option>Eagle</option><option>CSPS, Visakhapatnam</option><option>EOW-II, Mangalagiri</option></select></div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -228,9 +392,12 @@
     <script>
         // Data storage
         let personnel = JSON.parse(localStorage.getItem('krishna_police_data')) || [];
+        let sanctionedData = JSON.parse(localStorage.getItem('krishna_sanctioned')) || {};
         let currentUser = null;
         let currentRole = null;
         let editingId = null;
+        let knCurrentType = '';
+        let knCurrentRank = '';
 
         // Login
         function handleLogin() {
@@ -287,37 +454,125 @@
             document.getElementById(pageId).classList.add('active');
         }
 
+        const rankMap = {
+            'NEW_CIVIL': ['PC','WPC','HC','WHC','ASI','WASI','SI','WSI','CI','WCI','DSP','ADDL.SP'],
+            'NEW_AR': ['ARPC','ARWPC','ARHC','ARWHC','ARSI','WARSI','RSI','WRSI','RI','WRI','ARDSP','ADDL.SP.AR'],
+            'ERSTWHILE_CIVIL': ['PC','WPC','HC','WHC','ASI','WASI'],
+            'ERSTWHILE_AR': ['ARPC','ARWPC','ARHC','ARWHC','ARSI','WARSI'],
+            'DEP_CIVIL': ['PC','WPC','HC','WHC','ASI','WASI'],
+            'DEP_AR': ['ARPC','ARWPC','ARHC','ARWHC']
+        };
+
+        const displayRanksMap = {
+            'NEW_CIVIL': ['PC & WPC','HC & WHC','ASI & WASI','SI & WSI','CI & WCI','DSP','ADDL.SP'],
+            'NEW_AR': ['ARPC & ARWPC','ARHC & ARWHC','ARSI & WARSI','RSI & WRSI','RI & WRI','ARDSP','ADDL.SP.AR']
+        };
+
+        const rankGroups = {
+            'PC & WPC': ['PC', 'WPC'],
+            'HC & WHC': ['HC', 'WHC'],
+            'ASI & WASI': ['ASI', 'WASI'],
+            'SI & WSI': ['SI', 'WSI'],
+            'CI & WCI': ['CI', 'WCI'],
+            'DSP': ['DSP'],
+            'ADDL.SP': ['ADDL.SP'],
+            'ARPC & ARWPC': ['ARPC', 'ARWPC'],
+            'ARHC & ARWHC': ['ARHC', 'ARWHC'],
+            'ARSI & WARSI': ['ARSI', 'WARSI'],
+            'RSI & WRSI': ['RSI', 'WRSI'],
+            'RI & WRI': ['RI', 'WRI'],
+            'ARDSP': ['ARDSP'],
+            'ADDL.SP.AR': ['ADDL.SP.AR']
+        };
+
+        function updateRankOptions() {
+            const type = document.getElementById('personnelType').value;
+            const district = document.getElementById('district').value;
+            const isDep = document.getElementById('isOnDeputation').value;
+            const rankSelect = document.getElementById('rank');
+            const currentRank = rankSelect.value;
+            
+            let key;
+            if (isDep === 'true') {
+                key = 'DEP_' + type;
+            } else {
+                key = district + '_' + type;
+            }
+            
+            const ranks = rankMap[key] || [];
+            rankSelect.innerHTML = '<option value="">Select</option>' + ranks.map(r => `<option value="${r}">${r}</option>`).join('');
+            
+            // Preserve current rank if it exists in the new list
+            if (ranks.includes(currentRank)) {
+                rankSelect.value = currentRank;
+            }
+        }
+
         // Update all data
         function updateData() {
-            const civilCount = personnel.filter(p => p.personnelType === 'CIVIL').length;
-            const arCount = personnel.filter(p => p.personnelType === 'AR').length;
+            const erstwhileCount = personnel.filter(p => p.district === 'ERSTWHILE' && p.isOnDeputation !== 'true').length;
+            const newCount = personnel.filter(p => p.district === 'NEW' && p.isOnDeputation !== 'true').length;
             const depCount = personnel.filter(p => p.isOnDeputation === 'true').length;
             
-            document.getElementById('totalCivil').textContent = civilCount;
-            document.getElementById('totalAR').textContent = arCount;
-            document.getElementById('totalPersonnel').textContent = personnel.length;
-            document.getElementById('totalDeputation').textContent = depCount;
+            document.getElementById('erstwhileCount').textContent = erstwhileCount;
+            document.getElementById('krishnaNewCount').textContent = newCount;
+            document.getElementById('deputationCount').textContent = depCount;
+            
+            // Update sub-tile counts
+            document.getElementById('erstwhileCivilCount').textContent = personnel.filter(p => p.district === 'ERSTWHILE' && p.personnelType === 'CIVIL' && p.isOnDeputation !== 'true').length;
+            document.getElementById('erstwhileArCount').textContent = personnel.filter(p => p.district === 'ERSTWHILE' && p.personnelType === 'AR' && p.isOnDeputation !== 'true').length;
+            document.getElementById('krishnaNewCivilCount').textContent = personnel.filter(p => p.district === 'NEW' && p.personnelType === 'CIVIL' && p.isOnDeputation !== 'true').length;
+            document.getElementById('krishnaNewArCount').textContent = personnel.filter(p => p.district === 'NEW' && p.personnelType === 'AR' && p.isOnDeputation !== 'true').length;
             
             document.getElementById('dataCount').textContent = personnel.length + ' records';
             document.getElementById('dataCountUser').textContent = personnel.length + ' records';
-            
-            renderCivilTable();
-            renderARTable();
+
+            // If currently viewing Krishna New rank strength, refresh it dynamically
+            if (document.getElementById('knRankSection')?.classList.contains('visible') && document.getElementById('knStrengthSection')?.classList.contains('visible') && knCurrentRank) {
+                const groupFilter = rankGroups[knCurrentRank] || [knCurrentRank];
+                const actualCount = personnel.filter(p => p.district === 'NEW' && p.personnelType === knCurrentType && groupFilter.includes(p.rank) && p.isOnDeputation !== 'true').length;
+                document.getElementById('knActual').textContent = actualCount;
+                
+                const sancKey = 'NEW_' + knCurrentType + '_' + knCurrentRank;
+                const sanctionedCount = sanctionedData[sancKey] || 0;
+                const vac = sanctionedCount - actualCount;
+                const vacEl = document.getElementById('knVacancies');
+                vacEl.textContent = vac;
+                if (vac > 0) { vacEl.style.color = 'var(--secondary)'; }
+                else if (vac < 0) { vacEl.style.color = 'orange'; vacEl.textContent = '+' + Math.abs(vac) + ' (Excess)'; }
+                else { vacEl.style.color = 'green'; }
+                
+                // If personnel table is also visible, refresh it
+                if (document.getElementById('knPersonnelSection').classList.contains('visible')) {
+                    showKNPersonnel();
+                }
+            }
         }
 
-        // Render civil table
-        function renderCivilTable() {
-            const civil = personnel.filter(p => p.personnelType === 'CIVIL');
-            const tbody = document.getElementById('civilTableBody');
+        // Show sub-data for district pages (CIVIL / AR)
+        function showSubData(pageKey, type, el) {
+            // Set active sub-tile
+            const parent = el.parentElement;
+            parent.querySelectorAll('.sub-tile').forEach(t => t.classList.remove('active'));
+            el.classList.add('active');
             
-            if (civil.length === 0) {
-                document.getElementById('civilTable').style.display = 'none';
-                document.getElementById('civilEmpty').style.display = 'block';
+            const district = pageKey === 'erstwhile' ? 'ERSTWHILE' : 'NEW';
+            const data = personnel.filter(p => p.district === district && p.personnelType === type && p.isOnDeputation !== 'true');
+            const tbody = document.getElementById(pageKey + 'TableBody');
+            const detail = document.getElementById(pageKey + 'Detail');
+            const table = document.getElementById(pageKey + 'Table');
+            const empty = document.getElementById(pageKey + 'Empty');
+            
+            detail.classList.add('visible');
+            
+            if (data.length === 0) {
+                table.style.display = 'none';
+                empty.style.display = 'block';
+                empty.textContent = 'No ' + type + ' personnel records found.';
             } else {
-                document.getElementById('civilTable').style.display = 'table';
-                document.getElementById('civilEmpty').style.display = 'none';
-                
-                tbody.innerHTML = civil.map((p, i) => `
+                table.style.display = 'table';
+                empty.style.display = 'none';
+                tbody.innerHTML = data.map((p, i) => `
                     <tr>
                         <td>${i+1}</td>
                         <td>${p.name}</td>
@@ -326,49 +581,274 @@
                         <td>${p.presentWorking || '-'}</td>
                         <td style="color:${p.status === 'Present' ? 'green' : 'red'}">${p.status}</td>
                         <td>
-                            <button class="action-btn btn-primary" onclick="editPersonnel('${p.id}')">✏️</button>
-                            <button class="action-btn btn-danger" onclick="deletePersonnel('${p.id}')">🗑️</button>
+                            <button class="action-btn btn-primary" onclick="editPersonnel('${p.id}')">Edit</button>
+                            <button class="action-btn btn-danger" onclick="deletePersonnel('${p.id}')">Del</button>
                         </td>
                     </tr>
                 `).join('');
             }
         }
 
-        // Render AR table
-        function renderARTable() {
-            const ar = personnel.filter(p => p.personnelType === 'AR');
-            const tbody = document.getElementById('arTableBody');
+        // Show deputation unit data
+        function showDepUnit(unitName, el) {
+            // Set active sub-tile
+            const parent = el.parentElement;
+            parent.querySelectorAll('.sub-tile').forEach(t => t.classList.remove('active'));
+            el.classList.add('active');
             
-            if (ar.length === 0) {
-                document.getElementById('arTable').style.display = 'none';
-                document.getElementById('arEmpty').style.display = 'block';
+            const data = personnel.filter(p => p.isOnDeputation === 'true' && p.deputationUnit === unitName);
+            const tbody = document.getElementById('deputationTableBody');
+            const detail = document.getElementById('deputationDetail');
+            const table = document.getElementById('deputationTable');
+            const empty = document.getElementById('deputationEmpty');
+            
+            detail.classList.add('visible');
+            
+            if (data.length === 0) {
+                table.style.display = 'none';
+                empty.style.display = 'block';
+                empty.textContent = 'No personnel assigned to ' + unitName + '.';
             } else {
-                document.getElementById('arTable').style.display = 'table';
-                document.getElementById('arEmpty').style.display = 'none';
-                
-                tbody.innerHTML = ar.map((p, i) => `
+                table.style.display = 'table';
+                empty.style.display = 'none';
+                tbody.innerHTML = data.map((p, i) => `
                     <tr>
                         <td>${i+1}</td>
                         <td>${p.name}</td>
                         <td>${p.rank}</td>
                         <td>${p.genlNo}</td>
-                        <td>${p.presentWorking || '-'}</td>
+                        <td>${p.personnelType}</td>
+                        <td>${p.district === 'ERSTWHILE' ? 'Erstwhile Krishna' : 'Krishna (New)'}</td>
                         <td style="color:${p.status === 'Present' ? 'green' : 'red'}">${p.status}</td>
                         <td>
-                            <button class="action-btn btn-primary" onclick="editPersonnel('${p.id}')">✏️</button>
-                            <button class="action-btn btn-danger" onclick="deletePersonnel('${p.id}')">🗑️</button>
+                            <button class="action-btn btn-primary" onclick="editPersonnel('${p.id}')">Edit</button>
+                            <button class="action-btn btn-danger" onclick="deletePersonnel('${p.id}')">Del</button>
                         </td>
                     </tr>
                 `).join('');
             }
+        }
+
+        // Show ranks for Krishna New
+        function showKNRanks(type, el) {
+            knCurrentType = type;
+            const parent = el.parentElement;
+            parent.querySelectorAll('.sub-tile').forEach(t => t.classList.remove('active'));
+            el.classList.add('active');
+
+            const key = 'NEW_' + type;
+            const ranks = displayRanksMap[key] || [];
+            
+            const rTiles = document.getElementById('knRankTiles');
+            rTiles.innerHTML = ranks.map(r => `<div class="rank-tile" onclick="selectKNRank('${r}', this)">${r}</div>`).join('');
+            
+            document.getElementById('knRankSection').classList.add('visible');
+            document.getElementById('knStrengthSection').classList.remove('visible');
+            document.getElementById('knPersonnelSection').classList.remove('visible');
+            
+            if (type === 'CIVIL') {
+                document.getElementById('knPSLink').style.display = 'block';
+            } else {
+                document.getElementById('knPSLink').style.display = 'none';
+            }
+        }
+
+        // Select specific rank, show strength
+        function selectKNRank(rank, el) {
+            knCurrentRank = rank;
+            const parent = el.parentElement;
+            parent.querySelectorAll('.rank-tile').forEach(t => t.classList.remove('active'));
+            el.classList.add('active');
+
+            document.getElementById('knStrengthTitle').textContent = rank + ' Strength Particulars';
+            
+            const groupFilter = rankGroups[rank] || [rank];
+            const actualCount = personnel.filter(p => p.district === 'NEW' && p.personnelType === knCurrentType && groupFilter.includes(p.rank) && p.isOnDeputation !== 'true').length;
+            const sancKey = 'NEW_' + knCurrentType + '_' + rank;
+            const sanctionedCount = sanctionedData[sancKey] || 0;
+            
+            document.getElementById('knActual').textContent = actualCount;
+            document.getElementById('knSanctioned').textContent = sanctionedCount;
+            document.getElementById('knSanctionedInput').value = sanctionedCount;
+            
+            const vac = sanctionedCount - actualCount;
+            const vacEl = document.getElementById('knVacancies');
+            vacEl.textContent = vac;
+            if (vac > 0) { vacEl.style.color = 'var(--secondary)'; }
+            else if (vac < 0) { vacEl.style.color = 'orange'; vacEl.textContent = '+' + Math.abs(vac) + ' (Excess)'; }
+            else { vacEl.style.color = 'green'; }
+
+            if (currentRole === 'admin') {
+                document.getElementById('knSanctioned').style.display = 'none';
+                document.getElementById('knSanctionedInput').style.display = 'inline-block';
+            } else {
+                document.getElementById('knSanctioned').style.display = 'block';
+                document.getElementById('knSanctionedInput').style.display = 'none';
+            }
+
+            document.getElementById('knStrengthSection').classList.add('visible');
+            document.getElementById('knPersonnelSection').classList.remove('visible');
+        }
+
+        // Save sanctioned
+        function saveSanctionedKN() {
+            const sancKey = 'NEW_' + knCurrentType + '_' + knCurrentRank;
+            const val = parseInt(document.getElementById('knSanctionedInput').value) || 0;
+            sanctionedData[sancKey] = val;
+            localStorage.setItem('krishna_sanctioned', JSON.stringify(sanctionedData));
+            
+            // Recalculate vacancy
+            const actualCount = parseInt(document.getElementById('knActual').textContent);
+            const vac = val - actualCount;
+            const vacEl = document.getElementById('knVacancies');
+            vacEl.textContent = vac;
+            if (vac > 0) { vacEl.style.color = 'var(--secondary)'; }
+            else if (vac < 0) { vacEl.style.color = 'orange'; vacEl.textContent = '+' + Math.abs(vac) + ' (Excess)'; }
+            else { vacEl.style.color = 'green'; }
+            
+            showToast('Sanctioned strength updated', 'success');
+        }
+
+        // Show personnel details
+        function showKNPersonnel() {
+            const groupFilter = rankGroups[knCurrentRank] || [knCurrentRank];
+            const data = personnel.filter(p => p.district === 'NEW' && p.personnelType === knCurrentType && groupFilter.includes(p.rank) && p.isOnDeputation !== 'true');
+            const tbody = document.getElementById('knPersonnelBody');
+            
+            if (data.length === 0) {
+                document.getElementById('knPersonnelTable').style.display = 'none';
+                document.getElementById('knPersonnelEmpty').style.display = 'block';
+            } else {
+                document.getElementById('knPersonnelTable').style.display = 'table';
+                document.getElementById('knPersonnelEmpty').style.display = 'none';
+                
+                tbody.innerHTML = data.map((p, i) => `
+                    <tr>
+                        <td>${i+1}</td>
+                        <td>${p.name}</td>
+                        <td>${p.genlNo}</td>
+                        <td>${p.presentWorking || '-'}</td>
+                        <td style="color:${p.status === 'Present' ? 'green' : 'red'}">${p.status}</td>
+                        <td>
+                            <button class="action-btn btn-primary" onclick="editPersonnel('${p.id}')">Edit</button>
+                            <button class="action-btn btn-danger" onclick="deletePersonnel('${p.id}')">Del</button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+            document.getElementById('knPersonnelSection').classList.add('visible');
+        }
+
+        // Export Excel
+        function exportKNExcel() {
+            const groupFilter = rankGroups[knCurrentRank] || [knCurrentRank];
+            const data = personnel.filter(p => p.district === 'NEW' && p.personnelType === knCurrentType && groupFilter.includes(p.rank) && p.isOnDeputation !== 'true');
+            
+            const sancKey = 'NEW_' + knCurrentType + '_' + knCurrentRank;
+            const sanctionedCount = sanctionedData[sancKey] || 0;
+            const actualCount = data.length;
+            const vac = sanctionedCount - actualCount;
+            
+            let csv = 'Krishna District (New) - ' + knCurrentType + ' - ' + knCurrentRank + '\n';
+            csv += 'Sanctioned Strength,' + sanctionedCount + '\n';
+            csv += 'Actual Strength,' + actualCount + '\n';
+            csv += 'Vacancies,' + vac + '\n\n';
+            
+            csv += 'Sl.No,Name,Genl.No,Present Working,Status\n';
+            data.forEach((p, i) => {
+                csv += `${i+1},"${p.name}","${p.genlNo}","${p.presentWorking || ''}","${p.status}"\n`;
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            
+            // Clean up name for file saving
+            const safeName = knCurrentRank.replace(/[^a-zA-Z0-9]/g, '_');
+            
+            a.href = url;
+            a.download = `Krishna_New_${knCurrentType}_${safeName}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            showToast('Exported to Excel!', 'success');
+        }
+
+        // Export PDF
+        function exportKNPDF() {
+            const groupFilter = rankGroups[knCurrentRank] || [knCurrentRank];
+            const data = personnel.filter(p => p.district === 'NEW' && p.personnelType === knCurrentType && groupFilter.includes(p.rank) && p.isOnDeputation !== 'true');
+            const sancKey = 'NEW_' + knCurrentType + '_' + knCurrentRank;
+            const sanctionedCount = sanctionedData[sancKey] || 0;
+            const actualCount = data.length;
+            const vac = sanctionedCount - actualCount;
+
+            let html = `
+            <html>
+            <head>
+                <title>Krishna District (New) - ${knCurrentType} - ${knCurrentRank}</title>
+                <style>
+                    body { font-family: 'Bookman Old Style', serif; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                    th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+                    h2, h3 { text-align: center; }
+                    .summary { display: flex; justify-content: space-around; margin: 20px 0; font-size: 18px; }
+                </style>
+            </head>
+            <body>
+                <h2>Krishna District (New)</h2>
+                <h3>Strength Particulars: ${knCurrentType} - ${knCurrentRank}</h3>
+                <div class="summary">
+                    <div><b>Sanctioned Strength:</b> ${sanctionedCount}</div>
+                    <div><b>Actual Strength:</b> ${actualCount}</div>
+                    <div><b>Vacancies:</b> ${vac}</div>
+                </div>
+                <table>
+                    <thead>
+                        <tr><th>Sl.No</th><th>Name</th><th>Genl.No</th><th>Present Working</th><th>Status</th></tr>
+                    </thead>
+                    <tbody>
+                        ${data.map((p, i) => `
+                        <tr>
+                            <td>${i+1}</td>
+                            <td>${p.name}</td>
+                            <td>${p.genlNo}</td>
+                            <td>${p.presentWorking || '-'}</td>
+                            <td>${p.status}</td>
+                        </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </body>
+            </html>
+            `;
+
+            const printWind = window.open('', '', 'width=800,height=600');
+            printWind.document.write(html);
+            printWind.document.close();
+            // let the window load then print
+            printWind.onload = function() {
+                printWind.print();
+            };
         }
 
         // Open add modal
         function openAddModal() {
             editingId = null;
             document.getElementById('modalTitle').textContent = 'Add Personnel';
-            document.getElementById('personnelForm').reset();
             document.getElementById('personnelId').value = '';
+            document.getElementById('name').value = '';
+            document.getElementById('rank').value = '';
+            document.getElementById('genlNo').value = '';
+            document.getElementById('personnelType').value = 'CIVIL';
+            document.getElementById('district').value = 'ERSTWHILE';
+            document.getElementById('presentWorking').value = '';
+            document.getElementById('status').value = 'Present';
+            document.getElementById('isOnDeputation').value = 'false';
+            document.getElementById('deputationUnit').value = '';
+            updateRankOptions();
             document.getElementById('personnelModal').style.display = 'flex';
         }
 
@@ -388,10 +868,13 @@
                 document.getElementById('rank').value = p.rank || '';
                 document.getElementById('genlNo').value = p.genlNo || '';
                 document.getElementById('personnelType').value = p.personnelType || 'CIVIL';
+                document.getElementById('district').value = p.district || 'ERSTWHILE';
                 document.getElementById('presentWorking').value = p.presentWorking || '';
                 document.getElementById('status').value = p.status || 'Present';
                 document.getElementById('isOnDeputation').value = p.isOnDeputation || 'false';
                 document.getElementById('deputationUnit').value = p.deputationUnit || '';
+                updateRankOptions();
+                document.getElementById('rank').value = p.rank || '';
                 document.getElementById('personnelModal').style.display = 'flex';
             }
         }
@@ -404,6 +887,7 @@
                 rank: document.getElementById('rank').value,
                 genlNo: document.getElementById('genlNo').value,
                 personnelType: document.getElementById('personnelType').value,
+                district: document.getElementById('district').value,
                 presentWorking: document.getElementById('presentWorking').value,
                 status: document.getElementById('status').value,
                 isOnDeputation: document.getElementById('isOnDeputation').value,
@@ -448,9 +932,9 @@
 
         // Export CSV
         function exportCSV() {
-            let csv = 'Name,Rank,Genl.No,Type,Present Working,Status,On Deputation\n';
+            let csv = 'Name,Rank,Genl.No,Type,District,Present Working,Status,On Deputation\n';
             personnel.forEach(p => {
-                csv += `${p.name},${p.rank},${p.genlNo},${p.personnelType},${p.presentWorking || ''},${p.status},${p.isOnDeputation}\n`;
+                csv += `${p.name},${p.rank},${p.genlNo},${p.personnelType},${p.district || ''},${p.presentWorking || ''},${p.status},${p.isOnDeputation}\n`;
             });
             
             const blob = new Blob([csv], { type: 'text/csv' });
