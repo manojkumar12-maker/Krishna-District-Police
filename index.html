@@ -372,16 +372,19 @@
                     <div class="form-group"><label>Genl.No. *</label><input type="text" id="genlNo" required></div>
                     <div class="form-group"><label>Type *</label><select id="personnelType" onchange="updateRankOptions()"><option value="CIVIL">Civil</option><option value="AR">AR</option></select></div>
                     <div class="form-group"><label>District *</label><select id="district" onchange="updateRankOptions()"><option value="ERSTWHILE">Erstwhile Krishna District</option><option value="NEW">Krishna District (New)</option><option value="DEPUTATION">Deputation-</option></select></div>
-                    <div class="form-group"><label>Present Working</label><input type="text" id="presentWorking"></div>
+                    <div class="form-group"><label>Previous Station</label><textarea id="previousStation" rows="2" placeholder="Enter previous stations, one per line"></textarea></div>
                     <div class="form-group"><label>Status</label><select id="status"><option value="Present">Present</option><option value="Deserter">Deserter</option></select></div>
+                    <div class="form-group"><label>Date of Birth</label><input type="date" id="dateOfBirth"></div>
+                    <div class="form-group"><label>Caste</label><input type="text" id="caste"></div>
+                    <div class="form-group"><label>Education Qualification</label><input type="text" id="education"></div>
+                    <div class="form-group"><label>Date of Appointment</label><input type="date" id="dateOfAppointment"></div>
+                    <div class="form-group" id="promotionGroup"><label>Date of Promotion</label><input type="date" id="dateOfPromotion"></div>
+                    <div class="form-group" id="presentWorkingGroup"><label>Present Working</label><input type="text" id="presentWorking"></div>
                     <div class="form-group"><label>On Deputation</label><select id="isOnDeputation" onchange="toggleDeputationFields()"><option value="false">No</option><option value="true">Yes</option></select></div>
-                    <div class="form-group"><label>Deputation Unit</label><select id="deputationUnit"><option value="">Select Unit</option><option>GRP., Vijayawada</option><option>Intelligence Dept, VJA.</option><option>I.S.W.</option><option>I.S.W. (CMSG)</option><option>R.I.O., SPL. Intelligence Cell</option><option>C.I.D. A.P., Mangalagiri</option><option>Vigilance and Enforcement</option><option>A.P., Transco</option><option>A.P., Genco</option><option>A.C.B., Vijayawada</option><option>Grey Hounds</option><option>Octopus</option><option>APPA., Hyderabad</option><option>Police Computer Service</option><option>CBI. Visakhapatnam</option><option>Drugs Control Administration</option><option>Eagle</option><option>CSPS, Visakhapatnam</option><option>EOW-II, Mangalagiri</option></select></div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="savePersonnel()">Save</button>
-            </div>
+                    <div class="form-group" id="deputationUnitGroup"><label>Deputation Unit</label><select id="deputationUnit"><option value="">Select Unit</option><option>GRP., Vijayawada</option><option>Intelligence Dept, VJA.</option><option>I.S.W.</option><option>I.S.W. (CMSG)</option><option>R.I.O., SPL. Intelligence Cell</option><option>C.I.D. A.P., Mangalagiri</option><option>Vigilance and Enforcement</option><option>A.P., Transco</option><option>A.P., Genco</option><option>A.C.B., Vijayawada</option><option>Grey Hounds</option><option>Octopus</option><option>APPA., Hyderabad</option><option>Police Computer Service</option><option>CBI. Visakhapatnam</option><option>Drugs Control Administration</option><option>Eagle</option><option>CSPS, Visakhapatnam</option><option>EOW-II, Mangalagiri</option></select></div>
+                    <div class="form-group" id="deputationDateGroup"><label>Date of Deputation</label><input type="date" id="dateOfDeputation"></div>
+                    <div class="form-group"><label>Punishments</label><textarea id="punishments" rows="2" placeholder="Enter any punishments"></textarea></div>
+                    <div class="form-group"><label>Phone Number</label><input type="tel" id="phoneNumber"></div>
         </div>
     </div>
 
@@ -497,14 +500,14 @@
             } else {
                 key = district + '_' + type;
             }
-            
-            const ranks = rankMap[key] || [];
-            rankSelect.innerHTML = '<option value="">Select</option>' + ranks.map(r => `<option value="${r}">${r}</option>`).join('');
             // Show/hide promotion field based on rank and deputation status
             const rank = document.getElementById("rank").value;
             const isPCWPC = ["PC", "WPC"].includes(rank);
             const isOnDeputation = document.getElementById("isOnDeputation").value === "true";
             document.getElementById("promotionGroup").style.display = (!isOnDeputation && isPCWPC) ? "block" : "none";
+            
+            const ranks = rankMap[key] || [];
+            rankSelect.innerHTML = '<option value="">Select</option>' + ranks.map(r => `<option value="${r}">${r}</option>`).join('');
             
             // Preserve current rank if it exists in the new list
             if (ranks.includes(currentRank)) {
@@ -839,6 +842,7 @@
         }
 
         // Open add modal
+        // Open add modal
         function openAddModal() {
             editingId = null;
             document.getElementById('modalTitle').textContent = 'Add Personnel';
@@ -862,11 +866,7 @@
             document.getElementById('punishments').value = '';
             document.getElementById('phoneNumber').value = '';
             toggleDeputationFields();
-            updateRankOptions();
-            document.getElementById('personnelModal').style.display = 'flex';
         }
-
-        // Edit personnel
         // Edit personnel
         function editPersonnel(id) {
             const p = personnel.find(x => x.id === id);
@@ -897,6 +897,8 @@
                 document.getElementById('personnelModal').style.display = 'flex';
             }
         }
+
+        // Save personnel
         function savePersonnel() {
             const data = {
                 id: editingId || Date.now().toString(),
@@ -937,7 +939,8 @@
             updateData();
             showToast('Saved successfully!', 'success');
         }
-        // Save personnel
+
+        // Delete personnel
         function deletePersonnel(id) {
             if (!confirm('Delete this record?')) return;
             personnel = personnel.filter(p => p.id !== id);
@@ -966,6 +969,10 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
+            a.download = 'personnel.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('Exported to CSV!', 'success');
 
         function toggleDeputationFields() {
             const isOnDeputation = document.getElementById("isOnDeputation").value === "true";
@@ -979,10 +986,6 @@
             document.getElementById("promotionGroup").style.display = (!isOnDeputation && isPCWPC) ? "block" : "none";
         }
 
-            a.download = 'personnel.csv';
-            a.click();
-            URL.revokeObjectURL(url);
-            showToast('Exported to CSV!', 'success');
         }
 
         // Toast
