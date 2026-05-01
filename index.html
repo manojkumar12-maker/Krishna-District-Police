@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Krishna District Police - PC/WPC Data Management</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onerror="console.error('Failed to load Supabase library')"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Bookman Old Style', 'Palatino Linotype', 'Georgia', serif; }
         body { background: #f5f5f5; }
@@ -416,8 +416,8 @@
     <script>
         const SUPABASE_URL = 'https://gehabdrcesowkjpllyn.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdlaGFiZHJjZXNvd2tpanBsbHluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MTQwMjksImV4cCI6MjA5MzE5MDAyOX0.q3QwZEOuaD3zaDLCHDL8JOspPBuev6hXJp6dg2xAp6Q';
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+        let supabase = null;
         let allPersonnel = [];
         let sanctionedData = {};
         let depSanctionedData = {};
@@ -427,68 +427,105 @@
         let depCurrentUnit = '';
         let authMode = 'login';
 
-        async function handleAuth() {
-            const email = document.getElementById('loginEmail').value.trim();
-            const password = document.getElementById('loginPassword').value;
-            const errorEl = document.getElementById('loginError');
-            const btn = document.getElementById('loginBtn');
-            errorEl.style.display = 'none';
-
-            if (!email || !password) {
-                errorEl.textContent = 'Please fill all fields';
-                errorEl.style.display = 'block';
-                return;
+        function initSupabase() {
+            try {
+                if (typeof window.supabase === 'undefined') {
+                    console.error('Supabase library not loaded. Check your internet connection.');
+                    showInitError('Failed to load Supabase library. Check internet connection and refresh.');
+                    return false;
+                }
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                console.log('Supabase client initialized');
+                return true;
+            } catch (e) {
+                console.error('Supabase init error:', e);
+                showInitError('Error initializing Supabase: ' + e.message);
+                return false;
             }
+        }
 
-            btn.disabled = true;
-            btn.textContent = authMode === 'login' ? 'Logging in...' : 'Registering...';
+        function showInitError(msg) {
+            const errorEl = document.getElementById('loginError');
+            if (errorEl) {
+                errorEl.textContent = msg;
+                errorEl.style.display = 'block';
+                errorEl.style.color = '#c62828';
+            }
+        }
 
-            let result;
-            if (authMode === 'login') {
-                result = await supabase.auth.signInWithPassword({ email, password });
-            } else {
-                const confirmPw = document.getElementById('loginConfirmPassword').value;
-                if (password !== confirmPw) {
-                    errorEl.textContent = 'Passwords do not match';
+        async function handleAuth() {
+            try {
+                const email = document.getElementById('loginEmail').value.trim();
+                const password = document.getElementById('loginPassword').value;
+                const errorEl = document.getElementById('loginError');
+                const btn = document.getElementById('loginBtn');
+                errorEl.style.display = 'none';
+
+                if (!email || !password) {
+                    errorEl.textContent = 'Please fill all fields';
                     errorEl.style.display = 'block';
-                    btn.disabled = false;
-                    btn.textContent = 'Register';
                     return;
                 }
-                result = await supabase.auth.signUp({ email, password });
+
+                btn.disabled = true;
+                btn.textContent = authMode === 'login' ? 'Logging in...' : 'Registering...';
+
+                let result;
+                if (authMode === 'login') {
+                    result = await supabase.auth.signInWithPassword({ email, password });
+                } else {
+                    const confirmPw = document.getElementById('loginConfirmPassword').value;
+                    if (password !== confirmPw) {
+                        errorEl.textContent = 'Passwords do not match';
+                        errorEl.style.display = 'block';
+                        btn.disabled = false;
+                        btn.textContent = 'Register';
+                        return;
+                    }
+                    result = await supabase.auth.signUp({ email, password });
+                    if (result.error) {
+                        errorEl.textContent = result.error.message;
+                        errorEl.style.display = 'block';
+                        btn.disabled = false;
+                        btn.textContent = 'Register';
+                        return;
+                    }
+                    errorEl.textContent = 'Registration successful! You can now login.';
+                    errorEl.style.color = '#2e7d32';
+                    errorEl.style.display = 'block';
+                    toggleAuthMode();
+                    btn.disabled = false;
+                    btn.textContent = 'Login';
+                    return;
+                }
+
+                btn.disabled = false;
+                btn.textContent = 'Login';
+
                 if (result.error) {
                     errorEl.textContent = result.error.message;
                     errorEl.style.display = 'block';
-                    btn.disabled = false;
-                    btn.textContent = 'Register';
+                    console.error('Login error:', result.error);
                     return;
                 }
-                errorEl.textContent = 'Registration successful! You can now login.';
-                errorEl.style.color = '#2e7d32';
+
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    document.getElementById('loginScreen').style.display = 'none';
+                    document.getElementById('mainHeader').style.display = 'flex';
+                    document.getElementById('mainContainer').style.display = 'block';
+                    document.getElementById('userEmail').textContent = user.email;
+                    await loadAllData();
+                    showToast('Welcome!', 'success');
+                }
+            } catch (e) {
+                console.error('Auth error:', e);
+                const errorEl = document.getElementById('loginError');
+                const btn = document.getElementById('loginBtn');
+                errorEl.textContent = 'Error: ' + e.message;
                 errorEl.style.display = 'block';
-                toggleAuthMode();
                 btn.disabled = false;
                 btn.textContent = 'Login';
-                return;
-            }
-
-            btn.disabled = false;
-            btn.textContent = authMode === 'login' ? 'Login' : 'Register';
-
-            if (result.error) {
-                errorEl.textContent = result.error.message;
-                errorEl.style.display = 'block';
-                return;
-            }
-
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                document.getElementById('loginScreen').style.display = 'none';
-                document.getElementById('mainHeader').style.display = 'flex';
-                document.getElementById('mainContainer').style.display = 'block';
-                document.getElementById('userEmail').textContent = user.email;
-                await loadAllData();
-                showToast('Welcome!', 'success');
             }
         }
 
@@ -1048,33 +1085,42 @@
             document.getElementById('personnelModal').style.display = 'none';
         }
 
-        document.getElementById('loginPassword').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') handleAuth();
+        document.addEventListener('keypress', function(e) {
+            if (e.target.id === 'loginPassword' && e.key === 'Enter') handleAuth();
         });
 
-        supabase.auth.onAuthStateChange((event, session) => {
-            if (event === 'SIGNED_OUT') {
-                document.getElementById('loginScreen').style.display = 'flex';
-                document.getElementById('mainHeader').style.display = 'none';
-                document.getElementById('mainContainer').style.display = 'none';
-            }
-        });
+        async function initApp() {
+            if (!initSupabase()) return;
 
-        (async function init() {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (user) {
-                    document.getElementById('loginScreen').style.display = 'none';
-                    document.getElementById('mainHeader').style.display = 'flex';
-                    document.getElementById('mainContainer').style.display = 'block';
-                    document.getElementById('userEmail').textContent = user.email;
-                    await loadAllData();
-                    return;
+            try {
+                supabase.auth.onAuthStateChange((event, session) => {
+                    if (event === 'SIGNED_OUT') {
+                        document.getElementById('loginScreen').style.display = 'flex';
+                        document.getElementById('mainHeader').style.display = 'none';
+                        document.getElementById('mainContainer').style.display = 'none';
+                    }
+                });
+
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session) {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (user) {
+                        document.getElementById('loginScreen').style.display = 'none';
+                        document.getElementById('mainHeader').style.display = 'flex';
+                        document.getElementById('mainContainer').style.display = 'block';
+                        document.getElementById('userEmail').textContent = user.email;
+                        await loadAllData();
+                        return;
+                    }
                 }
+            } catch (e) {
+                console.error('Init error:', e);
+                showInitError('Connection error: ' + e.message);
             }
             document.getElementById('loginScreen').style.display = 'flex';
-        })();
+        }
+
+        initApp();
     </script>
 </body>
 </html>
