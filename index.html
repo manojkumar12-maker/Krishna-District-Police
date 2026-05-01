@@ -842,7 +842,6 @@
         }
 
         // Open add modal
-        // Open add modal
         function openAddModal() {
             editingId = null;
             document.getElementById('modalTitle').textContent = 'Add Personnel';
@@ -866,6 +865,7 @@
             document.getElementById('punishments').value = '';
             document.getElementById('phoneNumber').value = '';
             toggleDeputationFields();
+            document.getElementById('personnelModal').style.display = 'flex';
         }
         // Edit personnel
         function editPersonnel(id) {
@@ -985,9 +985,6 @@
             const isPCWPC = ["PC", "WPC"].includes(rank);
             document.getElementById("promotionGroup").style.display = (!isOnDeputation && isPCWPC) ? "block" : "none";
         }
-
-        }
-
         // Toast
         function showToast(message, type) {
             const toast = document.getElementById('toast');
