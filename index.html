@@ -277,19 +277,18 @@
                         <div class="strength-card">
                             <h3 id="knStrengthTitle"></h3>
                             <div class="strength-row">
-                                <div class="strength-item">
-                                    <div class="strength-label">Sanctioned Strength</div>
-                                    <div class="strength-value" id="knSanctioned">0</div>
-                                    <input type="number" id="knSanctionedInput" class="sanctioned-input" style="display:none" min="0" onchange="saveSanctionedKN()">
-                                </div>
-                                <div class="strength-item">
-                                    <div class="strength-label">Actual Strength</div>
-                                    <div class="strength-value" id="knActual">0</div>
-                                </div>
-                                <div class="strength-item">
-                                    <div class="strength-label">Vacancies</div>
-                                    <div class="strength-value vacancy" id="knVacancies">0</div>
-                                </div>
+                                <div class="strength-label">Sanctioned Strength</div>
+                                <div class="strength-value" id="knSanctioned">0</div>
+                                <input type="number" id="knSanctionedInput" class="sanctioned-input" style="display:none" min="0" onchange="saveSanctionedKN()">
+                            </div>
+                            <div class="strength-item">
+                                <div class="strength-label">Actual Strength</div>
+                                <div class="strength-value" id="knActual">0</div>
+                            </div>
+                            <div class="strength-item">
+                                <div class="strength-label">Vacancies</div>
+                                <div class="strength-value vacancy" id="knVacancies">0</div>
+                            </div>
                             </div>
                             <div class="strength-actions">
                                 <button class="btn btn-primary" onclick="showKNPersonnel()">More Details</button>
@@ -454,6 +453,14 @@
         }
 
         async function handleAuth() {
+            // Initialize Supabase if not already initialized
+            if (!supabase) {
+                if (!initSupabase()) {
+                    // Initialization failed, error already shown
+                    return;
+                }
+            }
+
             try {
                 const email = document.getElementById('loginEmail').value.trim();
                 const password = document.getElementById('loginPassword').value;
@@ -499,13 +506,12 @@
                     return;
                 }
 
-                btn.disabled = false;
-                btn.textContent = 'Login';
-
                 if (result.error) {
                     errorEl.textContent = result.error.message;
                     errorEl.style.display = 'block';
                     console.error('Login error:', result.error);
+                    btn.disabled = false;
+                    btn.textContent = authMode === 'login' ? 'Login' : 'Register';
                     return;
                 }
 
@@ -525,11 +531,19 @@
                 errorEl.textContent = 'Error: ' + e.message;
                 errorEl.style.display = 'block';
                 btn.disabled = false;
-                btn.textContent = 'Login';
+                btn.textContent = authMode === 'login' ? 'Login' : 'Register';
             }
         }
 
         async function handleLogout() {
+            // Initialize Supabase if not already initialized
+            if (!supabase) {
+                if (!initSupabase()) {
+                    // Initialization failed, error already shown
+                    return;
+                }
+            }
+            
             await supabase.auth.signOut();
             document.getElementById('loginScreen').style.display = 'flex';
             document.getElementById('mainHeader').style.display = 'none';
@@ -551,11 +565,24 @@
         }
 
         async function loadAllData() {
+            // Initialize Supabase if not already initialized
+            if (!supabase) {
+                if (!initSupabase()) {
+                    // Initialization failed, error already shown
+                    showToast('Failed to initialize database connection', 'error');
+                    return;
+                }
+            }
+            
             showToast('Loading data...', 'loading');
 
             const { data: pData, error: pError } = await supabase
                 .from('personnel').select('*').order('created_at', { ascending: false });
-            if (pError) { console.error('Personnel load error:', pError); showToast('Error loading personnel', 'error'); return; }
+            if (pError) { 
+                console.error('Personnel load error:', pError); 
+                showToast('Error loading personnel', 'error'); 
+                return; 
+            }
             allPersonnel = pData || [];
 
             const { data: sData } = await supabase.from('sanctioned_strength').select('*');
@@ -738,6 +765,15 @@
         }
 
         async function saveSanctionedKN() {
+            // Initialize Supabase if not already initialized
+            if (!supabase) {
+                if (!initSupabase()) {
+                    // Initialization failed, error already shown
+                    showToast('Failed to initialize database connection', 'error');
+                    return;
+                }
+            }
+            
             const sancKey = 'NEW_' + knCurrentType + '_' + knCurrentRank;
             const val = parseInt(document.getElementById('knSanctionedInput').value) || 0;
 
@@ -827,6 +863,15 @@
         }
 
         function updateDepConsolidated() {
+            // Initialize Supabase if not already initialized
+            if (!supabase) {
+                if (!initSupabase()) {
+                    // Initialization failed, error already shown
+                    showToast('Failed to initialize database connection', 'error');
+                    return;
+                }
+            }
+            
             const tbody = document.getElementById('depConsolidatedBody');
             let html = '';
             let totalSanc = 0, totalActual = 0, totalVac = 0;
@@ -850,63 +895,171 @@
                 html += `<tr><td>${rank}</td><td>${sanctioned}</td><td>${actual}</td><td style="color:${vac > 0 ? '#ffeb3b' : vac < 0 ? 'orange' : '#4caf50'}">${vac > 0 ? vac : vac < 0 ? '+' + Math.abs(vac) + ' (Excess)' : '0'}</td></tr>`;
             });
 
-            html += `<tr style="font-weight:bold;border-top:2px solid rgba(255,255,255,0.5);"><td>TOTAL</td><td>${totalSanc}</td><td>${totalActual}</td><td>${totalVac > 0 ? totalVac : totalVac < 0 ? '+' + Math.abs(totalVac) + ' (Excess)' : '0'}</td></tr>`;
+            tbody.innerHTML = html;
+            
+            // Update totals row
+            html += `<tr style="font-weight: bold; background-color: rgba(0,0,0,0.1);">
+                <td>TOTAL</td>
+                <td>${totalSanc}</td>
+                <td>${totalActual}</td>
+                <td style="color:${totalVac > 0 ? '#ffeb3b' : totalVac < 0 ? 'orange' : '#4caf50'}">${totalVac > 0 ? totalVac : totalVac < 0 ? '+' + Math.abs(totalVac) + ' (Excess)' : '0'}</td>
+            </tr>`;
             tbody.innerHTML = html;
         }
 
         function getAllDepUnits() {
-            return ['GRP., Vijayawada','Intelligence Dept, VJA.','I.S.W.','I.S.W. (CMSG)','R.I.O., SPL. Intelligence Cell','C.I.D. A.P., Mangalagiri','Vigilance and Enforcement','A.P., Transco','A.P., Genco','A.C.B., Vijayawada','Grey Hounds','Octopus','APPA., Hyderabad','Police Computer Service','CBI. Visakhapatnam','Drugs Control Administration','Eagle','CSPS, Visakhapatnam','EOW-II, Mangalagiri'];
+            return [
+                'GRP., Vijayawada', 'Intelligence Dept, VJA.', 'I.S.W.', 'I.S.W. (CMSG)',
+                'R.I.O., SPL. Intelligence Cell', 'C.I.D. A.P., Mangalagiri',
+                'Vigilance and Enforcement', 'A.P., Transco', 'A.P., Genco',
+                'A.C.B., Vijayawada', 'Grey Hounds', 'Octopus', 'APPA., Hyderabad',
+                'Police Computer Service', 'CBI. Visakhapatnam', 'Drugs Control Administration',
+                'Eagle', 'CSPS, Visakhapatnam', 'EOW-II, Mangalagiri'
+            ];
         }
 
-        async function showDepUnit(unitName, el) {
+        function showDepUnit(unitName, el) {
+            // Initialize Supabase if not already initialized
+            if (!supabase) {
+                if (!initSupabase()) {
+                    // Initialization failed, error already shown
+                    showToast('Failed to initialize database connection', 'error');
+                    return;
+                }
+            }
+            
             depCurrentUnit = unitName;
             const parent = el.parentElement;
             parent.querySelectorAll('.sub-tile').forEach(t => t.classList.remove('active'));
             el.classList.add('active');
 
-            const data = allPersonnel.filter(p => p.is_on_deputation && p.deputation_unit === unitName);
-            const tbody = document.getElementById('deputationTableBody');
-            const detail = document.getElementById('deputationDetail');
-            const table = document.getElementById('deputationTable');
-            const empty = document.getElementById('deputationEmpty');
-            detail.classList.add('visible');
+            const depUnitStrength = document.getElementById('depUnitStrength');
+            depUnitStrength.innerHTML = `<h3>${unitName}</h3>`;
 
-            const unitSanc = depSanctionedData[unitName] || {};
-            let strengthHtml = '<div class="dep-strength-grid">';
+            const strengthGrid = document.createElement('div');
+            strengthGrid.className = 'dep-strength-grid';
+            
             depRanks.forEach(rank => {
-                const sanctioned = unitSanc[rank] || 0;
-                const actual = data.filter(p => p.rank === rank).length;
+                const sanctioned = depSanctionedData[unitName] ? depSanctionedData[unitName][rank] || 0 : 0;
+                const actual = allPersonnel.filter(p => p.is_on_deputation && p.department_unit === unitName && p.rank === rank).length;
                 const vac = sanctioned - actual;
-                let vacDisplay = vac > 0 ? vac : vac < 0 ? '+' + Math.abs(vac) : '0';
-                let vacColor = vac > 0 ? 'var(--secondary)' : vac < 0 ? 'orange' : 'green';
-
-                strengthHtml += `<div class="dep-rank-strength">
+                
+                const item = document.createElement('div');
+                item.className = 'dep-rank-strength';
+                item.innerHTML = `
                     <h4>${rank}</h4>
                     <div class="dep-sr-row">
-                        <div class="dep-sr-item"><div class="dep-sr-label">Sanctioned</div><input type="number" class="dep-sanctioned-input admin-only" value="${sanctioned}" min="0" onchange="saveDepSanctioned('${unitName}','${rank}',this.value)"></div>
-                        <div class="dep-sr-item"><div class="dep-sr-label">Actual</div><div class="dep-sr-value">${actual}</div></div>
-                        <div class="dep-sr-item"><div class="dep-sr-label">Vacancy</div><div class="dep-sr-value vac" style="color:${vacColor}">${vacDisplay}</div></div>
+                        <div class="dep-sr-item">
+                            <div class="dep-sr-label">Sanctioned</div>
+                            <div class="dep-sr-value">${sanctioned}</div>
+                        </div>
+                        <div class="dep-sr-item">
+                            <div class="dep-sr-label">Actual</div>
+                            <div class="dep-sr-value">${actual}</div>
+                        </div>
+                        <div class="dep-sr-item">
+                            <div class="dep-sr-label">Vacancies</div>
+                            <div class="dep-sr-value vac">${vac > 0 ? vac : vac < 0 ? '+' + Math.abs(vac) + ' (Excess)' : '0'}</div>
+                        </div>
                     </div>
-                </div>`;
+                    <div class="dep-sanctioned-input-container">
+                        <label>Update Sanctioned:</label>
+                        <input type="number" class="dep-sanctioned-input" value="${sanctioned}" min="0" onchange="updateDepSanctioned('${unitName}', '${rank}', this.value)">
+                    </div>
+                `;
+                strengthGrid.appendChild(item);
             });
-            strengthHtml += '</div>';
-            document.getElementById('depUnitStrength').innerHTML = strengthHtml;
+            
+            depUnitStrength.appendChild(strengthGrid);
+            
+            // Show personnel details
+            const personnelDetails = document.createElement('div');
+            personnelDetails.style.marginTop = '20px';
+            
+            const personnelHeader = document.createElement('h4');
+            personnelHeader.style.color = var(--primary);
+            personnelHeader.style.marginBottom = '10px';
+            personnelHeader.textContent = 'Personnel Details';
+            personnelDetails.appendChild(personnelHeader);
+            
+            const personnelTable = document.createElement('table');
+            personnelTable.id = 'deputationTable';
+            personnelTable.style.display = 'none';
+            personnelTable.innerHTML = `
+                <thead><tr><th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Type</th><th>District</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody id="deputationTableBody"></tbody>
+            `;
+            personnelDetails.appendChild(personnelTable);
+            
+            const personnelEmpty = document.createElement('div');
+            personnelEmpty.id = 'deputationEmpty';
+            personnelEmpty.className = 'empty-state';
+            personnelEmpty.textContent = 'No personnel in this unit.';
+            personnelDetails.appendChild(personnelEmpty);
+            
+            depUnitStrength.appendChild(personnelDetails);
+            
+            // Load personnel for this unit
+            loadDepUnitPersonnel();
+        }
 
-            if (data.length === 0) {
-                table.style.display = 'none';
-                empty.style.display = 'block';
-                empty.textContent = 'No personnel assigned to ' + unitName + '.';
-            } else {
-                table.style.display = 'table';
-                empty.style.display = 'none';
-                tbody.innerHTML = data.map((p, i) => `
+        async function loadDepUnitPersonnel() {
+            // Initialize Supabase if not already initialized
+            if (!supabase) {
+                if (!initSupabase()) {
+                    // Initialization failed, error already shown
+                    showToast('Failed to initialize database connection', 'error');
+                    return;
+                }
+            }
+            
+            const depUnitStrength = document.getElementById('depUnitStrength');
+            const personnelTable = depUnitStrength.querySelector('#deputationTable');
+            const personnelEmpty = depUnitStrength.querySelector('#deputationEmpty');
+            const personnelBody = depUnitStrength.querySelector('#deputationTableBody');
+            
+            // Show loading state
+            personnelTable.style.display = 'none';
+            personnelEmpty.style.display = 'none';
+            
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'loading-state';
+            loadingDiv.textContent = 'Loading...';
+            depUnitStrength.appendChild(loadingDiv);
+            
+            try {
+                const { data: personnelData, error } = await supabase
+                    .from('personnel')
+                    .select('*')
+                    .eq('is_on_deputation', true)
+                    .eq('department_unit', depCurrentUnit)
+                    .order('name');
+                
+                // Remove loading div
+                loadingDiv.remove();
+                
+                if (error) {
+                    console.error('Error loading dep unit personnel:', error);
+                    showToast('Error loading personnel data', 'error');
+                    personnelEmpty.style.display = 'block';
+                    personnelEmpty.textContent = 'Error loading personnel data.';
+                    return;
+                }
+                
+                if (!personnelData || personnelData.length === 0) {
+                    personnelEmpty.style.display = 'block';
+                    return;
+                }
+                
+                personnelTable.style.display = 'table';
+                personnelBody.innerHTML = personnelData.map((p, i) => `
                     <tr>
                         <td>${i+1}</td>
                         <td>${p.name}</td>
                         <td>${p.rank}</td>
                         <td>${p.genl_no}</td>
                         <td>${p.personnel_type}</td>
-                        <td>${p.district === 'ERSTWHILE' ? 'Erstwhile Krishna' : 'Krishna (New)'}</td>
+                        <td>${p.district}</td>
                         <td style="color:${p.status === 'Present' ? 'green' : 'red'}">${p.status}</td>
                         <td>
                             <button class="action-btn btn-primary" onclick="editPersonnel('${p.id}')">Edit</button>
@@ -914,33 +1067,72 @@
                         </td>
                     </tr>
                 `).join('');
+            } catch (e) {
+                // Remove loading div
+                if (loadingDiv.parentNode) {
+                    loadingDiv.remove();
+                }
+                console.error('Exception loading dep unit personnel:', e);
+                showToast('Error loading personnel data', 'error');
+                personnelEmpty.style.display = 'block';
+                personnelEmpty.textContent = 'Error loading personnel data.';
             }
         }
 
-        async function saveDepSanctioned(unitName, rank, value) {
+        async function updateDepSanctioned(unitName, rank, value) {
+            // Initialize Supabase if not already initialized
+            if (!supabase) {
+                if (!initSupabase()) {
+                    // Initialization failed, error already shown
+                    showToast('Failed to initialize database connection', 'error');
+                    return;
+                }
+            }
+            
             const val = parseInt(value) || 0;
-            if (!depSanctionedData[unitName]) depSanctionedData[unitName] = {};
-
+            
+            // Check if entry exists
             const { data: existing } = await supabase
                 .from('deputation_strength')
                 .select('id')
-                .eq('unit_name', unitName).eq('rank', rank)
+                .eq('unit_name', unitName)
+                .eq('rank', rank)
                 .single();
-
+            
             if (existing) {
-                await supabase.from('deputation_strength').update({ sanctioned_count: val, updated_at: new Date().toISOString() }).eq('id', existing.id);
+                // Update existing
+                await supabase
+                    .from('deputation_strength')
+                    .update({ sanctioned_count: val, updated_at: new Date().toISOString() })
+                    .eq('id', existing.id);
             } else {
-                await supabase.from('deputation_strength').insert({ unit_name: unitName, rank, sanctioned_count: val });
+                // Insert new
+                await supabase
+                    .from('deputation_strength')
+                    .insert({ unit_name: unitName, rank: rank, sanctioned_count: val });
             }
-
+            
+            // Update local cache
+            if (!depSanctionedData[unitName]) depSanctionedData[unitName] = {};
             depSanctionedData[unitName][rank] = val;
-            showDepUnit(unitName, document.querySelector(`#depSubTiles .sub-tile.active`));
-            updateDepConsolidated();
-            showToast('Updated', 'success');
+            
+            // Refresh the display
+            showDepUnit(unitName, document.querySelector(`.sub-tile[onclick*="${unitName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"]`));
+            
+            showToast('Sanctioned strength updated', 'success');
         }
 
         function openAddModal() {
-            editingId = null;
+            // Initialize Supabase if not already initialized
+            if (!supabase) {
+                if (!initSupabase()) {
+                    // Initialization failed, error already shown
+                    showToast('Failed to initialize database connection', 'error');
+                    return;
+                }
+            }
+            
+            document.getElementById('personnelModal').style.display = 'flex';
             document.getElementById('modalTitle').textContent = 'Add Personnel';
             document.getElementById('personnelId').value = '';
             document.getElementById('name').value = '';
@@ -948,179 +1140,285 @@
             document.getElementById('genlNo').value = '';
             document.getElementById('personnelType').value = 'CIVIL';
             document.getElementById('district').value = 'ERSTWHILE';
+            document.getElementById('previousStation').value = '';
+            document.getElementById('status').value = 'Present';
             document.getElementById('dateOfBirth').value = '';
             document.getElementById('caste').value = '';
             document.getElementById('education').value = '';
             document.getElementById('dateOfAppointment').value = '';
             document.getElementById('dateOfPromotion').value = '';
             document.getElementById('presentWorking').value = '';
-            document.getElementById('previousStation').value = '';
-            document.getElementById('status').value = 'Present';
             document.getElementById('isOnDeputation').value = 'false';
             document.getElementById('deputationUnit').value = '';
             document.getElementById('dateOfDeputation').value = '';
             document.getElementById('punishments').value = '';
             document.getElementById('phoneNumber').value = '';
+            
             updateRankOptions();
-            document.getElementById('personnelModal').style.display = 'flex';
-        }
-
-        function editPersonnel(id) {
-            const p = allPersonnel.find(x => x.id === id);
-            if (!p) return;
-            editingId = id;
-            document.getElementById('modalTitle').textContent = 'Edit Personnel';
-            document.getElementById('personnelId').value = p.id;
-            document.getElementById('name').value = p.name || '';
-            document.getElementById('rank').value = p.rank || '';
-            document.getElementById('genlNo').value = p.genl_no || '';
-            document.getElementById('personnelType').value = p.personnel_type || 'CIVIL';
-            document.getElementById('district').value = p.district || 'ERSTWHILE';
-            document.getElementById('dateOfBirth').value = p.date_of_birth || '';
-            document.getElementById('caste').value = p.caste || '';
-            document.getElementById('education').value = p.education || '';
-            document.getElementById('dateOfAppointment').value = p.date_of_appointment || '';
-            document.getElementById('dateOfPromotion').value = p.date_of_promotion || '';
-            document.getElementById('presentWorking').value = p.present_working || '';
-            document.getElementById('previousStation').value = p.previous_station || '';
-            document.getElementById('status').value = p.status || 'Present';
-            document.getElementById('isOnDeputation').value = p.is_on_deputation ? 'true' : 'false';
-            document.getElementById('deputationUnit').value = p.deputation_unit || '';
-            document.getElementById('dateOfDeputation').value = p.date_of_deputation || '';
-            document.getElementById('punishments').value = p.punishments || '';
-            document.getElementById('phoneNumber').value = p.phone_number || '';
-            updateRankOptions();
-            document.getElementById('personnelModal').style.display = 'flex';
-        }
-
-        async function savePersonnel() {
-            const name = document.getElementById('name').value.trim();
-            const rank = document.getElementById('rank').value;
-            const genlNo = document.getElementById('genlNo').value.trim();
-            if (!name || !rank || !genlNo) { showToast('Please fill required fields!', 'error'); return; }
-
-            const data = {
-                name, rank, genl_no: genlNo,
-                personnel_type: document.getElementById('personnelType').value,
-                district: document.getElementById('district').value,
-                date_of_birth: document.getElementById('dateOfBirth').value || null,
-                caste: document.getElementById('caste').value || null,
-                education: document.getElementById('education').value || null,
-                date_of_appointment: document.getElementById('dateOfAppointment').value || null,
-                date_of_promotion: document.getElementById('dateOfPromotion').value || null,
-                present_working: document.getElementById('presentWorking').value || null,
-                previous_station: document.getElementById('previousStation').value || null,
-                status: document.getElementById('status').value,
-                is_on_deputation: document.getElementById('isOnDeputation').value === 'true',
-                deputation_unit: document.getElementById('deputationUnit').value || null,
-                date_of_deputation: document.getElementById('dateOfDeputation').value || null,
-                punishments: document.getElementById('punishments').value || null,
-                phone_number: document.getElementById('phoneNumber').value || null,
-                updated_at: new Date().toISOString()
-            };
-
-            let result;
-            if (editingId) {
-                result = await supabase.from('personnel').update(data).eq('id', editingId);
-            } else {
-                result = await supabase.from('personnel').insert(data);
-            }
-
-            if (result.error) { showToast('Error: ' + result.error.message, 'error'); return; }
-
-            closeModal();
-            await loadAllData();
-            showToast('Saved successfully!', 'success');
-        }
-
-        async function deletePersonnel(id) {
-            if (!confirm('Delete this record?')) return;
-            const { error } = await supabase.from('personnel').delete().eq('id', id);
-            if (error) { showToast('Error: ' + error.message, 'error'); return; }
-            await loadAllData();
-            showToast('Deleted!', 'success');
-        }
-
-        async function clearAllData() {
-            if (!confirm('Delete ALL data? This cannot be undone!')) return;
-            const { error } = await supabase.from('personnel').delete().neq('id', '');
-            if (error) { showToast('Error: ' + error.message, 'error'); return; }
-            await loadAllData();
-            showToast('All data cleared!', 'success');
-        }
-
-        function exportCSV() {
-            let csv = 'Name,Rank,Genl.No,Type,District,Present Working,Status,On Deputation,Deputation Unit\n';
-            allPersonnel.forEach(p => {
-                csv += `"${p.name}","${p.rank}","${p.genl_no}","${p.personnel_type}","${p.district}","${p.present_working || ''}","${p.status}","${p.is_on_deputation ? 'Yes' : 'No'}","${p.deputation_unit || ''}"\n`;
-            });
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = 'personnel_export.csv';
-            document.body.appendChild(a); a.click(); document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            showToast('Exported to CSV!', 'success');
-        }
-
-        function toggleDeputationFields() {
-            const isOnDeputation = document.getElementById('isOnDeputation').value === 'true';
-            document.getElementById('presentWorkingGroup').style.display = isOnDeputation ? 'none' : 'block';
-            document.getElementById('deputationUnitGroup').style.display = isOnDeputation ? 'block' : 'none';
-            document.getElementById('deputationDateGroup').style.display = isOnDeputation ? 'block' : 'none';
-
-            const rank = document.getElementById('rank').value;
-            const isPCWPC = ['PC', 'WPC'].includes(rank);
-            document.getElementById('promotionGroup').style.display = (!isOnDeputation && isPCWPC) ? 'block' : 'none';
-        }
-
-        function showToast(message, type) {
-            const toast = document.getElementById('toast');
-            toast.textContent = message;
-            toast.className = 'toast ' + type + ' show';
-            setTimeout(() => toast.classList.remove('show'), 3000);
+            toggleDeputationFields();
         }
 
         function closeModal() {
             document.getElementById('personnelModal').style.display = 'none';
         }
 
-        document.addEventListener('keypress', function(e) {
-            if (e.target.id === 'loginPassword' && e.key === 'Enter') handleAuth();
-        });
-
-        async function initApp() {
-            if (!initSupabase()) return;
-
-            try {
-                supabase.auth.onAuthStateChange((event, session) => {
-                    if (event === 'SIGNED_OUT') {
-                        document.getElementById('loginScreen').style.display = 'flex';
-                        document.getElementById('mainHeader').style.display = 'none';
-                        document.getElementById('mainContainer').style.display = 'none';
-                    }
-                });
-
-                const { data: { session } } = await supabase.auth.getSession();
-                if (session) {
-                    const { data: { user } } = await supabase.auth.getUser();
-                    if (user) {
-                        document.getElementById('loginScreen').style.display = 'none';
-                        document.getElementById('mainHeader').style.display = 'flex';
-                        document.getElementById('mainContainer').style.display = 'block';
-                        document.getElementById('userEmail').textContent = user.email;
-                        await loadAllData();
-                        return;
-                    }
-                }
-            } catch (e) {
-                console.error('Init error:', e);
-                showInitError('Connection error: ' + e.message);
+        function toggleDeputationFields() {
+            const isOnDeputation = document.getElementById('isOnDeputation').value === 'true';
+            document.getElementById('deputationUnitGroup').style.display = isOnDeputation ? 'block' : 'none';
+            document.getElementById('deputationDateGroup').style.display = isOnDeputation ? 'block' : 'none';
+            document.getElementById('presentWorkingGroup').style.display = !isOnDeputation ? 'block' : 'none';
+            
+            // Reset fields when toggling
+            if (!isOnDeputation) {
+                document.getElementById('deputationUnit').value = '';
+                document.getElementById('dateOfDeputation').value = '';
+            } else {
+                document.getElementById('presentWorking').value = '';
             }
-            document.getElementById('loginScreen').style.display = 'flex';
         }
 
-        initApp();
+        async function savePersonnel() {
+            // Initialize Supabase if not already initialized
+            if (!supabase) {
+                if (!initSupabase()) {
+                    // Initialization failed, error already shown
+                    showToast('Failed to initialize database connection', 'error');
+                    return;
+                }
+            }
+            
+            const personnelId = document.getElementById('personnelId').value;
+            const name = document.getElementById('name').value.trim();
+            const rank = document.getElementById('rank').value;
+            const genlNo = document.getElementById('genlNo').value.trim();
+            const personnelType = document.getElementById('personnelType').value;
+            const district = document.getElementById('district').value;
+            const previousStation = document.getElementById('previousStation').value.trim();
+            const status = document.getElementById('status').value;
+            const dateOfBirth = document.getElementById('dateOfBirth').value || null;
+            const caste = document.getElementById('caste').value.trim() || null;
+            const education = document.getElementById('education').value.trim() || null;
+            const dateOfAppointment = document.getElementById('dateOfAppointment').value || null;
+            const dateOfPromotion = document.getElementById('dateOfPromotion').value || null;
+            const presentWorking = document.getElementById('presentWorking').value.trim() || null;
+            const isOnDeputation = document.getElementById('isOnDeputation').value === 'true';
+            const deputationUnit = document.getElementById('deputationUnit').value || null;
+            const dateOfDeputation = document.getElementById('dateOfDeputation').value || null;
+            const punishments = document.getElementById('punishments').value.trim() || null;
+            const phoneNumber = document.getElementById('phoneNumber').value.trim() || null;
+
+            // Validation
+            if (!name || !rank || !genlNo || !personnelType || !district) {
+                showToast('Please fill all required fields', 'error');
+                return;
+            }
+
+            const personnelData = {
+                name,
+                rank,
+                genl_no: genlNo,
+                personnel_type: personnelType,
+                district,
+                previous_station: previousStation || null,
+                status,
+                date_of_birth: dateOfBirth,
+                caste,
+                education,
+                date_of_appointment: dateOfAppointment,
+                date_of_promotion: dateOfPromotion,
+                present_working: presentWorking,
+                is_on_deputation: isOnDeputation,
+                deputation_unit: deputationUnit,
+                date_of_deputation: dateOfDeputation,
+                punishments,
+                phone_number: phoneNumber,
+                updated_at: new Date().toISOString()
+            };
+
+            try {
+                let result;
+                if (personnelId) {
+                    // Update existing
+                    result = await supabase
+                        .from('personnel')
+                        .update(personnelData)
+                        .eq('id', personnelId);
+                } else {
+                    // Insert new
+                    result = await supabase
+                        .from('personnel')
+                        .insert([personnelData]);
+                }
+
+                if (result.error) {
+                    throw result.error;
+                }
+
+                closeModal();
+                await loadAllData();
+                showToast('Personnel saved successfully', 'success');
+            } catch (error) {
+                console.error('Error saving personnel:', error);
+                showToast('Error saving personnel: ' + error.message, 'error');
+            }
+        }
+
+        async function editPersonnel(id) {
+            // Initialize Supabase if not already initialized
+            if (!supabase) {
+                if (!initSupabase()) {
+                    // Initialization failed, error already shown
+                    showToast('Failed to initialize database connection', 'error');
+                    return;
+                }
+            }
+            
+            try {
+                const { data: personnel, error } = await supabase
+                    .from('personnel')
+                    .select('*')
+                    .eq('id', id)
+                    .single();
+
+                if (error) throw error;
+
+                document.getElementById('personnelModal').style.display = 'flex';
+                document.getElementById('modalTitle').textContent = 'Edit Personnel';
+                document.getElementById('personnelId').value = personnel.id;
+                document.getElementById('name').value = personnel.name;
+                document.getElementById('rank').value = personnel.rank;
+                document.getElementById('genlNo').value = personnel.genl_no;
+                document.getElementById('personnelType').value = personnel.personnel_type;
+                document.getElementById('district').value = personnel.district;
+                document.getElementById('previousStation').value = personnel.previous_station || '';
+                document.getElementById('status').value = personnel.status;
+                document.getElementById('dateOfBirth').value = personnel.date_of_birth || '';
+                document.getElementById('caste').value = personnel.caste || '';
+                document.getElementById('education').value = personnel.education || '';
+                document.getElementById('dateOfAppointment').value = personnel.date_of_appointment || '';
+                document.getElementById('dateOfPromotion').value = personnel.date_of_promotion || '';
+                document.getElementById('presentWorking').value = personnel.present_working || '';
+                document.getElementById('isOnDeputation').value = personnel.is_on_deputation ? 'true' : 'false';
+                document.getElementById('deputationUnit').value = personnel.department_unit || '';
+                document.getElementById('dateOfDeputation').value = personnel.date_of_deputation || '';
+                document.getElementById('punishments').value = personnel.punishments || '';
+                document.getElementById('phoneNumber').value = personnel.phone_number || '';
+
+                updateRankOptions();
+                toggleDeputationFields();
+            } catch (error) {
+                console.error('Error loading personnel for edit:', error);
+                showToast('Error loading personnel data', 'error');
+            }
+        }
+
+        async function deletePersonnel(id) {
+            // Initialize Supabase if not already initialized
+            if (!supabase) {
+                if (!initSupabase()) {
+                    // Initialization failed, error already shown
+                    showToast('Failed to initialize database connection', 'error');
+                    return;
+                }
+            }
+            
+            if (!confirm('Are you sure you want to delete this personnel record?')) {
+                return;
+            }
+
+            try {
+                const { error } = await supabase
+                    .from('personnel')
+                    .delete()
+                    .eq('id', id);
+
+                if (error) throw error;
+
+                await loadAllData();
+                showToast('Personnel deleted successfully', 'success');
+            } catch (error) {
+                console.error('Error deleting personnel:', error);
+                showToast('Error deleting personnel: ' + error.message, 'error');
+            }
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast';
+            if (type === 'success') toast.classList.add('success');
+            else if (type === 'error') toast.classList.add('error');
+            else if (type === 'loading') toast.classList.add('loading');
+            
+            toast.classList.add('show');
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        function exportCSV() {
+            // Initialize Supabase if not already initialized
+            if (!supabase) {
+                if (!initSupabase()) {
+                    // Initialization failed, error already shown
+                    showToast('Failed to initialize database connection', 'error');
+                    return;
+                }
+            }
+            
+            if (allPersonnel.length === 0) {
+                showToast('No data to export', 'error');
+                return;
+            }
+
+            let csv = 'Sl.No,Name,Rank,Genl.No,Type,District,Previous Station,Status,Date of Birth,Caste,Education,Date of Appointment,Date of Promotion,Present Working,On Deputation,Deputation Unit,Date of Deputation,Punishments,Phone Number\n';
+            
+            allPersonnel.forEach((p, i) => {
+                csv += `${i+1},"${p.name}","${p.rank}","${p.genl_no}","${p.personnel_type}","${p.district}","${p.previous_station || ''}","${p.status}","${p.date_of_birth || ''}","${p.caste || ''}","${p.education || ''}","${p.date_of_appointment || ''}","${p.date_of_promotion || ''}","${p.present_working || ''}","${p.is_on_deputation ? 'Yes' : 'No'}","${p.department_unit || ''}","${p.date_of_deputation || ''}","${p.punishments || ''}","${p.phone_number || ''}\n`;
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Krishna_District_Personnel_${new Date().toISOString().slice(0,10)}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('Exported to CSV!', 'success');
+        }
+
+        function clearAllData() {
+            // Initialize Supabase if not already initialized
+            if (!supabase) {
+                if (!initSupabase()) {
+                    // Initialization failed, error already shown
+                    showToast('Failed to initialize database connection', 'error');
+                    return;
+                }
+            }
+            
+            if (!confirm('WARNING: This will delete ALL personnel data. This action cannot be undone. Continue?')) {
+                return;
+            }
+
+            if (!confirm('Are you absolutely sure? This will delete all records from the database.')) {
+                return;
+            }
+
+            // In a real application, you would implement this via a backend function
+            // For now, we'll just show a message that this feature needs backend implementation
+            showToast('Clear all data functionality requires backend implementation for security', 'error');
+        }
+
+        // Initialize Supabase when the page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            if (!initSupabase()) {
+                // Initialization failed, error already shown by initSupabase()
+            }
+        });
     </script>
 </body>
 </html>
