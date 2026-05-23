@@ -1,4 +1,4 @@
-const API_BASE_URL = 'https://YOUR-RENDER-URL.onrender.com/api';
+const API_BASE_URL = 'https://krishna-district-police.onrender.com/api';
 
 const rankMap = {
     'NEW_CIVIL': ['PC','WPC','HC','WHC','ASI','WASI','SI','WSI','CI','WCI','DSP','ADDL.SP'],
