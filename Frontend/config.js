@@ -13,7 +13,9 @@ const rankMap = {
 
 const displayRanksMap = {
     'NEW_CIVIL': ['PC & WPC','HC & WHC','ASI & WASI','SI & WSI','CI & WCI','DSP','ADDL.SP'],
-    'NEW_AR': ['ARPC & ARWPC','ARHC & ARWHC','ARSI & WARSI','RSI & WRSI','RI & WRI','ARDSP','ADDL.SP.AR']
+    'NEW_AR': ['ARPC & ARWPC','ARHC & ARWHC','ARSI & WARSI','RSI & WRSI','RI & WRI','ARDSP','ADDL.SP.AR'],
+    'ERSTWHILE_CIVIL': ['PC & WPC','HC & WHC','ASI & WASI'],
+    'ERSTWHILE_AR': ['ARPC & ARWPC','ARHC & ARWHC','ARSI & WARSI']
 };
 
 const rankGroups = {
@@ -43,6 +45,8 @@ let depSanctionedData = {};
 let editingId = null;
 let knCurrentType = '';
 let knCurrentRank = '';
+let ewCurrentType = '';
+let ewCurrentRank = '';
 let depCurrentUnit = '';
 let authToken = localStorage.getItem('authToken') || null;
 let userRole = localStorage.getItem('userRole') || null;

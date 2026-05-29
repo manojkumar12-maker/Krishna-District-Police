@@ -73,24 +73,51 @@
             <div class="card">
                 <h2>Erstwhile Krishna District</h2>
                 <div class="sub-tiles">
-                    <div class="sub-tile" onclick="showSubData('erstwhile','CIVIL',this)">
+                    <div class="sub-tile" onclick="showEWRanks('CIVIL',this)">
                         CIVIL Strength
                         <div class="sub-count" id="erstwhileCivilCount">0</div>
                     </div>
-                    <div class="sub-tile" onclick="showSubData('erstwhile','AR',this)">
+                    <div class="sub-tile" onclick="showEWRanks('AR',this)">
                         AR Strength
                         <div class="sub-count" id="erstwhileArCount">0</div>
                     </div>
                 </div>
-                <div class="detail-section" id="erstwhileDetail">
-                    <div class="loading-state" id="erstwhileLoading">Loading...</div>
-                    <table id="erstwhileTable" style="display:none;">
+                <div class="detail-section" id="ewRankSection">
+                    <div class="rank-tiles" id="ewRankTiles"></div>
+                </div>
+                <div class="detail-section" id="ewStrengthSection">
+                    <div class="strength-card">
+                        <h3 id="ewStrengthTitle"></h3>
+                        <div class="strength-row">
+                            <div class="strength-item">
+                                <div class="strength-label">Sanctioned Strength</div>
+                                <div class="strength-value" id="ewSanctioned">0</div>
+                                <input type="number" id="ewSanctionedInput" class="sanctioned-input" style="display:none" min="0" onchange="saveSanctionedEW()">
+                            </div>
+                            <div class="strength-item">
+                                <div class="strength-label">Actual Strength</div>
+                                <div class="strength-value" id="ewActual">0</div>
+                            </div>
+                            <div class="strength-item">
+                                <div class="strength-label">Vacancies</div>
+                                <div class="strength-value vacancy" id="ewVacancies">0</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="strength-actions">
+                        <button class="btn btn-primary" onclick="showEWPersonnel()">More Details</button>
+                        <button class="btn btn-secondary" onclick="exportEWExcel()">Export to Excel</button>
+                        <button class="btn btn-secondary" onclick="exportEWPDF()">Export to PDF</button>
+                    </div>
+                </div>
+                <div class="detail-section" id="ewPersonnelSection">
+                    <table id="ewPersonnelTable" style="display:none;">
                         <thead>
-                            <tr><th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Present Working</th><th>Status</th><th>Actions</th></tr>
+                            <tr><th>Sl.No</th><th>Name</th><th>Genl.No</th><th>Present Working</th><th>Status</th><th>Actions</th></tr>
                         </thead>
-                        <tbody id="erstwhileTableBody"></tbody>
+                        <tbody id="ewPersonnelBody"></tbody>
                     </table>
-                    <div id="erstwhileEmpty" class="empty-state" style="display:none;">No records found.</div>
+                    <div id="ewPersonnelEmpty" class="empty-state">No personnel found for this rank.</div>
                 </div>
             </div>
         </div>

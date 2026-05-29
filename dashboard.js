@@ -57,6 +57,9 @@ function updateData() {
     if (knCurrentRank && document.getElementById('knStrengthSection')?.classList.contains('visible')) {
         refreshKNStrength();
     }
+    if (ewCurrentRank && document.getElementById('ewStrengthSection')?.classList.contains('visible')) {
+        refreshEWStrength();
+    }
 }
 
 function updateUIForRole() {
@@ -249,4 +252,104 @@ function showKNPersonnel() {
         }).join('');
     }
     document.getElementById('knPersonnelSection').classList.add('visible');
+}
+
+function showEWRanks(type, el) {
+    ewCurrentType = type;
+    const parent = el.parentElement;
+    parent.querySelectorAll('.sub-tile').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+
+    const key = 'ERSTWHILE_' + type;
+    const ranks = displayRanksMap[key] || [];
+
+    document.getElementById('ewRankTiles').innerHTML = ranks.map(r => 
+        `<div class="rank-tile" onclick="selectEWRank('${r}', this)">${r}</div>`
+    ).join('');
+
+    document.getElementById('ewRankSection').classList.add('visible');
+    document.getElementById('ewStrengthSection').classList.remove('visible');
+    document.getElementById('ewPersonnelSection').classList.remove('visible');
+}
+
+function selectEWRank(rank, el) {
+    ewCurrentRank = rank;
+    const parent = el.parentElement;
+    parent.querySelectorAll('.rank-tile').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+
+    refreshEWStrength();
+    document.getElementById('ewStrengthSection').classList.add('visible');
+    document.getElementById('ewPersonnelSection').classList.remove('visible');
+}
+
+function refreshEWStrength() {
+    const groupFilter = rankGroups[ewCurrentRank] || [ewCurrentRank];
+    const actualCount = allPersonnel.filter(p => 
+        p.district === 'ERSTWHILE' && 
+        p.personnel_type === ewCurrentType && 
+        groupFilter.includes(p.rank) && 
+        !p.is_on_deployment
+    ).length;
+
+    const sancKey = 'ERSTWHILE_' + ewCurrentType + '_' + ewCurrentRank;
+    const sanctionedCount = sanctionedData[sancKey] || 0;
+
+    document.getElementById('ewStrengthTitle').textContent = ewCurrentRank + ' Strength Particulars';
+    document.getElementById('ewActual').textContent = actualCount;
+    document.getElementById('ewSanctioned').textContent = sanctionedCount;
+    const sancInput = document.getElementById('ewSanctionedInput');
+    sancInput.value = sanctionedCount;
+    sancInput.style.display = userRole === 'ADMIN' ? 'inline-block' : 'none';
+    updateVacancyDisplay(sanctionedCount, actualCount, 'ewVacancies');
+}
+
+async function saveSanctionedEW() {
+    const sancKey = 'ERSTWHILE_' + ewCurrentType + '_' + ewCurrentRank;
+    const val = parseInt(document.getElementById('ewSanctionedInput').value) || 0;
+
+    try {
+        await updateSanctionedStrength('ERSTWHILE', ewCurrentType, ewCurrentRank, val);
+        sanctionedData[sancKey] = val;
+        refreshEWStrength();
+        showToast('Sanctioned strength updated', 'success');
+    } catch (e) {
+        showToast('Error updating sanctioned strength', 'error');
+    }
+}
+
+function showEWPersonnel() {
+    const groupFilter = rankGroups[ewCurrentRank] || [ewCurrentRank];
+    const data = allPersonnel.filter(p => 
+        p.district === 'ERSTWHILE' && 
+        p.personnel_type === ewCurrentType && 
+        groupFilter.includes(p.rank) && 
+        !p.is_on_deployment
+    );
+
+    if (data.length === 0) {
+        document.getElementById('ewPersonnelTable').style.display = 'none';
+        document.getElementById('ewPersonnelEmpty').style.display = 'block';
+    } else {
+        document.getElementById('ewPersonnelTable').style.display = 'table';
+        document.getElementById('ewPersonnelEmpty').style.display = 'none';
+        document.getElementById('ewPersonnelBody').innerHTML = data.map((p, i) => {
+            let actionCell = '';
+            if (userRole === 'ADMIN') {
+                actionCell = `<button class="action-btn btn-primary" onclick="editPersonnel('${p.id}')">Edit</button>
+                              <button class="action-btn btn-danger" onclick="deletePersonnelRecord('${p.id}')">Del</button>`;
+            }
+            return `
+            <tr>
+                <td>${i+1}</td>
+                <td>${p.name}</td>
+                <td>${p.genl_no}</td>
+                <td>${p.present_working || '-'}</td>
+                <td style="color:${p.status === 'Present' ? 'green' : 'red'}">${p.status}</td>
+                <td>${actionCell}</td>
+            </tr>
+        `;
+        }).join('');
+    }
+    document.getElementById('ewPersonnelSection').classList.add('visible');
 }
