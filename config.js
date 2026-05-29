@@ -5,8 +5,8 @@ const API_BASE_URL = 'https://krishna-district-police.onrender.com/api';
 const rankMap = {
     'NEW_CIVIL': ['PC','WPC','HC','WHC','ASI','WASI','SI','WSI','CI','WCI','DSP','ADDL.SP'],
     'NEW_AR': ['ARPC','ARWPC','ARHC','ARWHC','ARSI','WARSI','RSI','WRSI','RI','WRI','ARDSP','ADDL.SP.AR'],
-    'ERSTWHILE_CIVIL': ['PC','WPC','HC','WHC','ASI','WASI'],
-    'ERSTWHILE_AR': ['ARPC','ARWPC','ARHC','ARWHC','ARSI','WARSI'],
+    'ERSTWHILE_CIVIL': ['PC','WPC','HC','WHC','ASI','WASI','SI','WSI','CI','WCI','DSP','ADDL.SP'],
+    'ERSTWHILE_AR': ['ARPC','ARWPC','ARHC','ARWHC','ARSI','WARSI','RSI','WRSI','RI','WRI','ARDSP','ADDL.SP.AR'],
     'DEP_CIVIL': ['PC','WPC','HC','WHC','ASI','WASI'],
     'DEP_AR': ['ARPC','ARWPC','ARHC','ARWHC']
 };
@@ -14,8 +14,8 @@ const rankMap = {
 const displayRanksMap = {
     'NEW_CIVIL': ['PC & WPC','HC & WHC','ASI & WASI','SI & WSI','CI & WCI','DSP','ADDL.SP'],
     'NEW_AR': ['ARPC & ARWPC','ARHC & ARWHC','ARSI & WARSI','RSI & WRSI','RI & WRI','ARDSP','ADDL.SP.AR'],
-    'ERSTWHILE_CIVIL': ['PC & WPC','HC & WHC','ASI & WASI'],
-    'ERSTWHILE_AR': ['ARPC & ARWPC','ARHC & ARWHC','ARSI & WARSI']
+    'ERSTWHILE_CIVIL': ['PC & WPC','HC & WHC','ASI & WASI','SI & WSI','CI & WCI','DSP','ADDL.SP'],
+    'ERSTWHILE_AR': ['ARPC & ARWPC','ARHC & ARWHC','ARSI & WARSI','RSI & WRSI','RI & WRI','ARDSP','ADDL.SP.AR']
 };
 
 const rankGroups = {
