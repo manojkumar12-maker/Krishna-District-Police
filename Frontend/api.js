@@ -37,13 +37,6 @@ async function loginUser(email, password) {
     });
 }
 
-async function registerUser(email, password) {
-    return apiRequest('/auth/register', {
-        method: 'POST',
-        body: { email, password }
-    });
-}
-
 // Personnel API
 async function getAllPersonnel() {
     return apiRequest('/personnel');
@@ -84,10 +77,10 @@ async function getSanctionedStrength() {
     return apiRequest('/sanctioned-strength');
 }
 
-async function updateSanctionedStrength(district, type, rank, count) {
+async function updateSanctionedStrength(district, personnelType, rank, count) {
     return apiRequest('/sanctioned-strength', {
         method: 'POST',
-        body: { district, personnel_type: type, rank, sanctioned_count: count }
+        body: { district, personnel_type: personnelType, rank, sanctioned_count: count }
     });
 }
 
@@ -96,9 +89,9 @@ async function getDeputationStrength() {
     return apiRequest('/deputation-strength');
 }
 
-async function updateDeputationStrength(unit, rank, count) {
+async function updateDeputationStrength(unitName, rank, count) {
     return apiRequest('/deputation-strength', {
         method: 'POST',
-        body: { unit_name: unit, rank, sanctioned_count: count }
+        body: { unit_name: unitName, rank, sanctioned_count: count }
     });
 }

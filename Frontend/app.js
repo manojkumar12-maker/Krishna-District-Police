@@ -17,7 +17,6 @@ function showToast(message, type = 'info') {
 document.addEventListener('DOMContentLoaded', function() {
     // Attach event listeners
     document.getElementById('loginBtn').addEventListener('click', handleAuth);
-    document.getElementById('authToggleLink').addEventListener('click', toggleAuthMode);
 
     // Check if user is already logged in
     checkAuth();

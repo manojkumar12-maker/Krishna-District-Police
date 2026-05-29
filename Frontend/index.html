@@ -19,16 +19,8 @@
                 <label>Password</label>
                 <input type="password" id="loginPassword" placeholder="Enter password">
             </div>
-            <div class="form-group" id="registerFields" style="display:none;">
-                <label>Confirm Password</label>
-                <input type="password" id="loginConfirmPassword" placeholder="Confirm password">
-            </div>
             <button class="login-btn" id="loginBtn">Login</button>
             <div class="login-error" id="loginError"></div>
-            <div class="register-link">
-                <span id="authToggleText">Don't have an account?</span>
-                <a id="authToggleLink">Register</a>
-            </div>
         </div>
     </div>
 
@@ -48,109 +40,218 @@
     <div class="container" id="mainContainer">
         <div class="nav-buttons">
             <button class="nav-btn" onclick="showPage('dashboard')">Home</button>
-            <button class="nav-btn" onclick="showPage('personnel')">Personnel</button>
-            <button class="nav-btn" onclick="showPage('deputation')">Deputation</button>
+            <button class="nav-btn" onclick="openAddModal()">+ Add Personnel</button>
         </div>
 
         <!-- Dashboard Page -->
-        <div id="dashboardPage" class="page-content">
-            <h2>Dashboard</h2>
-            <div class="dashboard-stats">
-                <div class="stat-card">
-                    <h3>Total Personnel</h3>
-                    <p id="totalPersonnel">0</p>
-                </div>
-                <div class="stat-card">
-                    <h3>Sanctioned Strength</h3>
-                    <p id="sanctionedCount">0</p>
-                </div>
-                <div class="stat-card">
-                    <h3>Deputation Units</h3>
-                    <p id="deputationCount">0</p>
+        <div id="dashboard" class="page active">
+            <div class="card">
+                <h2>Dashboard</h2>
+                <div class="district-tiles">
+                    <div class="district-tile" onclick="showPage('erstwhile')">
+                        <h3>Erstwhile Krishna District</h3>
+                        <div class="tile-count" id="erstwhileCount">0</div>
+                        <div class="tile-label">Personnel Records</div>
+                    </div>
+                    <div class="district-tile" onclick="showPage('krishnaNew')">
+                        <h3>Krishna District (New)</h3>
+                        <div class="tile-count" id="krishnaNewCount">0</div>
+                        <div class="tile-label">Personnel Records</div>
+                    </div>
+                    <div class="district-tile" onclick="showPage('deputation')">
+                        <h3>Deputation</h3>
+                        <div class="tile-count" id="deputationCount">0</div>
+                        <div class="tile-label">Personnel on Deputation</div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Personnel Page -->
-        <div id="personnelPage" class="page-content" style="display:none;">
-            <h2>Personnel Management</h2>
-            <div class="form-section">
-                <h3>Add New Personnel</h3>
-                <div class="form-group">
-                    <label>Name</label>
-                    <input type="text" id="personnelName" placeholder="Enter name">
+        <!-- Erstwhile Page -->
+        <div id="erstwhile" class="page">
+            <button class="back-btn" onclick="showPage('dashboard')">Back to Dashboard</button>
+            <div class="card">
+                <h2>Erstwhile Krishna District</h2>
+                <div class="sub-tiles">
+                    <div class="sub-tile" onclick="showSubData('erstwhile','CIVIL',this)">
+                        CIVIL Strength
+                        <div class="sub-count" id="erstwhileCivilCount">0</div>
+                    </div>
+                    <div class="sub-tile" onclick="showSubData('erstwhile','AR',this)">
+                        AR Strength
+                        <div class="sub-count" id="erstwhileArCount">0</div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Rank</label>
-                    <input type="text" id="personnelRank" placeholder="Enter rank">
+                <div class="detail-section" id="erstwhileDetail">
+                    <div class="loading-state" id="erstwhileLoading">Loading...</div>
+                    <table id="erstwhileTable" style="display:none;">
+                        <thead>
+                            <tr><th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Present Working</th><th>Status</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody id="erstwhileTableBody"></tbody>
+                    </table>
+                    <div id="erstwhileEmpty" class="empty-state" style="display:none;">No records found.</div>
                 </div>
-                <div class="form-group">
-                    <label>Type (PC/WPC)</label>
-                    <select id="personnelType">
-                        <option>PC</option>
-                        <option>WPC</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>District</label>
-                    <input type="text" id="personnelDistrict" placeholder="Enter district">
-                </div>
-                <button class="btn btn-primary" onclick="addPersonnel()">Add Personnel</button>
             </div>
-            <div class="data-section">
-                <h3>Personnel List</h3>
-                <table id="personnelTable" class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Rank</th>
-                            <th>Type</th>
-                            <th>District</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+        </div>
+
+        <!-- Krishna New Page -->
+        <div id="krishnaNew" class="page">
+            <button class="back-btn" onclick="showPage('dashboard')">Back to Dashboard</button>
+            <div class="card">
+                <h2>Krishna District (New)</h2>
+                <div class="sub-tiles">
+                    <div class="sub-tile" onclick="showKNRanks('CIVIL',this)">
+                        CIVIL Strength
+                        <div class="sub-count" id="krishnaNewCivilCount">0</div>
+                    </div>
+                    <div class="sub-tile" onclick="showKNRanks('AR',this)">
+                        AR Strength
+                        <div class="sub-count" id="krishnaNewArCount">0</div>
+                    </div>
+                </div>
+                <div class="detail-section" id="knRankSection">
+                    <div class="rank-tiles" id="knRankTiles"></div>
+                </div>
+                <div id="knPSLink" class="ps-link" style="display:none;">
+                    <div class="sub-tile" onclick="showPage('policeStation')" style="max-width:280px;">Police Station Data</div>
+                </div>
+                <div class="detail-section" id="knStrengthSection">
+                    <div class="strength-card">
+                        <h3 id="knStrengthTitle"></h3>
+                        <div class="strength-row">
+                            <div class="strength-item">
+                                <div class="strength-label">Sanctioned Strength</div>
+                                <div class="strength-value" id="knSanctioned">0</div>
+                                <input type="number" id="knSanctionedInput" class="sanctioned-input" style="display:none" min="0" onchange="saveSanctionedKN()">
+                            </div>
+                            <div class="strength-item">
+                                <div class="strength-label">Actual Strength</div>
+                                <div class="strength-value" id="knActual">0</div>
+                            </div>
+                            <div class="strength-item">
+                                <div class="strength-label">Vacancies</div>
+                                <div class="strength-value vacancy" id="knVacancies">0</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="strength-actions">
+                        <button class="btn btn-primary" onclick="showKNPersonnel()">More Details</button>
+                        <button class="btn btn-secondary" onclick="exportKNExcel()">Export to Excel</button>
+                        <button class="btn btn-secondary" onclick="exportKNPDF()">Export to PDF</button>
+                    </div>
+                </div>
+                <div class="detail-section" id="knPersonnelSection">
+                    <table id="knPersonnelTable" style="display:none;">
+                        <thead>
+                            <tr><th>Sl.No</th><th>Name</th><th>Genl.No</th><th>Present Working</th><th>Status</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody id="knPersonnelBody"></tbody>
+                    </table>
+                    <div id="knPersonnelEmpty" class="empty-state">No personnel found for this rank.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Police Station Page -->
+        <div id="policeStation" class="page">
+            <button class="back-btn" onclick="showPage('krishnaNew')">Back to Krishna District (New)</button>
+            <div class="card">
+                <h2>Police Station Data</h2>
+                <div class="empty-state">Police Station data management coming soon.</div>
             </div>
         </div>
 
         <!-- Deputation Page -->
-        <div id="deputationPage" class="page-content" style="display:none;">
-            <h2>Deputation Management</h2>
-            <div class="form-section">
-                <h3>Add Deputation</h3>
-                <div class="form-group">
-                    <label>Unit Name</label>
-                    <input type="text" id="deputationUnit" placeholder="Enter unit name">
+        <div id="deputation" class="page">
+            <button class="back-btn" onclick="showPage('dashboard')">Back to Dashboard</button>
+            <div class="card">
+                <h2>Deputation</h2>
+                <div class="dep-consolidated" id="depConsolidatedSection">
+                    <h3>Consolidated Statement - All Deputation Units</h3>
+                    <table class="dep-consol-table">
+                        <thead>
+                            <tr><th>Rank</th><th>Sanctioned</th><th>Actual</th><th>Vacancies</th></tr>
+                        </thead>
+                        <tbody id="depConsolidatedBody"></tbody>
+                    </table>
                 </div>
-                <div class="form-group">
-                    <label>Personnel Name</label>
-                    <input type="text" id="deputationPersonnel" placeholder="Enter personnel name">
+                <h3 style="color: var(--primary); margin-bottom: 15px;">Select Unit</h3>
+                <div class="sub-tiles dep-grid" id="depSubTiles">
+                    <div class="sub-tile" onclick="showDepUnit('GRP., Vijayawada',this)">GRP., Vijayawada</div>
+                    <div class="sub-tile" onclick="showDepUnit('Intelligence Dept, VJA.',this)">Intelligence Dept, VJA.</div>
+                    <div class="sub-tile" onclick="showDepUnit('I.S.W.',this)">I.S.W.</div>
+                    <div class="sub-tile" onclick="showDepUnit('I.S.W. (CMSG)',this)">I.S.W. (CMSG)</div>
+                    <div class="sub-tile" onclick="showDepUnit('R.I.O., SPL. Intelligence Cell',this)">R.I.O., SPL. Intelligence Cell</div>
+                    <div class="sub-tile" onclick="showDepUnit('C.I.D. A.P., Mangalagiri',this)">C.I.D. A.P., Mangalagiri</div>
+                    <div class="sub-tile" onclick="showDepUnit('Vigilance and Enforcement',this)">Vigilance and Enforcement</div>
+                    <div class="sub-tile" onclick="showDepUnit('A.P., Transco',this)">A.P., Transco</div>
+                    <div class="sub-tile" onclick="showDepUnit('A.P., Genco',this)">A.P., Genco</div>
+                    <div class="sub-tile" onclick="showDepUnit('A.C.B., Vijayawada',this)">A.C.B., Vijayawada</div>
+                    <div class="sub-tile" onclick="showDepUnit('Grey Hounds',this)">Grey Hounds</div>
+                    <div class="sub-tile" onclick="showDepUnit('Octopus',this)">Octopus</div>
+                    <div class="sub-tile" onclick="showDepUnit('APPA., Hyderabad',this)">APPA., Hyderabad</div>
+                    <div class="sub-tile" onclick="showDepUnit('Police Computer Service',this)">Police Computer Service</div>
+                    <div class="sub-tile" onclick="showDepUnit('CBI. Visakhapatnam',this)">CBI. Visakhapatnam</div>
+                    <div class="sub-tile" onclick="showDepUnit('Drugs Control Administration',this)">Drugs Control Administration</div>
+                    <div class="sub-tile" onclick="showDepUnit('Eagle',this)">Eagle</div>
+                    <div class="sub-tile" onclick="showDepUnit('CSPS, Visakhapatnam',this)">CSPS, Visakhapatnam</div>
+                    <div class="sub-tile" onclick="showDepUnit('EOW-II, Mangalagiri',this)">EOW-II, Mangalagiri</div>
                 </div>
-                <div class="form-group">
-                    <label>Duration</label>
-                    <input type="text" id="deputationDuration" placeholder="e.g., 2 years">
+                <div class="detail-section" id="deputationDetail">
+                    <div id="depUnitStrength"></div>
+                    <div style="margin-top:20px;">
+                        <h4 style="color: var(--primary); margin-bottom: 10px;">Personnel Details</h4>
+                        <table id="deputationTable" style="display:none;">
+                            <thead>
+                                <tr><th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Type</th><th>District</th><th>Status</th><th>Actions</th></tr>
+                            </thead>
+                            <tbody id="deputationTableBody"></tbody>
+                        </table>
+                        <div id="deputationEmpty" class="empty-state">No personnel in this unit.</div>
+                    </div>
                 </div>
-                <button class="btn btn-primary" onclick="addDeputation()">Add Deputation</button>
-            </div>
-            <div class="data-section">
-                <h3>Deputation List</h3>
-                <table id="deputationTable" class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Unit</th>
-                            <th>Personnel</th>
-                            <th>Duration</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
             </div>
         </div>
     </div>
 
-    <!-- Toast Notification -->
+    <!-- Personnel Modal -->
+    <div class="modal-overlay" id="personnelModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modalTitle">Add Personnel</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="personnelId">
+                <div class="form-grid">
+                    <div class="form-group"><label>Name *</label><input type="text" id="name" required></div>
+                    <div class="form-group"><label>Rank *</label><select id="rank" required><option value="">Select</option></select></div>
+                    <div class="form-group"><label>Genl.No. *</label><input type="text" id="genlNo" required></div>
+                    <div class="form-group"><label>Type *</label><select id="personnelType" onchange="updateRankOptions()"><option value="CIVIL">Civil</option><option value="AR">AR</option></select></div>
+                    <div class="form-group"><label>District *</label><select id="district" onchange="updateRankOptions()"><option value="ERSTWHILE">Erstwhile Krishna District</option><option value="NEW">Krishna District (New)</option><option value="DEPUTATION">Deputation</option></select></div>
+                    <div class="form-group"><label>Previous Station</label><textarea id="previousStation" rows="2" placeholder="Enter previous stations, one per line"></textarea></div>
+                    <div class="form-group"><label>Status</label><select id="status"><option value="Present">Present</option><option value="Deserter">Deserter</option></select></div>
+                    <div class="form-group"><label>Date of Birth</label><input type="date" id="dateOfBirth"></div>
+                    <div class="form-group"><label>Caste</label><input type="text" id="caste"></div>
+                    <div class="form-group"><label>Education Qualification</label><input type="text" id="education"></div>
+                    <div class="form-group" id="promotionGroup"><label>Date of Promotion</label><input type="date" id="dateOfPromotion"></div>
+                    <div class="form-group" id="presentWorkingGroup"><label>Present Working</label><input type="text" id="presentWorking"></div>
+                    <div class="form-group"><label>On Deputation</label><select id="isOnDeputation" onchange="toggleDeploymentFields()"><option value="false">No</option><option value="true">Yes</option></select></div>
+                    <div class="form-group" id="deploymentUnitGroup"><label>Deployment Unit</label><select id="deploymentUnit"><option value="">Select Unit</option><option>GRP., Vijayawada</option><option>Intelligence Dept, VJA.</option><option>I.S.W.</option><option>I.S.W. (CMSG)</option><option>R.I.O., SPL. Intelligence Cell</option><option>C.I.D. A.P., Mangalagiri</option><option>Vigilance and Enforcement</option><option>A.P., Transco</option><option>A.P., Genco</option><option>A.C.B., Vijayawada</option><option>Grey Hounds</option><option>Octopus</option><option>APPA., Hyderabad</option><option>Police Computer Service</option><option>CBI. Visakhapatnam</option><option>Drugs Control Administration</option><option>Eagle</option><option>CSPS, Visakhapatnam</option><option>EOW-II, Mangalagiri</option></select></div>
+                    <div class="form-group" id="deploymentDateGroup"><label>Date of Deployment</label><input type="date" id="dateOfDeployment"></div>
+                    <div class="form-group"><label>Punishments</label><textarea id="punishments" rows="2" placeholder="Enter any punishments"></textarea></div>
+                    <div class="form-group"><label>Phone Number</label><input type="tel" id="phoneNumber"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="savePersonnel()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
     <div class="toast" id="toast"></div>
 
     <!-- Scripts -->

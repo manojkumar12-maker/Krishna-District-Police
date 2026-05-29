@@ -8,7 +8,7 @@ This is the backend API for the Krishna District Police PC/WPC Data Management S
 ### 1. Create a new Web Service on Render
 - Go to [render.com](https://render.com)
 - Click "New" → "Web Service"
-- Connect your GitHub repository
+- Connect your GitHub repository or use "Deploy from Git"
 
 ### 2. Configure the service
 - **Name**: `krishna-police-api` (or your preferred name)
@@ -18,7 +18,7 @@ This is the backend API for the Krishna District Police PC/WPC Data Management S
 - **Plan**: Free
 
 ### 3. Add Environment Variables
-In the Render dashboard:
+In the Render dashboard, go to Environment and add:
 ```
 JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
 NODE_ENV=production
@@ -26,6 +26,13 @@ NODE_ENV=production
 
 ### 4. Deploy
 Click "Create Web Service" and wait for deployment.
+
+### 5. Update Frontend
+Once deployed, copy your Render URL (e.g., `https://krishna-police-api.onrender.com`)
+and update the `API_BASE_URL` in `frontend/config.js`:
+```javascript
+const API_BASE_URL = 'https://krishna-police-api.onrender.com/api';
+```
 
 ## API Endpoints
 

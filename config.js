@@ -1,5 +1,7 @@
+// Backend API URL - Update this with your Render deployment URL
 const API_BASE_URL = 'https://krishna-district-police.onrender.com/api';
 
+// Rank mappings
 const rankMap = {
     'NEW_CIVIL': ['PC','WPC','HC','WHC','ASI','WASI','SI','WSI','CI','WCI','DSP','ADDL.SP'],
     'NEW_AR': ['ARPC','ARWPC','ARHC','ARWHC','ARSI','WARSI','RSI','WRSI','RI','WRI','ARDSP','ADDL.SP.AR'],
@@ -8,6 +10,22 @@ const rankMap = {
     'DEP_CIVIL': ['PC','WPC','HC','WHC','ASI','WASI'],
     'DEP_AR': ['ARPC','ARWPC','ARHC','ARWHC']
 };
+
+const displayRanksMap = {
+    'NEW_CIVIL': ['PC & WPC','HC & WHC','ASI & WASI','SI & WSI','CI & WCI','DSP','ADDL.SP'],
+    'NEW_AR': ['ARPC & ARWPC','ARHC & ARWHC','ARSI & WARSI','RSI & WRSI','RI & WRI','ARDSP','ADDL.SP.AR']
+};
+
+const rankGroups = {
+    'PC & WPC': ['PC', 'WPC'], 'HC & WHC': ['HC', 'WHC'], 'ASI & WASI': ['ASI', 'WASI'],
+    'SI & WSI': ['SI', 'WSI'], 'CI & WCI': ['CI', 'WCI'], 'DSP': ['DSP'],
+    'ADDL.SP': ['ADDL.SP'], 'ARPC & ARWPC': ['ARPC', 'ARWPC'],
+    'ARHC & ARWHC': ['ARHC', 'ARWHC'], 'ARSI & WARSI': ['ARSI', 'WARSI'],
+    'RSI & WRSI': ['RSI', 'WRSI'], 'RI & WRI': ['RI', 'WRI'],
+    'ARDSP': ['ARDSP'], 'ADDL.SP.AR': ['ADDL.SP.AR']
+};
+
+const depRanks = ['PC', 'HC', 'ASI', 'ARPC', 'ARHC'];
 
 const depUnits = [
     'GRP., Vijayawada', 'Intelligence Dept, VJA.', 'I.S.W.', 'I.S.W. (CMSG)',
@@ -18,11 +36,13 @@ const depUnits = [
     'Eagle', 'CSPS, Visakhapatnam', 'EOW-II, Mangalagiri'
 ];
 
-const depRanks = ['PC', 'HC', 'ASI', 'ARPC', 'ARHC'];
-
+// Global state
 let allPersonnel = [];
 let sanctionedData = {};
 let depSanctionedData = {};
 let editingId = null;
-let authMode = 'login';
+let knCurrentType = '';
+let knCurrentRank = '';
+let depCurrentUnit = '';
 let authToken = localStorage.getItem('authToken') || null;
+let userRole = localStorage.getItem('userRole') || null;

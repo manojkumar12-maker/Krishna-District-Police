@@ -73,16 +73,17 @@ function showDepUnit(unitName, el) {
                     <div class="dep-sr-value vac">${vac > 0 ? vac : vac < 0 ? '+' + Math.abs(vac) + ' (Excess)' : '0'}</div>
                 </div>
             </div>
-            <div style="margin-top:8px;">
+            ${userRole === 'ADMIN' ? `<div style="margin-top:8px;">
                 <label style="font-size:11px; color:#666;">Update Sanctioned:</label>
                 <input type="number" class="dep-sranctioned-input" value="${sanctioned}" min="0" onchange="updateDepSanctioned('${unitName}', '${rank}', this.value)">
-            </div>
+            </div>` : ''}
         `;
         strengthGrid.appendChild(item);
     });
 
     depUnitStrength.appendChild(strengthGrid);
 
+    // Personnel details section
     const personnelDetails = document.createElement('div');
     personnelDetails.style.marginTop = '20px';
     personnelDetails.innerHTML = `
@@ -96,6 +97,7 @@ function showDepUnit(unitName, el) {
         <div id="deputationEmpty" class="empty-state">No personnel in this unit.</div>
     `;
     depUnitStrength.appendChild(personnelDetails);
+
     loadDepUnitPersonnel();
 }
 
@@ -103,14 +105,22 @@ function loadDepUnitPersonnel() {
     const depUnitStrength = document.getElementById('depUnitStrength');
     const personnelTable = depUnitStrength.querySelector('#deputationTable');
     const personnelEmpty = depUnitStrength.querySelector('#deputationEmpty');
+
     const data = allPersonnel.filter(p => p.is_on_deployment && p.deployment_unit === depCurrentUnit);
+
     if (data.length === 0) {
         personnelTable.style.display = 'none';
         personnelEmpty.style.display = 'block';
     } else {
         personnelTable.style.display = 'table';
         personnelEmpty.style.display = 'none';
-        depUnitStrength.querySelector('#deputationTableBody').innerHTML = data.map((p, i) => `
+        depUnitStrength.querySelector('#deputationTableBody').innerHTML = data.map((p, i) => {
+            let actionCell = '';
+            if (userRole === 'ADMIN') {
+                actionCell = `<button class="action-btn btn-primary" onclick="editPersonnel('${p.id}')">Edit</button>
+                              <button class="action-btn btn-danger" onclick="deletePersonnelRecord('${p.id}')">Del</button>`;
+            }
+            return `
             <tr>
                 <td>${i+1}</td>
                 <td>${p.name}</td>
@@ -119,25 +129,28 @@ function loadDepUnitPersonnel() {
                 <td>${p.personnel_type}</td>
                 <td>${p.district}</td>
                 <td style="color:${p.status === 'Present' ? 'green' : 'red'}">${p.status}</td>
-                <td>
-                    <button class="action-btn btn-primary" onclick="editPersonnel('${p.id}')">Edit</button>
-                    <button class="action-btn btn-danger" onclick="deletePersonnelRecord('${p.id}')">Del</button>
-                </td>
+                <td>${actionCell}</td>
             </tr>
-        `).join('');
+        `;
+        }).join('');
     }
 }
 
 async function updateDepSanctioned(unitName, rank, value) {
     const val = parseInt(value) || 0;
+
     try {
         await updateDeputationStrength(unitName, rank, val);
+
         if (!depSanctionedData[unitName]) depSanctionedData[unitName] = {};
         depSanctionedData[unitName][rank] = val;
+
+        // Refresh the display
         const activeTile = document.querySelector('.sub-tile.active');
         if (activeTile) {
             showDepUnit(unitName, activeTile);
         }
+
         updateDepConsolidated();
         showToast('Sanctioned strength updated', 'success');
     } catch (e) {

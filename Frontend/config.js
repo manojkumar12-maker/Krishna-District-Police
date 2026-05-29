@@ -1,5 +1,5 @@
 // Backend API URL - Update this with your Render deployment URL
-const API_BASE_URL = 'https://your-render-app.onrender.com/api';
+const API_BASE_URL = 'https://krishna-district-police.onrender.com/api';
 
 // Rank mappings
 const rankMap = {
@@ -44,5 +44,5 @@ let editingId = null;
 let knCurrentType = '';
 let knCurrentRank = '';
 let depCurrentUnit = '';
-let authMode = 'login';
 let authToken = localStorage.getItem('authToken') || null;
+let userRole = localStorage.getItem('userRole') || null;
