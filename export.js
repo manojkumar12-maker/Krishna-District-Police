@@ -6,8 +6,8 @@ function exportCSV() {
         return;
     }
 
-    let csv = 'Sl.No,Name,Rank,Genl.No,Type,District,Previous Station,Status,Date of Birth,Caste,Education,Date of Promotion,Present Working,On Deployment,Deployment Unit,Date of Deployment,Punishments,Phone Number
-';
+    let csv = `Sl.No,Name,Rank,Genl.No,Type,District,Previous Station,Status,Date of Birth,Caste,Education,Date of Promotion,Present Working,On Deployment,Deployment Unit,Date of Deployment,Punishments,Phone Number
+`;
 
     allPersonnel.forEach((p, i) => {
         csv += `${i+1},"${p.name}","${p.rank}","${p.genl_no}","${p.personnel_type}","${p.district}","${p.previous_station || ''}","${p.status}","${p.date_of_birth || ''}","${p.caste || ''}","${p.education || ''}","${p.date_of_promotion || ''}","${p.present_working || ''}","${p.is_on_deployment ? 'Yes' : 'No'}","${p.deployment_unit || ''}","${p.date_of_deployment || ''}","${p.punishments || ''}","${p.phone_number || ''}"
@@ -39,8 +39,8 @@ Actual Strength,${actualCount}
 Vacancies,${vac}
 
 `;
-    csv += 'Sl.No,Name,Genl.No,Present Working,Status
-';
+    csv += `Sl.No,Name,Genl.No,Present Working,Status
+`;
 
     data.forEach((p, i) => { 
         csv += `${i+1},"${p.name}","${p.genl_no}","${p.present_working || ''}","${p.status}"
@@ -124,8 +124,8 @@ Actual Strength,${actualCount}
 Vacancies,${vac}
 
 `;
-    csv += 'Sl.No,Name,Genl.No,Present Working,Status
-';
+    csv += `Sl.No,Name,Genl.No,Present Working,Status
+`;
 
     data.forEach((p, i) => { 
         csv += `${i+1},"${p.name}","${p.genl_no}","${p.present_working || ''}","${p.status}"
