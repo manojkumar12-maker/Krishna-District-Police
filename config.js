@@ -29,6 +29,32 @@ const rankGroups = {
 
 const depRanks = ['PC', 'HC', 'ASI', 'ARPC', 'ARHC'];
 
+// Police Station hierarchy data
+const psHierarchy = {
+    'BANDAR SUB-DIVISION': [
+        { name: 'BANDAR CIRCLE', isUPS: false, stations: ['Machilipatnam Town PS', 'Machilipatnam Rural PS', 'Pedana PS', 'Bantumilli PS'] },
+        { name: 'BANTUMILLI CIRCLE (UPS)', isUPS: true, stations: [] },
+    ],
+    'AVANIGADDA SUB-DIVISION': [
+        { name: 'AVANIGADDA CIRCLE', isUPS: false, stations: ['Avanigadda PS', 'Nagayalanka PS', 'Koduru PS', 'Movva PS', 'Challapalli PS'] },
+        { name: 'DIVI CIRCLE (UPS)', isUPS: true, stations: [] },
+    ],
+    'GUDIVADA SUB-DIVISION': [
+        { name: 'GUDIVADA CIRCLE', isUPS: false, stations: ['Gudivada Town PS', 'Gudivada Rural PS', 'Nandivada PS'] },
+        { name: 'KAIKALURU CIRCLE', isUPS: false, stations: ['Kaikaluru PS', 'Mudinepalli PS'] },
+    ],
+    'GANNAVARAM SUB-DIVISION': [
+        { name: 'GANNAVARAM CIRCLE', isUPS: false, stations: ['Gannavaram Town PS', 'Gannavaram Rural PS', 'Agiripalli PS', 'Kankipadu PS'] },
+        { name: 'AGIRIPALLI CIRCLE (UPS)', isUPS: true, stations: [] },
+    ],
+    'FUNCTIONAL (HEAD QUARTER POSTS)': [
+        { name: 'DPO', isUPS: true, stations: [] },
+        { name: 'AR HQ', isUPS: true, stations: [] },
+        { name: 'Police Transport', isUPS: true, stations: [] },
+        { name: 'Computer Centre', isUPS: true, stations: [] },
+    ],
+};
+
 const depUnits = [
     'GRP., Vijayawada', 'Intelligence Dept, VJA.', 'I.S.W.', 'I.S.W. (CMSG)',
     'R.I.O., SPL. Intelligence Cell', 'C.I.D. A.P., Mangalagiri',

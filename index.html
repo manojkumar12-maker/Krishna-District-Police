@@ -141,7 +141,7 @@
                     <div class="rank-tiles" id="knRankTiles"></div>
                 </div>
                 <div id="knPSLink" class="ps-link" style="display:none;">
-                    <div class="sub-tile" onclick="showPage('policeStation')" style="max-width:280px;">Police Station Data</div>
+                    <div class="sub-tile" onclick="showPSPage()" style="max-width:280px;">Police Station Data</div>
                 </div>
                 <div class="detail-section" id="knStrengthSection">
                     <div class="strength-card">
@@ -185,7 +185,46 @@
             <button class="back-btn" onclick="showPage('krishnaNew')">Back to Krishna District (New)</button>
             <div class="card">
                 <h2>Police Station Data</h2>
-                <div class="empty-state">Police Station data management coming soon.</div>
+
+                <div class="detail-section visible" id="psSubDivisionSection">
+                    <h3 style="color: var(--primary); margin-bottom: 15px;">Select Sub-Division</h3>
+                    <div class="sub-tiles" id="psSubDivisionTiles"></div>
+                </div>
+
+                <div class="detail-section" id="psStrengthSection">
+                    <div class="dep-consolidated" style="background: linear-gradient(135deg, var(--primary), #283593);">
+                        <h3 id="psStrengthTitle" style="text-align:center;margin-bottom:15px;font-size:18px;">Strength Particulars</h3>
+                        <table class="dep-consol-table">
+                            <thead>
+                                <tr><th>Rank</th><th>Sanctioned</th><th>Actual</th><th>Vacancies</th><th>Details</th></tr>
+                            </thead>
+                            <tbody id="psStrengthBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="detail-section" id="psCircleSection">
+                    <h3 style="color: var(--primary); margin: 20px 0 15px;">Select Circle</h3>
+                    <div class="sub-tiles dep-grid" id="psCircleTiles"></div>
+                </div>
+
+                <div class="detail-section" id="psStationSection">
+                    <h3 style="color: var(--primary); margin: 20px 0 15px;">Select Station / Unit</h3>
+                    <div class="sub-tiles dep-grid" id="psStationTiles"></div>
+                </div>
+
+                <div class="detail-section" id="psPersonnelSection">
+                    <div style="margin: 15px 0;">
+                        <button class="back-btn" onclick="document.getElementById('psPersonnelSection').classList.remove('visible')">Back to Abstract</button>
+                    </div>
+                    <table id="psPersonnelTable" style="display:none;">
+                        <thead>
+                            <tr><th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Present Working</th><th>Status</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody id="psPersonnelBody"></tbody>
+                    </table>
+                    <div id="psPersonnelEmpty" class="empty-state">No personnel found.</div>
+                </div>
             </div>
         </div>
 
@@ -288,6 +327,7 @@
     <script src="dashboard.js"></script>
     <script src="personnel.js"></script>
     <script src="deputation.js"></script>
+    <script src="policeStation.js"></script>
     <script src="export.js"></script>
     <script src="app.js"></script>
 </body>
