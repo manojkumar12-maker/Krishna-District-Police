@@ -85,6 +85,20 @@
                         </div>
                     </div>
                 </div>
+                <div style="margin-top: 20px;">
+                    <div class="district-tiles" style="grid-template-columns: repeat(2, 1fr); max-width: 66%; margin: 0 auto;">
+                        <div class="district-tile" style="background: linear-gradient(135deg, #f57c00, #e65100);" onclick="showPage('conversions')">
+                            <h3>Conversions</h3>
+                            <div class="tile-count" id="conversionsCount">0</div>
+                            <div class="tile-label">Pending Conversions</div>
+                        </div>
+                        <div class="district-tile" style="background: linear-gradient(135deg, #0277bd, #01579b);" onclick="showPage('districtTransfers')">
+                            <h3>District Transfers</h3>
+                            <div class="tile-count" id="districtTransfersCount">0</div>
+                            <div class="tile-label">Transfer Requests</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -112,6 +126,24 @@
             <div class="card">
                 <h2>Increments</h2>
                 <div class="empty-state">Increments module coming soon.</div>
+            </div>
+        </div>
+
+        <!-- Conversions Page -->
+        <div id="conversions" class="page">
+            <button class="back-btn" onclick="showPage('dashboard')">Back to Dashboard</button>
+            <div class="card">
+                <h2>Conversions</h2>
+                <div class="empty-state">Conversions module coming soon.</div>
+            </div>
+        </div>
+
+        <!-- District Transfers Page -->
+        <div id="districtTransfers" class="page">
+            <button class="back-btn" onclick="showPage('dashboard')">Back to Dashboard</button>
+            <div class="card">
+                <h2>District Transfers</h2>
+                <div class="empty-state">District Transfers module coming soon.</div>
             </div>
         </div>
 
