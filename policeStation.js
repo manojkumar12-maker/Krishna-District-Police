@@ -115,28 +115,22 @@ function getPSPersonnelForLocation() {
 
 function getPSDisplayRanks() {
     let allRanks = [...(displayRanksMap['NEW_CIVIL'] || [])];
-    let level = 'subdivision';
 
-    if (psCurrentStation) {
-        level = 'station';
-    } else if (psCurrentCircle) {
-        const circles = psHierarchy[psCurrentSubDivision];
-        const circle = circles.find(c => c.name === psCurrentCircle);
-        if (circle && circle.stations.length === 0) {
-            level = 'leaf'; // UPS / Wing
-        } else {
-            level = 'circle';
-        }
-    } else if (psCurrentSubDivision === 'FUNCTIONAL (HEAD QUARTER POSTS)') {
-        level = 'functional';
-    }
+    // Only Sub-divisions show DSP (no ADDL.SP)
+    // Only D.T.C., MTM and AIRPORT show DSP at leaf level
+    // All others (circles, stations, UPS, wings, functional) hide both DSP and ADDL.SP
+    const leafWithDSP = ['D.T.C., MTM', 'AIRPORT'];
+    const currentLeaf = psCurrentStation || psCurrentCircle;
 
-    // Sub-divisions have DSP but not ADDL.SP
-    // Circles, Stations, UPS, Wings, Functional have neither DSP nor ADDL.SP
-    if (level !== 'subdivision') {
-        allRanks = allRanks.filter(r => r !== 'DSP' && r !== 'ADDL.SP');
-    } else {
+    if (psCurrentSubDivision && !psCurrentCircle && !psCurrentStation) {
+        // Sub-division level: show DSP, hide ADDL.SP
         allRanks = allRanks.filter(r => r !== 'ADDL.SP');
+    } else if (leafWithDSP.includes(currentLeaf)) {
+        // Special leaf nodes: show DSP, hide ADDL.SP
+        allRanks = allRanks.filter(r => r !== 'ADDL.SP');
+    } else {
+        // Everything else: hide both DSP and ADDL.SP
+        allRanks = allRanks.filter(r => r !== 'DSP' && r !== 'ADDL.SP');
     }
 
     return allRanks;
