@@ -65,6 +65,53 @@
                         <div class="tile-label">Personnel on Deputation</div>
                     </div>
                 </div>
+                <div style="margin-top: 20px;">
+                    <h3 style="color: var(--primary); margin-bottom: 15px;">Other Services</h3>
+                    <div class="district-tiles" style="grid-template-columns: repeat(3, 1fr);">
+                        <div class="district-tile" style="background: linear-gradient(135deg, #6a1b9a, #4a148c);" onclick="showPage('promotions')">
+                            <h3>Promotions</h3>
+                            <div class="tile-count" id="promotionsCount">0</div>
+                            <div class="tile-label">Upcoming Promotions</div>
+                        </div>
+                        <div class="district-tile" style="background: linear-gradient(135deg, #00695c, #004d40);" onclick="showPage('probations')">
+                            <h3>Probations</h3>
+                            <div class="tile-count" id="probationsCount">0</div>
+                            <div class="tile-label">Probation Periods</div>
+                        </div>
+                        <div class="district-tile" style="background: linear-gradient(135deg, #c62828, #b71c1c);" onclick="showPage('increments')">
+                            <h3>Increments</h3>
+                            <div class="tile-count" id="incrementsCount">0</div>
+                            <div class="tile-label">Annual Increments</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Promotions Page -->
+        <div id="promotions" class="page">
+            <button class="back-btn" onclick="showPage('dashboard')">Back to Dashboard</button>
+            <div class="card">
+                <h2>Promotions</h2>
+                <div class="empty-state">Promotions module coming soon.</div>
+            </div>
+        </div>
+
+        <!-- Probations Page -->
+        <div id="probations" class="page">
+            <button class="back-btn" onclick="showPage('dashboard')">Back to Dashboard</button>
+            <div class="card">
+                <h2>Probations</h2>
+                <div class="empty-state">Probations module coming soon.</div>
+            </div>
+        </div>
+
+        <!-- Increments Page -->
+        <div id="increments" class="page">
+            <button class="back-btn" onclick="showPage('dashboard')">Back to Dashboard</button>
+            <div class="card">
+                <h2>Increments</h2>
+                <div class="empty-state">Increments module coming soon.</div>
             </div>
         </div>
 
