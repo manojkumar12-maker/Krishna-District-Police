@@ -124,10 +124,11 @@ tr:hover { background: #e3f2fd; }
 .dep-consol-table tr:last-child td { border-bottom: none; }
 .dep-consol-table tr:hover td { background: rgba(255,255,255,0.08); }
 
-/* Unit strength table (inside depUnitStrength, not dep-consolidated) */
+/* Unit strength table (inside depUnitStrength, NOT inside dep-consolidated) */
 #depUnitStrength .dep-consol-table { background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 16px rgba(13,71,161,0.15); }
-#depUnitStrength .dep-consol-table th, #depUnitStrength .dep-consol-table td { color: #333; border-bottom: 1px solid #e3f2fd; }
-#depUnitStrength .dep-consol-table th { background: linear-gradient(135deg, #1565c0, #0d47a1); color: white; }
+#depUnitStrength .dep-consol-table th,
+#depUnitStrength .dep-consol-table td { color: #333 !important; border-bottom: 1px solid #e3f2fd !important; }
+#depUnitStrength .dep-consol-table th { background: linear-gradient(135deg, #1565c0, #0d47a1) !important; color: white !important; }
 #depUnitStrength .dep-consol-table tr:last-child td { border-bottom: none; }
 #depUnitStrength .dep-consol-table tr:hover td { background: #e3f2fd; }
 .dep-strength-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
