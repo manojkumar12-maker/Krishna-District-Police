@@ -113,9 +113,38 @@ function getPSPersonnelForLocation() {
     );
 }
 
+function getPSDisplayRanks() {
+    let allRanks = [...(displayRanksMap['NEW_CIVIL'] || [])];
+    let level = 'subdivision';
+
+    if (psCurrentStation) {
+        level = 'station';
+    } else if (psCurrentCircle) {
+        const circles = psHierarchy[psCurrentSubDivision];
+        const circle = circles.find(c => c.name === psCurrentCircle);
+        if (circle && circle.stations.length === 0) {
+            level = 'leaf'; // UPS / Wing
+        } else {
+            level = 'circle';
+        }
+    } else if (psCurrentSubDivision === 'FUNCTIONAL (HEAD QUARTER POSTS)') {
+        level = 'functional';
+    }
+
+    // Sub-divisions have DSP but not ADDL.SP
+    // Circles, Stations, UPS, Wings, Functional have neither DSP nor ADDL.SP
+    if (level !== 'subdivision') {
+        allRanks = allRanks.filter(r => r !== 'DSP' && r !== 'ADDL.SP');
+    } else {
+        allRanks = allRanks.filter(r => r !== 'ADDL.SP');
+    }
+
+    return allRanks;
+}
+
 function showPSStrengthAbstract() {
     const personnel = getPSPersonnelForLocation();
-    const displayRanks = displayRanksMap['NEW_CIVIL'] || [];
+    const displayRanks = getPSDisplayRanks();
     let title;
 
     if (psCurrentStation) title = psCurrentStation;
