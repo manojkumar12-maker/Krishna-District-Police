@@ -37,7 +37,7 @@ function selectPSSubDivision(name, el) {
 
     const circles = psHierarchy[name];
     document.getElementById('psCircleTiles').innerHTML = circles.map(c =>
-        `<div class="sub-tile" onclick="selectPSCircle('${escapeQuotes(c.name)}', this)">${c.name}${c.isUPS ? ' (UPS)' : ''}</div>`
+        `<div class="sub-tile" onclick="selectPSCircle('${escapeQuotes(c.name)}', this)">${c.name}${c.isUPS && !c.name.toUpperCase().includes('UPS') ? ' (UPS)' : ''}</div>`
     ).join('');
 
     showPSStrengthAbstract();
@@ -56,7 +56,7 @@ function selectPSCircle(name, el) {
     const circles = psHierarchy[psCurrentSubDivision];
     const circle = circles.find(c => c.name === name);
 
-    if (circle && !circle.isUPS) {
+    if (circle && circle.stations.length > 0) {
         document.getElementById('psStationTiles').innerHTML = circle.stations.map(s =>
             `<div class="sub-tile" onclick="selectPSStation('${escapeQuotes(s)}', this)">${s}</div>`
         ).join('');
