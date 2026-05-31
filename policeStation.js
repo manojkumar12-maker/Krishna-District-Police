@@ -119,7 +119,7 @@ function getPSDisplayRanks() {
     // Only Sub-divisions show DSP (no ADDL.SP)
     // Only D.T.C., MTM and AIRPORT show DSP at leaf level
     // All others (circles, stations, UPS, wings, functional) hide both DSP and ADDL.SP
-    const leafWithDSP = ['D.T.C., MTM', 'AIRPORT'];
+    const leafWithDSP = ['D.T.C., MTM', 'AIRPORT', 'Women PS'];
     const currentLeaf = psCurrentStation || psCurrentCircle;
 
     if (psCurrentSubDivision && !psCurrentCircle && !psCurrentStation) {
