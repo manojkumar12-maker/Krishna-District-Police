@@ -98,6 +98,9 @@ function showDepUnit(unitName, el) {
 
     depUnitStrength.innerHTML += html;
 
+    // Show the detail section
+    document.getElementById('deputationDetail').classList.add('visible');
+
     // Personnel details section (hidden by default)
     const personnelDetails = document.createElement('div');
     personnelDetails.id = 'depPersonnelDetails';
