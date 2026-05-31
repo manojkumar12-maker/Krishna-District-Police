@@ -45,49 +45,68 @@ function showDepUnit(unitName, el) {
     el.classList.add('active');
 
     const depUnitStrength = document.getElementById('depUnitStrength');
-    depUnitStrength.innerHTML = `<h3>${unitName}</h3>`;
+    depUnitStrength.innerHTML = `<h3>${unitName} - Strength Particulars</h3>`;
 
-    const strengthGrid = document.createElement('div');
-    strengthGrid.className = 'dep-strength-grid';
+    // Build strength table
+    let html = '<table class="dep-consol-table" id="depUnitStrengthTable">';
+    html += '<thead><tr><th>Rank</th><th>Sanctioned</th><th>Actual</th><th>Vacancies</th></tr></thead><tbody>';
+
+    let totalSanc = 0, totalActual = 0, totalVac = 0;
 
     depRanks.forEach(rank => {
         const sanctioned = depSanctionedData[unitName] ? depSanctionedData[unitName][rank] || 0 : 0;
         const actual = allPersonnel.filter(p => p.is_on_deployment && p.deployment_unit === unitName && p.rank === rank).length;
         const vac = sanctioned - actual;
 
-        const item = document.createElement('div');
-        item.className = 'dep-rank-strength';
-        item.innerHTML = `
-            <h4>${rank}</h4>
-            <div class="dep-sr-row">
-                <div class="dep-sr-item">
-                    <div class="dep-sr-label">Sanctioned</div>
-                    <div class="dep-sr-value">${sanctioned}</div>
-                </div>
-                <div class="dep-sr-item">
-                    <div class="dep-sr-label">Actual</div>
-                    <div class="dep-sr-value">${actual}</div>
-                </div>
-                <div class="dep-sr-item">
-                    <div class="dep-sr-label">Vacancies</div>
-                    <div class="dep-sr-value vac">${vac > 0 ? vac : vac < 0 ? '+' + Math.abs(vac) + ' (Excess)' : '0'}</div>
-                </div>
-            </div>
-            ${userRole === 'ADMIN' ? `<div style="margin-top:8px;">
-                <label style="font-size:11px; color:#666;">Update Sanctioned:</label>
-                <input type="number" class="dep-sranctioned-input" value="${sanctioned}" min="0" onchange="updateDepSanctioned('${unitName}', '${rank}', this.value)">
-            </div>` : ''}
-        `;
-        strengthGrid.appendChild(item);
+        totalSanc += sanctioned;
+        totalActual += actual;
+        totalVac += vac;
+
+        const vacStyle = vac > 0 ? '#ffeb3b' : vac < 0 ? 'orange' : '#4caf50';
+        const vacText = vac > 0 ? vac : vac < 0 ? '+' + Math.abs(vac) + ' (Excess)' : '0';
+
+        const sancCell = userRole === 'ADMIN'
+            ? `<input type="number" class="dep-sranctioned-input" value="${sanctioned}" min="0" onchange="updateDepSanctioned('${unitName}', '${rank}', this.value)" style="width:60px;padding:3px;border:1px solid #ccc;border-radius:3px;text-align:center;font-size:12px;">`
+            : sanctioned;
+
+        html += `<tr>
+            <td>${rank}</td>
+            <td>${sancCell}</td>
+            <td>${actual}</td>
+            <td style="color:${vacStyle}">${vacText}</td>
+        </tr>`;
     });
 
-    depUnitStrength.appendChild(strengthGrid);
+    const totalVacStyle = totalVac > 0 ? '#ffeb3b' : totalVac < 0 ? 'orange' : '#4caf50';
+    const totalVacText = totalVac > 0 ? totalVac : totalVac < 0 ? '+' + Math.abs(totalVac) + ' (Excess)' : '0';
 
-    // Personnel details section
+    html += `<tr style="font-weight:bold;background-color:rgba(0,0,0,0.1);">
+        <td>TOTAL</td>
+        <td>${totalSanc}</td>
+        <td>${totalActual}</td>
+        <td style="color:${totalVacStyle}">${totalVacText}</td>
+    </tr>`;
+
+    html += '</tbody></table>';
+
+    // Export and More Details buttons
+    html += `<div style="margin-top:15px;display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="action-btn btn-primary" onclick="exportDepUnitStrength('${escapeQuotes(unitName)}')">Export</button>
+        <button class="action-btn btn-primary" onclick="toggleDepPersonnelDetails()">More Details</button>
+    </div>`;
+
+    depUnitStrength.innerHTML += html;
+
+    // Personnel details section (hidden by default)
     const personnelDetails = document.createElement('div');
+    personnelDetails.id = 'depPersonnelDetails';
     personnelDetails.style.marginTop = '20px';
+    personnelDetails.style.display = 'none';
     personnelDetails.innerHTML = `
         <h4 style="color: var(--primary); margin-bottom: 10px;">Personnel Details</h4>
+        <div style="margin-bottom:10px;">
+            <button class="action-btn btn-primary" onclick="exportDepUnitPersonnel('${escapeQuotes(unitName)}')">Export</button>
+        </div>
         <table id="deputationTable" style="display:none;">
             <thead>
                 <tr><th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Type</th><th>District</th><th>Status</th><th>Actions</th></tr>
@@ -99,6 +118,39 @@ function showDepUnit(unitName, el) {
     depUnitStrength.appendChild(personnelDetails);
 
     loadDepUnitPersonnel();
+}
+
+function toggleDepPersonnelDetails() {
+    const section = document.getElementById('depPersonnelDetails');
+    if (section) {
+        section.style.display = section.style.display === 'none' ? 'block' : 'none';
+    }
+}
+
+function exportDepUnitStrength(unitName) {
+    let csv = `Rank,Sanctioned,Actual,Vacancies\n`;
+    depRanks.forEach(rank => {
+        const sanctioned = depSanctionedData[unitName] ? depSanctionedData[unitName][rank] || 0 : 0;
+        const actual = allPersonnel.filter(p => p.is_on_deployment && p.deployment_unit === unitName && p.rank === rank).length;
+        const vac = sanctioned - actual;
+        csv += `${rank},${sanctioned},${actual},${vac}\n`;
+    });
+    downloadFile(csv, `${unitName.replace(/[^a-zA-Z0-9]/g, '_')}_Strength.csv`, 'text/csv');
+    showToast('Exported to CSV!', 'success');
+}
+
+function exportDepUnitPersonnel(unitName) {
+    const data = allPersonnel.filter(p => p.is_on_deployment && p.deployment_unit === unitName);
+    if (data.length === 0) {
+        showToast('No personnel to export', 'error');
+        return;
+    }
+    let csv = `Sl.No,Name,Rank,Genl.No,Type,District,Status\n`;
+    data.forEach((p, i) => {
+        csv += `${i+1},"${p.name}","${p.rank}","${p.genl_no}","${p.personnel_type}","${p.district}","${p.status}"\n`;
+    });
+    downloadFile(csv, `${unitName.replace(/[^a-zA-Z0-9]/g, '_')}_Personnel.csv`, 'text/csv');
+    showToast('Exported to CSV!', 'success');
 }
 
 function loadDepUnitPersonnel() {
