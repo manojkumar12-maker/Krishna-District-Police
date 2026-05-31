@@ -30,7 +30,8 @@
         <div class="header-actions" id="adminActions">
             <span class="user-email" id="userEmail"></span>
             <span class="record-count" id="dataCount">0 records</span>
-            <button class="btn btn-primary" onclick="exportCSV()">Export</button>
+            <button class="btn btn-primary" onclick="exportCSV()">Export CSV</button>
+            <button class="btn btn-secondary" onclick="exportAllPDF()">Export PDF</button>
             <button class="btn btn-danger" onclick="clearAllData()">Clear All</button>
             <button class="btn btn-secondary" onclick="handleLogout()">Logout</button>
         </div>
@@ -106,8 +107,8 @@
                     </div>
                     <div class="strength-actions">
                         <button class="btn btn-primary" onclick="showEWPersonnel()">More Details</button>
-                        <button class="btn btn-secondary" onclick="exportEWExcel()">Export to Excel</button>
-                        <button class="btn btn-secondary" onclick="exportEWPDF()">Export to PDF</button>
+                        <button class="btn btn-secondary" onclick="exportEWExcel()">Export CSV</button>
+                        <button class="btn btn-secondary" onclick="exportEWPDF()">Export PDF</button>
                     </div>
                 </div>
                 <div class="detail-section" id="ewPersonnelSection">
@@ -164,8 +165,8 @@
                     </div>
                     <div class="strength-actions">
                         <button class="btn btn-primary" onclick="showKNPersonnel()">More Details</button>
-                        <button class="btn btn-secondary" onclick="exportKNExcel()">Export to Excel</button>
-                        <button class="btn btn-secondary" onclick="exportKNPDF()">Export to PDF</button>
+                        <button class="btn btn-secondary" onclick="exportKNExcel()">Export CSV</button>
+                        <button class="btn btn-secondary" onclick="exportKNPDF()">Export PDF</button>
                     </div>
                 </div>
                 <div class="detail-section" id="knPersonnelSection">

@@ -91,7 +91,8 @@ function showDepUnit(unitName, el) {
 
     // Export and More Details buttons
     html += `<div style="margin-top:15px;display:flex;gap:10px;flex-wrap:wrap;">
-        <button class="action-btn btn-primary" onclick="exportDepUnitStrength('${escapeQuotes(unitName)}')">Export</button>
+        <button class="action-btn btn-primary" onclick="exportDepUnitStrength('${escapeQuotes(unitName)}')">Export CSV</button>
+        <button class="action-btn btn-primary" onclick="exportDepUnitStrengthPDF('${escapeQuotes(unitName)}')">Export PDF</button>
         <button class="action-btn btn-primary" onclick="toggleDepPersonnelDetails()">More Details</button>
     </div>`;
 
@@ -104,8 +105,9 @@ function showDepUnit(unitName, el) {
     personnelDetails.style.display = 'none';
     personnelDetails.innerHTML = `
         <h4 style="color: var(--primary); margin-bottom: 10px;">Personnel Details</h4>
-        <div style="margin-bottom:10px;">
-            <button class="action-btn btn-primary" onclick="exportDepUnitPersonnel('${escapeQuotes(unitName)}')">Export</button>
+        <div style="margin-bottom:10px;display:flex;gap:10px;flex-wrap:wrap;">
+            <button class="action-btn btn-primary" onclick="exportDepUnitPersonnel('${escapeQuotes(unitName)}')">Export CSV</button>
+            <button class="action-btn btn-primary" onclick="exportDepUnitPersonnelPDF('${escapeQuotes(unitName)}')">Export PDF</button>
         </div>
         <table id="deputationTable" style="display:none;">
             <thead>
@@ -151,6 +153,101 @@ function exportDepUnitPersonnel(unitName) {
     });
     downloadFile(csv, `${unitName.replace(/[^a-zA-Z0-9]/g, '_')}_Personnel.csv`, 'text/csv');
     showToast('Exported to CSV!', 'success');
+}
+
+function exportDepUnitStrengthPDF(unitName) {
+    let totalSanc = 0, totalActual = 0, totalVac = 0;
+    depRanks.forEach(rank => {
+        const sanctioned = depSanctionedData[unitName] ? depSanctionedData[unitName][rank] || 0 : 0;
+        const actual = allPersonnel.filter(p => p.is_on_deployment && p.deployment_unit === unitName && p.rank === rank).length;
+        totalSanc += sanctioned;
+        totalActual += actual;
+        totalVac += sanctioned - actual;
+    });
+
+    const printWind = window.open('', '', 'width=800,height=600');
+    printWind.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Deputation Unit Strength</title>
+            <style>
+                body { font-family: serif; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                th, td { border: 1px solid #000; padding: 8px; text-align: center; }
+                h2, h3 { text-align: center; }
+                .summary { display: flex; justify-content: space-around; margin: 20px 0; font-size: 18px; }
+                @media print { .no-print { display: none; } }
+            </style>
+        </head>
+        <body>
+            <h2>Deputation Unit Strength</h2>
+            <h3>${unitName}</h3>
+            <div class="summary">
+                <div><b>Sanctioned:</b> ${totalSanc}</div>
+                <div><b>Actual:</b> ${totalActual}</div>
+                <div><b>Vacancies:</b> ${totalVac}</div>
+            </div>
+            <table>
+                <thead>
+                    <tr><th>Rank</th><th>Sanctioned</th><th>Actual</th><th>Vacancies</th></tr>
+                </thead>
+                <tbody>
+                    ${depRanks.map(rank => {
+                        const sanctioned = depSanctionedData[unitName] ? depSanctionedData[unitName][rank] || 0 : 0;
+                        const actual = allPersonnel.filter(p => p.is_on_deployment && p.deployment_unit === unitName && p.rank === rank).length;
+                        const vac = sanctioned - actual;
+                        return `<tr><td>${rank}</td><td>${sanctioned}</td><td>${actual}</td><td>${vac}</td></tr>`;
+                    }).join('')}
+                    <tr style="font-weight:bold;"><td>TOTAL</td><td>${totalSanc}</td><td>${totalActual}</td><td>${totalVac}</td></tr>
+                </tbody>
+            </table>
+            <br>
+            <button class="no-print" onclick="window.print()">Print</button>
+        </body>
+        </html>
+    `);
+    printWind.document.close();
+}
+
+function exportDepUnitPersonnelPDF(unitName) {
+    const data = allPersonnel.filter(p => p.is_on_deployment && p.deployment_unit === unitName);
+    if (data.length === 0) {
+        showToast('No personnel to export', 'error');
+        return;
+    }
+
+    const printWind = window.open('', '', 'width=800,height=600');
+    printWind.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Deputation Unit Personnel</title>
+            <style>
+                body { font-family: serif; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+                h2, h3 { text-align: center; }
+                @media print { .no-print { display: none; } }
+            </style>
+        </head>
+        <body>
+            <h2>Deputation Unit Personnel</h2>
+            <h3>${unitName}</h3>
+            <table>
+                <thead>
+                    <tr><th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Type</th><th>District</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                    ${data.map((p, i) => `<tr><td>${i+1}</td><td>${p.name}</td><td>${p.rank}</td><td>${p.genl_no}</td><td>${p.personnel_type}</td><td>${p.district}</td><td>${p.status}</td></tr>`).join('')}
+                </tbody>
+            </table>
+            <br>
+            <button class="no-print" onclick="window.print()">Print</button>
+        </body>
+        </html>
+    `);
+    printWind.document.close();
 }
 
 function loadDepUnitPersonnel() {

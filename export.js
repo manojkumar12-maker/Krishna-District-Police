@@ -18,6 +18,45 @@ function exportCSV() {
     showToast('Exported to CSV!', 'success');
 }
 
+function exportAllPDF() {
+    if (allPersonnel.length === 0) {
+        showToast('No data to export', 'error');
+        return;
+    }
+
+    const printWind = window.open('', '', 'width=800,height=600');
+    printWind.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Krishna District Police - All Personnel</title>
+            <style>
+                body { font-family: serif; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+                th, td { border: 1px solid #000; padding: 6px; text-align: left; }
+                h2, h3 { text-align: center; }
+                @media print { .no-print { display: none; } }
+            </style>
+        </head>
+        <body>
+            <h2>Krishna District Police</h2>
+            <h3>All Personnel List</h3>
+            <table>
+                <thead>
+                    <tr><th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Type</th><th>District</th><th>Present Working</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                    ${allPersonnel.map((p, i) => `<tr><td>${i+1}</td><td>${p.name}</td><td>${p.rank}</td><td>${p.genl_no}</td><td>${p.personnel_type}</td><td>${p.district}</td><td>${p.present_working || '-'}</td><td>${p.status}</td></tr>`).join('')}
+                </tbody>
+            </table>
+            <br>
+            <button class="no-print" onclick="window.print()">Print</button>
+        </body>
+        </html>
+    `);
+    printWind.document.close();
+}
+
 function exportKNExcel() {
     const groupFilter = rankGroups[knCurrentRank] || [knCurrentRank];
     const data = allPersonnel.filter(p => 
