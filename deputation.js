@@ -108,6 +108,9 @@ function showDepUnit(unitName, el) {
     personnelDetails.style.display = 'none';
     personnelDetails.innerHTML = `
         <h4 style="color: var(--primary); margin-bottom: 10px;">Personnel Details</h4>
+        <div class="search-box" style="margin-bottom: 15px;">
+            <input type="text" id="depSearchInput" class="search-input" placeholder="Search by name, genl.no, rank, or type..." oninput="filterDepPersonnel()">
+        </div>
         <div style="margin-bottom:10px;display:flex;gap:10px;flex-wrap:wrap;">
             <button class="action-btn btn-primary" onclick="exportDepUnitPersonnel('${escapeQuotes(unitName)}')">Export CSV</button>
             <button class="action-btn btn-primary" onclick="exportDepUnitPersonnelPDF('${escapeQuotes(unitName)}')">Export PDF</button>
@@ -254,11 +257,14 @@ function exportDepUnitPersonnelPDF(unitName) {
 }
 
 function loadDepUnitPersonnel() {
+    const data = allPersonnel.filter(p => p.is_on_deployment && p.deployment_unit === depCurrentUnit);
+    renderDepPersonnel(data);
+}
+
+function renderDepPersonnel(data) {
     const depUnitStrength = document.getElementById('depUnitStrength');
     const personnelTable = depUnitStrength.querySelector('#deputationTable');
     const personnelEmpty = depUnitStrength.querySelector('#deputationEmpty');
-
-    const data = allPersonnel.filter(p => p.is_on_deployment && p.deployment_unit === depCurrentUnit);
 
     if (data.length === 0) {
         personnelTable.style.display = 'none';
@@ -286,6 +292,22 @@ function loadDepUnitPersonnel() {
         `;
         }).join('');
     }
+}
+
+function filterDepPersonnel() {
+    const searchTerm = document.getElementById('depSearchInput').value.toLowerCase().trim();
+    let data = allPersonnel.filter(p => p.is_on_deployment && p.deployment_unit === depCurrentUnit);
+
+    if (searchTerm) {
+        data = data.filter(p => 
+            p.name.toLowerCase().includes(searchTerm) ||
+            p.genl_no.toLowerCase().includes(searchTerm) ||
+            p.rank.toLowerCase().includes(searchTerm) ||
+            p.personnel_type.toLowerCase().includes(searchTerm)
+        );
+    }
+
+    renderDepPersonnel(data);
 }
 
 async function updateDepSanctioned(unitName, rank, value) {

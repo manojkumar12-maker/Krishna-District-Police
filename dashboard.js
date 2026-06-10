@@ -227,6 +227,12 @@ function showKNPersonnel() {
         !p.is_on_deployment
     );
 
+    document.getElementById('knSearchInput').value = '';
+    renderKNPersonnel(data);
+    document.getElementById('knPersonnelSection').classList.add('visible');
+}
+
+function renderKNPersonnel(data) {
     if (data.length === 0) {
         document.getElementById('knPersonnelTable').style.display = 'none';
         document.getElementById('knPersonnelEmpty').style.display = 'block';
@@ -251,7 +257,27 @@ function showKNPersonnel() {
         `;
         }).join('');
     }
-    document.getElementById('knPersonnelSection').classList.add('visible');
+}
+
+function filterKNPersonnel() {
+    const searchTerm = document.getElementById('knSearchInput').value.toLowerCase().trim();
+    const groupFilter = rankGroups[knCurrentRank] || [knCurrentRank];
+    let data = allPersonnel.filter(p => 
+        p.district === 'NEW' && 
+        p.personnel_type === knCurrentType && 
+        groupFilter.includes(p.rank) && 
+        !p.is_on_deployment
+    );
+
+    if (searchTerm) {
+        data = data.filter(p => 
+            p.name.toLowerCase().includes(searchTerm) ||
+            p.genl_no.toLowerCase().includes(searchTerm) ||
+            (p.present_working && p.present_working.toLowerCase().includes(searchTerm))
+        );
+    }
+
+    renderKNPersonnel(data);
 }
 
 function showEWRanks(type, el) {
@@ -327,6 +353,12 @@ function showEWPersonnel() {
         !p.is_on_deployment
     );
 
+    document.getElementById('ewSearchInput').value = '';
+    renderEWPersonnel(data);
+    document.getElementById('ewPersonnelSection').classList.add('visible');
+}
+
+function renderEWPersonnel(data) {
     if (data.length === 0) {
         document.getElementById('ewPersonnelTable').style.display = 'none';
         document.getElementById('ewPersonnelEmpty').style.display = 'block';
@@ -351,5 +383,25 @@ function showEWPersonnel() {
         `;
         }).join('');
     }
-    document.getElementById('ewPersonnelSection').classList.add('visible');
+}
+
+function filterEWPersonnel() {
+    const searchTerm = document.getElementById('ewSearchInput').value.toLowerCase().trim();
+    const groupFilter = rankGroups[ewCurrentRank] || [ewCurrentRank];
+    let data = allPersonnel.filter(p => 
+        p.district === 'ERSTWHILE' && 
+        p.personnel_type === ewCurrentType && 
+        groupFilter.includes(p.rank) && 
+        !p.is_on_deployment
+    );
+
+    if (searchTerm) {
+        data = data.filter(p => 
+            p.name.toLowerCase().includes(searchTerm) ||
+            p.genl_no.toLowerCase().includes(searchTerm) ||
+            (p.present_working && p.present_working.toLowerCase().includes(searchTerm))
+        );
+    }
+
+    renderEWPersonnel(data);
 }

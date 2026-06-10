@@ -194,6 +194,12 @@ function showPSPersonnel(rankGroup) {
     const ranks = rankGroups[rankGroup] || [rankGroup];
     const personnel = getPSPersonnelForLocation().filter(p => ranks.includes(p.rank));
 
+    document.getElementById('psSearchInput').value = '';
+    renderPSPersonnel(personnel);
+    document.getElementById('psPersonnelSection').classList.add('visible');
+}
+
+function renderPSPersonnel(personnel) {
     if (personnel.length === 0) {
         document.getElementById('psPersonnelTable').style.display = 'none';
         document.getElementById('psPersonnelEmpty').style.display = 'block';
@@ -217,5 +223,21 @@ function showPSPersonnel(rankGroup) {
             </tr>`;
         }).join('');
     }
-    document.getElementById('psPersonnelSection').classList.add('visible');
+}
+
+function filterPSPersonnel() {
+    const searchTerm = document.getElementById('psSearchInput').value.toLowerCase().trim();
+    const ranks = rankGroups[psViewRankGroup] || [psViewRankGroup];
+    let personnel = getPSPersonnelForLocation().filter(p => ranks.includes(p.rank));
+
+    if (searchTerm) {
+        personnel = personnel.filter(p => 
+            p.name.toLowerCase().includes(searchTerm) ||
+            p.genl_no.toLowerCase().includes(searchTerm) ||
+            p.rank.toLowerCase().includes(searchTerm) ||
+            (p.present_working && p.present_working.toLowerCase().includes(searchTerm))
+        );
+    }
+
+    renderPSPersonnel(personnel);
 }

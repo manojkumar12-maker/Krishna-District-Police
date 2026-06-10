@@ -143,6 +143,12 @@ tr:hover { background: #e3f2fd; }
 
 .ps-link { margin-top: 20px; padding-top: 15px; border-top: 2px solid #eee; }
 
+/* Search Box */
+.search-box { width: 100%; }
+.search-input { width: 100%; padding: 12px 16px; border: 2px solid #e3f2fd; border-radius: 8px; font-size: 14px; transition: all 0.3s; background: #f8fbff; }
+.search-input:focus { border-color: var(--primary); background: #ffffff; outline: none; box-shadow: 0 0 0 3px rgba(13,71,161,0.1); }
+.search-input::placeholder { color: #90a4ae; }
+
 /* Responsive */
 @media (max-width: 768px) {
     .district-tiles, .sub-tiles.dep-grid, .rank-tiles, .dep-strength-grid, .strength-row { grid-template-columns: repeat(2, 1fr); }

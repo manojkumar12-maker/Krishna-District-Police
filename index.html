@@ -191,6 +191,9 @@
                     </div>
                 </div>
                 <div class="detail-section" id="ewPersonnelSection">
+                    <div class="search-box" style="margin-bottom: 15px;">
+                        <input type="text" id="ewSearchInput" class="search-input" placeholder="Search by name, genl.no, or present working..." oninput="filterEWPersonnel()">
+                    </div>
                     <table id="ewPersonnelTable" style="display:none;">
                         <thead>
                             <tr><th>Sl.No</th><th>Name</th><th>Genl.No</th><th>Present Working</th><th>Status</th><th>Actions</th></tr>
@@ -249,6 +252,9 @@
                     </div>
                 </div>
                 <div class="detail-section" id="knPersonnelSection">
+                    <div class="search-box" style="margin-bottom: 15px;">
+                        <input type="text" id="knSearchInput" class="search-input" placeholder="Search by name, genl.no, or present working..." oninput="filterKNPersonnel()">
+                    </div>
                     <table id="knPersonnelTable" style="display:none;">
                         <thead>
                             <tr><th>Sl.No</th><th>Name</th><th>Genl.No</th><th>Present Working</th><th>Status</th><th>Actions</th></tr>
@@ -296,6 +302,9 @@
                 <div class="detail-section" id="psPersonnelSection">
                     <div style="margin: 15px 0;">
                         <button class="back-btn" onclick="document.getElementById('psPersonnelSection').classList.remove('visible')">Back to Abstract</button>
+                    </div>
+                    <div class="search-box" style="margin-bottom: 15px;">
+                        <input type="text" id="psSearchInput" class="search-input" placeholder="Search by name, genl.no, rank, or present working..." oninput="filterPSPersonnel()">
                     </div>
                     <table id="psPersonnelTable" style="display:none;">
                         <thead>
