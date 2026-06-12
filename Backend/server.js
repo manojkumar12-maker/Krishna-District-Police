@@ -2,7 +2,11 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
+const connectDB = require('./db');
+const User = require('./models/User');
+const Personnel = require('./models/Personnel');
+const SanctionedStrength = require('./models/SanctionedStrength');
+const DeputationStrength = require('./models/DeputationStrength');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,43 +16,36 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-pro
 app.use(cors());
 app.use(express.json());
 
-// In-memory data store (Replace with MongoDB/PostgreSQL for production)
-const db = {
-    users: [],
-    personnel: [],
-    sanctionedStrength: [],
-    deputationStrength: []
-};
-
-// Initialize default users with roles
+// Initialize default users (only if they don't exist)
 async function initializeDefaultUsers() {
-    const adminExists = db.users.find(u => u.email === 'manoj.spoffice.kri@gmail.com');
-    const userExists = db.users.find(u => u.email === 'user.spoffice.kri@gmail.com');
+    try {
+        const adminExists = await User.findOne({ email: 'manoj.spoffice.kri@gmail.com' });
+        if (!adminExists) {
+            const hashedAdminPw = await bcrypt.hash('Sanju@1227#', 10);
+            await User.create({
+                email: 'manoj.spoffice.kri@gmail.com',
+                password: hashedAdminPw,
+                role: 'ADMIN'
+            });
+            console.log('Default admin user created');
+        }
 
-    if (!adminExists) {
-        const hashedAdminPw = await bcrypt.hash('Sanju@1227#', 10);
-        db.users.push({
-            id: uuidv4(),
-            email: 'manoj.spoffice.kri@gmail.com',
-            password: hashedAdminPw,
-            role: 'ADMIN',
-            created_at: new Date().toISOString()
-        });
-    }
-
-    if (!userExists) {
-        const hashedUserPw = await bcrypt.hash('A8DPO#USER', 10);
-        db.users.push({
-            id: uuidv4(),
-            email: 'user.spoffice.kri@gmail.com',
-            password: hashedUserPw,
-            role: 'USER',
-            created_at: new Date().toISOString()
-        });
+        const userExists = await User.findOne({ email: 'user.spoffice.kri@gmail.com' });
+        if (!userExists) {
+            const hashedUserPw = await bcrypt.hash('A8DPO#USER', 10);
+            await User.create({
+                email: 'user.spoffice.kri@gmail.com',
+                password: hashedUserPw,
+                role: 'USER'
+            });
+            console.log('Default user created');
+        }
+    } catch (error) {
+        console.error('Failed to initialize default users:', error.message);
     }
 }
 
-// Initialize default deputation strength entries
+// Initialize default deputation strength entries (only if empty)
 const depUnits = [
     'GRP., Vijayawada', 'Intelligence Dept, VJA.', 'I.S.W.', 'I.S.W. (CMSG)',
     'R.I.O., SPL. Intelligence Cell', 'C.I.D. A.P., Mangalagiri',
@@ -60,18 +57,23 @@ const depUnits = [
 
 const depRanks = ['PC', 'HC', 'ASI', 'ARPC', 'ARHC'];
 
-depUnits.forEach(unit => {
-    depRanks.forEach(rank => {
-        db.deputationStrength.push({
-            id: uuidv4(),
-            unit_name: unit,
-            rank: rank,
-            sanctioned_count: 0,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-        });
-    });
-});
+async function initializeDeputationStrength() {
+    try {
+        const count = await DeputationStrength.countDocuments();
+        if (count === 0) {
+            const entries = [];
+            for (const unit of depUnits) {
+                for (const rank of depRanks) {
+                    entries.push({ unit_name: unit, rank, sanctioned_count: 0 });
+                }
+            }
+            await DeputationStrength.insertMany(entries);
+            console.log('Default deputation strength entries created');
+        }
+    } catch (error) {
+        console.error('Failed to initialize deputation strength:', error.message);
+    }
+}
 
 // Authentication Middleware
 const authenticateToken = (req, res, next) => {
@@ -91,19 +93,17 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
-// Authorization Middleware - Check role permissions
+// Authorization Middleware
 const checkRole = (allowedRoles) => {
     return (req, res, next) => {
         if (!req.user) {
             return res.status(401).json({ error: 'Authentication required' });
         }
-
         if (!allowedRoles.includes(req.user.role)) {
             return res.status(403).json({
                 error: 'Insufficient permissions. Required role: ' + allowedRoles.join(' or ')
             });
         }
-
         next();
     };
 };
@@ -112,7 +112,7 @@ const checkRole = (allowedRoles) => {
 
 // Health check
 app.get('/', (req, res) => {
-    res.json({ 
+    res.json({
         message: 'Krishna District Police API',
         status: 'running',
         version: '1.0.0'
@@ -128,18 +128,18 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(400).json({ error: 'Email and password required' });
         }
 
-        const user = db.users.find(u => u.email === email);
+        const user = await User.findOne({ email: email.toLowerCase() });
         if (!user) {
             return res.status(400).json({ error: 'Invalid credentials' });
         }
 
-        const validPassword = await bcrypt.compare(password, user.password);
+        const validPassword = await user.comparePassword(password);
         if (!validPassword) {
             return res.status(400).json({ error: 'Invalid credentials' });
         }
 
         const token = jwt.sign(
-            { userId: user.id, email: user.email, role: user.role },
+            { userId: user._id, email: user.email, role: user.role },
             JWT_SECRET,
             { expiresIn: '24h' }
         );
@@ -147,7 +147,7 @@ app.post('/api/auth/login', async (req, res) => {
         res.json({
             success: true,
             token,
-            user: { id: user.id, email: user.email, role: user.role }
+            user: { id: user._id, email: user.email, role: user.role }
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -155,33 +155,34 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // Personnel Routes
-app.get('/api/personnel', authenticateToken, (req, res) => {
-    res.json({ 
-        success: true, 
-        data: db.personnel,
-        count: db.personnel.length 
-    });
-});
-
-app.get('/api/personnel/:id', authenticateToken, (req, res) => {
-    const personnel = db.personnel.find(p => p.id === req.params.id);
-    if (!personnel) {
-        return res.status(404).json({ error: 'Personnel not found' });
-    }
-    res.json({ success: true, data: personnel });
-});
-
-app.post('/api/personnel', authenticateToken, checkRole(['ADMIN']), (req, res) => {
+app.get('/api/personnel', authenticateToken, async (req, res) => {
     try {
-        const personnel = {
-            id: uuidv4(),
-            ...req.body,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-        };
+        const personnel = await Personnel.find().sort({ created_at: -1 });
+        res.json({
+            success: true,
+            data: personnel,
+            count: personnel.length
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 
-        db.personnel.push(personnel);
+app.get('/api/personnel/:id', authenticateToken, async (req, res) => {
+    try {
+        const personnel = await Personnel.findById(req.params.id);
+        if (!personnel) {
+            return res.status(404).json({ error: 'Personnel not found' });
+        }
+        res.json({ success: true, data: personnel });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 
+app.post('/api/personnel', authenticateToken, checkRole(['ADMIN']), async (req, res) => {
+    try {
+        const personnel = await Personnel.create(req.body);
         res.status(201).json({
             success: true,
             data: personnel,
@@ -192,22 +193,19 @@ app.post('/api/personnel', authenticateToken, checkRole(['ADMIN']), (req, res) =
     }
 });
 
-app.put('/api/personnel/:id', authenticateToken, checkRole(['ADMIN']), (req, res) => {
+app.put('/api/personnel/:id', authenticateToken, checkRole(['ADMIN']), async (req, res) => {
     try {
-        const index = db.personnel.findIndex(p => p.id === req.params.id);
-        if (index === -1) {
+        const personnel = await Personnel.findByIdAndUpdate(
+            req.params.id,
+            { ...req.body, updated_at: new Date().toISOString() },
+            { new: true, runValidators: true }
+        );
+        if (!personnel) {
             return res.status(404).json({ error: 'Personnel not found' });
         }
-
-        db.personnel[index] = {
-            ...db.personnel[index],
-            ...req.body,
-            updated_at: new Date().toISOString()
-        };
-
         res.json({
             success: true,
-            data: db.personnel[index],
+            data: personnel,
             message: 'Personnel updated successfully'
         });
     } catch (error) {
@@ -215,15 +213,12 @@ app.put('/api/personnel/:id', authenticateToken, checkRole(['ADMIN']), (req, res
     }
 });
 
-app.delete('/api/personnel/:id', authenticateToken, checkRole(['ADMIN']), (req, res) => {
+app.delete('/api/personnel/:id', authenticateToken, checkRole(['ADMIN']), async (req, res) => {
     try {
-        const index = db.personnel.findIndex(p => p.id === req.params.id);
-        if (index === -1) {
+        const personnel = await Personnel.findByIdAndDelete(req.params.id);
+        if (!personnel) {
             return res.status(404).json({ error: 'Personnel not found' });
         }
-
-        db.personnel.splice(index, 1);
-
         res.json({
             success: true,
             message: 'Personnel deleted successfully'
@@ -233,50 +228,44 @@ app.delete('/api/personnel/:id', authenticateToken, checkRole(['ADMIN']), (req, 
     }
 });
 
-app.delete('/api/personnel', authenticateToken, checkRole(['ADMIN']), (req, res) => {
-    db.personnel = [];
-    res.json({
-        success: true,
-        message: 'All personnel data cleared'
-    });
+app.delete('/api/personnel', authenticateToken, checkRole(['ADMIN']), async (req, res) => {
+    try {
+        await Personnel.deleteMany({});
+        res.json({
+            success: true,
+            message: 'All personnel data cleared'
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // Sanctioned Strength Routes
-app.get('/api/sanctioned-strength', authenticateToken, (req, res) => {
-    res.json({ 
-        success: true, 
-        data: db.sanctionedStrength 
-    });
+app.get('/api/sanctioned-strength', authenticateToken, async (req, res) => {
+    try {
+        const data = await SanctionedStrength.find();
+        res.json({
+            success: true,
+            data
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
-app.post('/api/sanctioned-strength', authenticateToken, checkRole(['ADMIN']), (req, res) => {
+app.post('/api/sanctioned-strength', authenticateToken, checkRole(['ADMIN']), async (req, res) => {
     try {
         const { district, personnel_type, rank, sanctioned_count } = req.body;
 
-        const existingIndex = db.sanctionedStrength.findIndex(
-            s => s.district === district && s.personnel_type === personnel_type && s.rank === rank
+        const result = await SanctionedStrength.findOneAndUpdate(
+            { district, personnel_type, rank },
+            { sanctioned_count, updated_at: new Date().toISOString() },
+            { upsert: true, new: true, runValidators: true }
         );
-
-        if (existingIndex >= 0) {
-            db.sanctionedStrength[existingIndex] = {
-                ...db.sanctionedStrength[existingIndex],
-                sanctioned_count,
-                updated_at: new Date().toISOString()
-            };
-        } else {
-            db.sanctionedStrength.push({
-                id: uuidv4(),
-                district,
-                personnel_type,
-                rank,
-                sanctioned_count,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            });
-        }
 
         res.json({
             success: true,
+            data: result,
             message: 'Sanctioned strength updated'
         });
     } catch (error) {
@@ -285,40 +274,31 @@ app.post('/api/sanctioned-strength', authenticateToken, checkRole(['ADMIN']), (r
 });
 
 // Deputation Strength Routes
-app.get('/api/deputation-strength', authenticateToken, (req, res) => {
-    res.json({ 
-        success: true, 
-        data: db.deputationStrength 
-    });
+app.get('/api/deputation-strength', authenticateToken, async (req, res) => {
+    try {
+        const data = await DeputationStrength.find();
+        res.json({
+            success: true,
+            data
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
-app.post('/api/deputation-strength', authenticateToken, checkRole(['ADMIN']), (req, res) => {
+app.post('/api/deputation-strength', authenticateToken, checkRole(['ADMIN']), async (req, res) => {
     try {
         const { unit_name, rank, sanctioned_count } = req.body;
 
-        const existingIndex = db.deputationStrength.findIndex(
-            d => d.unit_name === unit_name && d.rank === rank
+        const result = await DeputationStrength.findOneAndUpdate(
+            { unit_name, rank },
+            { sanctioned_count, updated_at: new Date().toISOString() },
+            { upsert: true, new: true, runValidators: true }
         );
-
-        if (existingIndex >= 0) {
-            db.deputationStrength[existingIndex] = {
-                ...db.deputationStrength[existingIndex],
-                sanctioned_count,
-                updated_at: new Date().toISOString()
-            };
-        } else {
-            db.deputationStrength.push({
-                id: uuidv4(),
-                unit_name,
-                rank,
-                sanctioned_count,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            });
-        }
 
         res.json({
             success: true,
+            data: result,
             message: 'Deputation strength updated'
         });
     } catch (error) {
@@ -332,12 +312,17 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Something went wrong!' });
 });
 
-// Initialize default users
-initializeDefaultUsers().catch(err => {
-    console.error('Failed to initialize default users:', err);
-});
-
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+// Start server
+connectDB()
+    .then(async () => {
+        await initializeDefaultUsers();
+        await initializeDeputationStrength();
+        app.listen(PORT, () => {
+            console.log(`Server running on port ${PORT}`);
+            console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+        });
+    })
+    .catch((error) => {
+        console.error('Failed to start server:', error.message);
+        process.exit(1);
+    });
