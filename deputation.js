@@ -33,13 +33,15 @@ function showDepGroup(groupName, el) {
     const childrenDiv = document.getElementById(groupId);
     if (!childrenDiv) return;
 
-    const isOpen = childrenDiv.style.display !== 'none';
+    const isOpen = childrenDiv.classList.contains('open');
     if (isOpen) {
+        childrenDiv.classList.remove('open');
         childrenDiv.style.display = 'none';
         el.textContent = groupName + ' ▸';
         el.classList.remove('active');
     } else {
-        childrenDiv.style.display = 'block';
+        childrenDiv.classList.add('open');
+        childrenDiv.style.display = 'grid';
         el.textContent = groupName + ' ▾';
         el.classList.add('active');
     }
