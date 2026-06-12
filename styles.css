@@ -93,6 +93,13 @@ tr:hover { background: #e3f2fd; }
 .sub-tile:hover { background: #e3f2fd; border-color: var(--primary); color: var(--primary); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(13,71,161,0.15); }
 .sub-tile.active { background: linear-gradient(135deg, #1565c0, #0d47a1); color: white; border-color: var(--primary); box-shadow: 0 4px 12px rgba(13,71,161,0.3); }
 .sub-tile .sub-count { font-size: 22px; font-weight: bold; margin-top: 6px; }
+.dep-group-wrapper { grid-column: 1 / -1; }
+.dep-group-tile { background: linear-gradient(135deg, #e65100, #ef6c00); color: #fff; border-color: #e65100; }
+.dep-group-tile:hover { background: linear-gradient(135deg, #ef6c00, #f57c00); color: #fff; border-color: #e65100; }
+.dep-group-tile.active { background: linear-gradient(135deg, #bf360c, #e65100); color: #fff; }
+.dep-group-children { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 10px 0 10px 20px; border-left: 3px solid #ef6c00; margin-bottom: 10px; }
+.dep-child-tile { background: #fff3e0; border-color: #ffcc80; color: #e65100; }
+.dep-child-tile:hover { background: #ffe0b2; border-color: #ef6c00; }
 
 /* Detail sections */
 .detail-section { display: none; }

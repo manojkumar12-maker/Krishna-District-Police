@@ -1,5 +1,51 @@
 // Deputation Module
 
+function renderDepTiles() {
+    const container = document.getElementById('depSubTiles');
+    if (!container) return;
+
+    const groupedParents = Object.keys(depUnitGroups);
+    const childrenInGroup = new Set();
+    Object.values(depUnitGroups).forEach(arr => arr.forEach(u => childrenInGroup.add(u)));
+
+    const standalone = depUnits.filter(u => !childrenInGroup.has(u));
+
+    let html = '';
+
+    groupedParents.forEach(parent => {
+        html += `<div class="dep-group-wrapper">`;
+        html += `<div class="sub-tile dep-group-tile" onclick="showDepGroup('${escapeQuotes(parent)}', this)">${parent} ▸</div>`;
+        html += `<div class="dep-group-children" id="depGroup_${parent.replace(/[^a-zA-Z0-9]/g, '_')}" style="display:none;">`;
+        depUnitGroups[parent].forEach(child => {
+            html += `<div class="sub-tile dep-child-tile" onclick="showDepUnit('${escapeQuotes(child)}', this)">${child}</div>`;
+        });
+        html += `</div></div>`;
+    });
+
+    standalone.forEach(unit => {
+        html += `<div class="sub-tile" onclick="showDepUnit('${escapeQuotes(unit)}', this)">${unit}</div>`;
+    });
+
+    container.innerHTML = html;
+}
+
+function showDepGroup(groupName, el) {
+    const groupId = 'depGroup_' + groupName.replace(/[^a-zA-Z0-9]/g, '_');
+    const childrenDiv = document.getElementById(groupId);
+    if (!childrenDiv) return;
+
+    const isOpen = childrenDiv.style.display !== 'none';
+    if (isOpen) {
+        childrenDiv.style.display = 'none';
+        el.textContent = groupName + ' ▸';
+        el.classList.remove('active');
+    } else {
+        childrenDiv.style.display = 'block';
+        el.textContent = groupName + ' ▾';
+        el.classList.add('active');
+    }
+}
+
 function updateDepConsolidated() {
     const tbody = document.getElementById('depConsolidatedBody');
     let html = '';

@@ -47,9 +47,10 @@ async function initializeDefaultUsers() {
 
 // Initialize default deputation strength entries (only if empty)
 const depUnits = [
-    'GRP., Vijayawada', 'Intelligence Dept, VJA.', 'C.I.D. A.P., Mangalagiri',
+    'GRP., Vijayawada', 'Intelligence Dept, VJA.', 'I.S.W.', 'I.S.W. (CMSG)',
+    'R.I.O., SPL. Intelligence Cell', 'C.I.D. A.P., Mangalagiri', 'EOW-II, Mangalagiri',
     'Vigilance and Enforcement', 'A.P., Transco', 'A.P., Genco',
-    'A.C.B., Vijayawada', 'Grey Hounds', 'Octopus', 'APPA., Hyderabad',
+    'A.C.B., Vijayawada', 'CBI. Visakhapatnam', 'Grey Hounds', 'Octopus', 'APPA., Hyderabad',
     'Police Computer Service', 'Drugs Control Administration',
     'Eagle', 'CSPS, Visakhapatnam'
 ];
