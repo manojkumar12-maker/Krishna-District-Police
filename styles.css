@@ -95,7 +95,7 @@ tr:hover { background: #e3f2fd; }
 .sub-tile .sub-count { font-size: 22px; font-weight: bold; margin-top: 6px; }
 .dep-group-tile { cursor: pointer; }
 .dep-group-tile.active { background: linear-gradient(135deg, #1565c0, #0d47a1); color: white; border-color: var(--primary); }
-.dep-group-children { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; grid-column: 1 / -1; padding: 15px; background: #f5f5f5; border-radius: 10px; margin-top: 5px; margin-bottom: 15px; border: 1px solid #e0e0e0; }
+.dep-group-children { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; grid-column: 1 / -1; padding: 15px 0; margin: 5px 0 15px 0; background: #f5f5f5; border-radius: 10px; border: 1px solid #e0e0e0; }
 .dep-child-tile { background: #ffffff; border: 2px solid #e3f2fd; }
 .dep-child-tile:hover { background: #e3f2fd; border-color: var(--primary); }
 
