@@ -19,11 +19,19 @@ async function apiRequest(endpoint, options = {}) {
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.error || data.message || `HTTP ${response.status}`);
+            const error = new Error(data.error || data.message || `HTTP ${response.status}`);
+            if (response.status === 401 || response.status === 403) {
+                error.authError = true;
+            }
+            throw error;
         }
 
         return data;
     } catch (error) {
+        if (error.authError) {
+            console.error('Auth Error:', error);
+            throw error;
+        }
         console.error('API Error:', error);
         throw error;
     }

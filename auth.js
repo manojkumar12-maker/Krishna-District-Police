@@ -25,6 +25,7 @@ async function handleAuth() {
             userRole = result.user.role;
             localStorage.setItem('authToken', authToken);
             localStorage.setItem('userRole', userRole);
+            localStorage.setItem('userEmail', email);
             document.getElementById('loginScreen').style.display = 'none';
             document.getElementById('mainHeader').style.display = 'flex';
             document.getElementById('mainContainer').style.display = 'block';
@@ -48,6 +49,7 @@ async function handleLogout() {
     userRole = null;
     localStorage.removeItem('authToken');
     localStorage.removeItem('userRole');
+    localStorage.removeItem('userEmail');
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('mainHeader').style.display = 'none';
     document.getElementById('mainContainer').style.display = 'none';
@@ -58,19 +60,22 @@ async function handleLogout() {
 
 async function checkAuth() {
     if (authToken) {
+        userRole = localStorage.getItem('userRole');
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('mainHeader').style.display = 'flex';
+        document.getElementById('mainContainer').style.display = 'block';
+        document.getElementById('userEmail').textContent = localStorage.getItem('userEmail') || 'User';
+        updateUserBadge();
+
         try {
-            userRole = localStorage.getItem('userRole');
-            // Verify token by making a request
-            await getAllPersonnel();
-            document.getElementById('loginScreen').style.display = 'none';
-            document.getElementById('mainHeader').style.display = 'flex';
-            document.getElementById('mainContainer').style.display = 'block';
-            document.getElementById('userEmail').textContent = localStorage.getItem('userEmail') || 'User';
-            updateUserBadge();
             await loadAllData();
         } catch (e) {
-            // Token invalid
-            handleLogout();
+            if (e.authError) {
+                handleLogout();
+                showToast('Session expired. Please login again.', 'error');
+            } else {
+                showToast('Could not load data. Retrying...', 'error');
+            }
         }
     }
 }
