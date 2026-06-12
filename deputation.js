@@ -13,13 +13,12 @@ function renderDepTiles() {
     let html = '';
 
     groupedParents.forEach(parent => {
-        html += `<div class="dep-group-wrapper">`;
         html += `<div class="sub-tile dep-group-tile" onclick="showDepGroup('${escapeQuotes(parent)}', this)">${parent} ▸</div>`;
         html += `<div class="dep-group-children" id="depGroup_${parent.replace(/[^a-zA-Z0-9]/g, '_')}" style="display:none;">`;
         depUnitGroups[parent].forEach(child => {
             html += `<div class="sub-tile dep-child-tile" onclick="showDepUnit('${escapeQuotes(child)}', this)">${child}</div>`;
         });
-        html += `</div></div>`;
+        html += `</div>`;
     });
 
     standalone.forEach(unit => {

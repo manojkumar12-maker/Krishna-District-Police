@@ -93,10 +93,9 @@ tr:hover { background: #e3f2fd; }
 .sub-tile:hover { background: #e3f2fd; border-color: var(--primary); color: var(--primary); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(13,71,161,0.15); }
 .sub-tile.active { background: linear-gradient(135deg, #1565c0, #0d47a1); color: white; border-color: var(--primary); box-shadow: 0 4px 12px rgba(13,71,161,0.3); }
 .sub-tile .sub-count { font-size: 22px; font-weight: bold; margin-top: 6px; }
-.dep-group-wrapper { grid-column: 1 / -1; }
 .dep-group-tile { cursor: pointer; }
 .dep-group-tile.active { background: linear-gradient(135deg, #1565c0, #0d47a1); color: white; border-color: var(--primary); }
-.dep-group-children { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 10px 0 10px 20px; border-left: 3px solid var(--primary); margin-bottom: 10px; }
+.dep-group-children { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; grid-column: 1 / -1; padding: 10px 0; }
 .dep-child-tile { background: #e3f2fd; border-color: #bbdefb; }
 .dep-child-tile:hover { background: #bbdefb; border-color: var(--primary); }
 
