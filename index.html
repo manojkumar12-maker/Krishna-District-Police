@@ -32,6 +32,7 @@
             <span class="record-count" id="dataCount">0 records</span>
             <input type="file" id="excelFileInput" accept=".xlsx,.xls" style="display:none" onchange="handleExcelUpload(this)">
             <button class="btn btn-secondary" onclick="document.getElementById('excelFileInput').click()">📥 Import Excel</button>
+            <a class="btn btn-secondary" href="personnel.xlsx" download style="text-decoration:none;">📋 Download Template</a>
             <button class="btn btn-primary" onclick="exportCSV()">Export CSV</button>
             <button class="btn btn-secondary" onclick="exportAllPDF()">Export PDF</button>
             <button class="btn btn-danger" onclick="clearAllData()">Clear All</button>
@@ -419,6 +420,16 @@
                     <div class="form-group" id="deploymentDateGroup"><label>Date of Deployment</label><input type="date" id="dateOfDeployment"></div>
                     <div class="form-group"><label>Punishments</label><textarea id="punishments" rows="2" placeholder="Enter any punishments"></textarea></div>
                     <div class="form-group"><label>Phone Number</label><input type="tel" id="phoneNumber"></div>
+                </div>
+            </div>
+            <div class="modal-body" style="border-top:2px solid #eee; margin-top:0;">
+                <div style="padding:0; text-align:center;">
+                    <h4 style="color:var(--primary); margin-bottom:10px; font-size:14px;">Or Upload from Excel</h4>
+                    <div class="modal-import-row">
+                        <input type="file" id="modalExcelFileInput" accept=".xlsx,.xls" style="display:none" onchange="handleModalExcelUpload(this)">
+                        <button class="btn btn-secondary" onclick="document.getElementById('modalExcelFileInput').click()">📥 Choose .xlsx File</button>
+                        <a class="btn btn-secondary" href="personnel.xlsx" download style="text-decoration:none;">📋 Download Template</a>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
