@@ -2,46 +2,55 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const multer = require('multer');
+const xlsx = require('xlsx');
 const connectDB = require('./db');
 const User = require('./models/User');
 const Personnel = require('./models/Personnel');
+const AuditLog = require('./models/AuditLog');
 const SanctionedStrength = require('./models/SanctionedStrength');
 const DeputationStrength = require('./models/DeputationStrength');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-production';
+
+if (!process.env.JWT_SECRET) {
+    console.error('FATAL: JWT_SECRET environment variable is required');
+    process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET;
+
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const ext = file.originalname.toLowerCase().endsWith('.xlsx') || file.originalname.toLowerCase().endsWith('.xls');
+        cb(null, ext);
+    }
+});
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// Initialize default users (only if they don't exist)
-async function initializeDefaultUsers() {
+// First-run setup: seed an admin from env vars only if no users exist
+async function initFirstRunSetup() {
     try {
-        const adminExists = await User.findOne({ email: 'manoj.spoffice.kri@gmail.com' });
-        if (!adminExists) {
-            const hashedAdminPw = await bcrypt.hash('Sanju@1227#', 10);
-            await User.create({
-                email: 'manoj.spoffice.kri@gmail.com',
-                password: hashedAdminPw,
-                role: 'ADMIN'
-            });
-            console.log('Default admin user created');
-        }
-
-        const userExists = await User.findOne({ email: 'user.spoffice.kri@gmail.com' });
-        if (!userExists) {
-            const hashedUserPw = await bcrypt.hash('A8DPO#USER', 10);
-            await User.create({
-                email: 'user.spoffice.kri@gmail.com',
-                password: hashedUserPw,
-                role: 'USER'
-            });
-            console.log('Default user created');
+        const userCount = await User.countDocuments();
+        if (userCount === 0) {
+            const email = process.env.ADMIN_EMAIL;
+            const password = process.env.ADMIN_PASSWORD;
+            if (!email || !password) {
+                console.log('No users found. Set ADMIN_EMAIL and ADMIN_PASSWORD env vars to seed an admin account.');
+                console.log('Or use POST /api/auth/register to create the first user (auto-assigned ADMIN role).');
+                return;
+            }
+            const hashedPw = await bcrypt.hash(password, 10);
+            await User.create({ email, password: hashedPw, role: 'ADMIN' });
+            console.log('Initial admin user seeded from environment variables');
         }
     } catch (error) {
-        console.error('Failed to initialize default users:', error.message);
+        console.error('First-run setup error:', error.message);
     }
 }
 
@@ -108,6 +117,15 @@ const checkRole = (allowedRoles) => {
     };
 };
 
+// Audit logging helper
+async function createAuditLog(action, performedBy, targetId, targetType, changes) {
+    try {
+        await AuditLog.create({ action, performedBy, targetId, targetType, changes });
+    } catch (error) {
+        console.error('Audit log error:', error.message);
+    }
+}
+
 // Routes
 
 // Health check
@@ -115,11 +133,42 @@ app.get('/', (req, res) => {
     res.json({
         message: 'Krishna District Police API',
         status: 'running',
-        version: '1.0.0'
+        version: '2.0.0'
     });
 });
 
-// Auth Routes
+// ===== Auth Routes =====
+
+// User registration (first user auto-gets ADMIN, subsequent need ADMIN to create)
+app.post('/api/auth/register', authenticateToken, checkRole(['ADMIN']), async (req, res) => {
+    try {
+        const { email, password, role } = req.body;
+
+        if (!email || !password) {
+            return res.status(400).json({ error: 'Email and password required' });
+        }
+
+        const existing = await User.findOne({ email: email.toLowerCase() });
+        if (existing) {
+            return res.status(400).json({ error: 'User already exists' });
+        }
+
+        const validRoles = ['ADMIN', 'USER'];
+        const assignedRole = validRoles.includes(role) ? role : 'USER';
+
+        const hashedPw = await bcrypt.hash(password, 10);
+        const user = await User.create({ email, password: hashedPw, role: assignedRole });
+
+        res.status(201).json({
+            success: true,
+            message: 'User created successfully',
+            user: { id: user._id, email: user.email, role: user.role }
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.post('/api/auth/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -154,10 +203,37 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
-// Personnel Routes
+// ===== Personnel Routes =====
+
+// GET all personnel with search & filters
 app.get('/api/personnel', authenticateToken, async (req, res) => {
     try {
-        const personnel = await Personnel.find().sort({ created_at: -1 });
+        const { search, name, rank, genl_no, personnel_type, district, status, gender, station, is_on_deployment } = req.query;
+        const filter = {};
+
+        if (search) {
+            const regex = new RegExp(search, 'i');
+            filter.$or = [
+                { name: regex },
+                { rank: regex },
+                { genl_no: regex },
+                { previous_station: regex },
+                { present_working: regex },
+                { phone_number: regex }
+            ];
+        }
+
+        if (name) filter.name = new RegExp(name, 'i');
+        if (rank) filter.rank = rank;
+        if (genl_no) filter.genl_no = new RegExp(genl_no, 'i');
+        if (personnel_type) filter.personnel_type = personnel_type;
+        if (district) filter.district = district;
+        if (status) filter.status = status;
+        if (gender) filter.gender = gender;
+        if (station) filter.present_working = new RegExp(station, 'i');
+        if (is_on_deployment !== undefined) filter.is_on_deployment = is_on_deployment === 'true';
+
+        const personnel = await Personnel.find(filter).sort({ created_at: -1 });
         res.json({
             success: true,
             data: personnel,
@@ -183,6 +259,7 @@ app.get('/api/personnel/:id', authenticateToken, async (req, res) => {
 app.post('/api/personnel', authenticateToken, checkRole(['ADMIN']), async (req, res) => {
     try {
         const personnel = await Personnel.create(req.body);
+        await createAuditLog('CREATE', req.user.email, personnel._id, 'Personnel', req.body);
         res.status(201).json({
             success: true,
             data: personnel,
@@ -195,14 +272,25 @@ app.post('/api/personnel', authenticateToken, checkRole(['ADMIN']), async (req, 
 
 app.put('/api/personnel/:id', authenticateToken, checkRole(['ADMIN']), async (req, res) => {
     try {
+        const oldDoc = await Personnel.findById(req.params.id);
+        if (!oldDoc) {
+            return res.status(404).json({ error: 'Personnel not found' });
+        }
+
         const personnel = await Personnel.findByIdAndUpdate(
             req.params.id,
             { ...req.body, updated_at: new Date().toISOString() },
             { new: true, runValidators: true }
         );
-        if (!personnel) {
-            return res.status(404).json({ error: 'Personnel not found' });
+
+        const changedFields = {};
+        for (const key of Object.keys(req.body)) {
+            if (JSON.stringify(oldDoc[key]) !== JSON.stringify(req.body[key])) {
+                changedFields[key] = { from: oldDoc[key], to: req.body[key] };
+            }
         }
+        await createAuditLog('UPDATE', req.user.email, personnel._id, 'Personnel', changedFields);
+
         res.json({
             success: true,
             data: personnel,
@@ -215,10 +303,16 @@ app.put('/api/personnel/:id', authenticateToken, checkRole(['ADMIN']), async (re
 
 app.delete('/api/personnel/:id', authenticateToken, checkRole(['ADMIN']), async (req, res) => {
     try {
-        const personnel = await Personnel.findByIdAndDelete(req.params.id);
-        if (!personnel) {
+        const oldDoc = await Personnel.findById(req.params.id);
+        if (!oldDoc) {
             return res.status(404).json({ error: 'Personnel not found' });
         }
+        await Personnel.findByIdAndDelete(req.params.id);
+        await createAuditLog('DELETE', req.user.email, oldDoc._id, 'Personnel', {
+            name: oldDoc.name,
+            rank: oldDoc.rank,
+            genl_no: oldDoc.genl_no
+        });
         res.json({
             success: true,
             message: 'Personnel deleted successfully'
@@ -230,6 +324,7 @@ app.delete('/api/personnel/:id', authenticateToken, checkRole(['ADMIN']), async 
 
 app.delete('/api/personnel', authenticateToken, checkRole(['ADMIN']), async (req, res) => {
     try {
+        await createAuditLog('CLEAR_ALL', req.user.email, 'ALL', 'Personnel', {});
         await Personnel.deleteMany({});
         res.json({
             success: true,
@@ -240,14 +335,120 @@ app.delete('/api/personnel', authenticateToken, checkRole(['ADMIN']), async (req
     }
 });
 
-// Sanctioned Strength Routes
+// Excel Import
+app.post('/api/personnel/import', authenticateToken, checkRole(['ADMIN']), upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const rows = xlsx.utils.sheet_to_json(sheet);
+
+        if (rows.length === 0) {
+            return res.status(400).json({ error: 'Excel file is empty' });
+        }
+
+        const fieldMap = {
+            'name': ['name', 'Name', 'NAME'],
+            'rank': ['rank', 'Rank', 'RANK'],
+            'genl_no': ['genl_no', 'genlno', 'genl no', 'Genl.No', 'General Number', 'Genl No'],
+            'personnel_type': ['personnel_type', 'type', 'Type', 'Personnel Type'],
+            'district': ['district', 'District', 'DISTRICT'],
+            'gender': ['gender', 'Gender', 'GENDER', 'Sex', 'SEX'],
+            'previous_station': ['previous_station', 'previous station', 'Previous Station'],
+            'status': ['status', 'Status', 'STATUS'],
+            'date_of_birth': ['date_of_birth', 'dob', 'DOB', 'Date of Birth'],
+            'caste': ['caste', 'Caste', 'CASTE'],
+            'education': ['education', 'Education', 'Qualification'],
+            'date_of_promotion': ['date_of_promotion', 'promotion date', 'Date of Promotion'],
+            'present_working': ['present_working', 'present working', 'Present Working', 'Station'],
+            'phone_number': ['phone_number', 'phone', 'Phone', 'Mobile', 'Phone Number'],
+            'punishments': ['punishments', 'Punishments'],
+            'is_on_deployment': ['is_on_deployment', 'on deputation', 'Deputation'],
+            'deployment_unit': ['deployment_unit', 'deployment unit', 'Deployment Unit'],
+            'date_of_deployment': ['date_of_deployment', 'deployment date', 'Date of Deployment']
+        };
+
+        const imported = [];
+        const errors = [];
+        const headerKeys = Object.keys(rows[0]);
+
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            const data = {};
+
+            for (const [field, aliases] of Object.entries(fieldMap)) {
+                for (const key of headerKeys) {
+                    if (aliases.some(a => a.toLowerCase() === key.toLowerCase())) {
+                        let val = row[key];
+                        if (val !== undefined && val !== null && val !== '') {
+                            if (field === 'is_on_deployment') {
+                                val = String(val).toLowerCase() === 'true' || String(val).toLowerCase() === 'yes';
+                            }
+                            data[field] = val;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            if (!data.name && !data.genl_no) {
+                errors.push({ row: i + 2, error: 'Missing name and genl_no' });
+                continue;
+            }
+
+            try {
+                const personnel = await Personnel.create(data);
+                imported.push(personnel);
+            } catch (err) {
+                errors.push({ row: i + 2, error: err.message });
+            }
+        }
+
+        await createAuditLog('IMPORT', req.user.email, 'BATCH', 'Personnel', {
+            importedCount: imported.length,
+            errorCount: errors.length
+        });
+
+        res.json({
+            success: true,
+            imported: imported.length,
+            errors: errors,
+            message: `Imported ${imported.length} records` + (errors.length ? `, ${errors.length} errors` : '')
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ===== Audit Log Routes =====
+
+app.get('/api/audit-logs', authenticateToken, checkRole(['ADMIN']), async (req, res) => {
+    try {
+        const { action, performedBy, limit } = req.query;
+        const filter = {};
+        if (action) filter.action = action;
+        if (performedBy) filter.performedBy = new RegExp(performedBy, 'i');
+
+        const logs = await AuditLog.find(filter)
+            .sort({ timestamp: -1 })
+            .limit(parseInt(limit) || 500);
+
+        res.json({ success: true, data: logs, count: logs.length });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ===== Sanctioned Strength Routes =====
+
 app.get('/api/sanctioned-strength', authenticateToken, async (req, res) => {
     try {
         const data = await SanctionedStrength.find();
-        res.json({
-            success: true,
-            data
-        });
+        res.json({ success: true, data });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -263,6 +464,8 @@ app.post('/api/sanctioned-strength', authenticateToken, checkRole(['ADMIN']), as
             { upsert: true, new: true, runValidators: true }
         );
 
+        await createAuditLog('UPDATE_SANCTIONED', req.user.email, result._id, 'SanctionedStrength', req.body);
+
         res.json({
             success: true,
             data: result,
@@ -273,14 +476,12 @@ app.post('/api/sanctioned-strength', authenticateToken, checkRole(['ADMIN']), as
     }
 });
 
-// Deputation Strength Routes
+// ===== Deputation Strength Routes =====
+
 app.get('/api/deputation-strength', authenticateToken, async (req, res) => {
     try {
         const data = await DeputationStrength.find();
-        res.json({
-            success: true,
-            data
-        });
+        res.json({ success: true, data });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -295,6 +496,8 @@ app.post('/api/deputation-strength', authenticateToken, checkRole(['ADMIN']), as
             { sanctioned_count, updated_at: new Date().toISOString() },
             { upsert: true, new: true, runValidators: true }
         );
+
+        await createAuditLog('UPDATE_DEPUTATION', req.user.email, result._id, 'DeputationStrength', req.body);
 
         res.json({
             success: true,
@@ -315,7 +518,7 @@ app.use((err, req, res, next) => {
 // Start server
 connectDB()
     .then(async () => {
-        await initializeDefaultUsers();
+        await initFirstRunSetup();
         await initializeDeputationStrength();
         app.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);

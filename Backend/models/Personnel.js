@@ -6,6 +6,7 @@ const personnelSchema = new mongoose.Schema({
     genl_no: { type: String, required: true },
     personnel_type: { type: String, required: true },
     district: { type: String, required: true },
+    gender: { type: String, default: null },
     previous_station: { type: String, default: null },
     status: { type: String, default: 'Present' },
     date_of_birth: { type: String, default: null },

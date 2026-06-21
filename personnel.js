@@ -16,6 +16,7 @@ function openAddModal() {
     document.getElementById('genlNo').value = '';
     document.getElementById('personnelType').value = 'CIVIL';
     document.getElementById('district').value = 'ERSTWHILE';
+    document.getElementById('gender').value = '';
     document.getElementById('previousStation').value = '';
     document.getElementById('status').value = 'Present';
     document.getElementById('dateOfBirth').value = '';
@@ -63,6 +64,7 @@ async function savePersonnel() {
     const genlNo = document.getElementById('genlNo').value.trim();
     const personnelType = document.getElementById('personnelType').value;
     const district = document.getElementById('district').value;
+    const gender = document.getElementById('gender').value || null;
     const previousStation = document.getElementById('previousStation').value.trim();
     const status = document.getElementById('status').value;
     const dateOfBirth = document.getElementById('dateOfBirth').value || null;
@@ -87,6 +89,7 @@ async function savePersonnel() {
         genl_no: genlNo,
         personnel_type: personnelType,
         district,
+        gender,
         previous_station: previousStation || null,
         status,
         date_of_birth: dateOfBirth,
@@ -135,6 +138,7 @@ async function editPersonnel(id) {
         document.getElementById('genlNo').value = personnel.genl_no;
         document.getElementById('personnelType').value = personnel.personnel_type;
         document.getElementById('district').value = personnel.district;
+        document.getElementById('gender').value = personnel.gender || '';
         document.getElementById('previousStation').value = personnel.previous_station || '';
         document.getElementById('status').value = personnel.status;
         document.getElementById('dateOfBirth').value = personnel.date_of_birth || '';

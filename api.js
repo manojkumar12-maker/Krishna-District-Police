@@ -46,8 +46,13 @@ async function loginUser(email, password) {
 }
 
 // Personnel API
-async function getAllPersonnel() {
-    return apiRequest('/personnel');
+async function getAllPersonnel(filters = {}) {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) {
+        if (value) params.append(key, value);
+    }
+    const query = params.toString();
+    return apiRequest('/personnel' + (query ? '?' + query : ''));
 }
 
 async function getPersonnelById(id) {
@@ -101,5 +106,38 @@ async function updateDeputationStrength(unitName, rank, count) {
     return apiRequest('/deputation-strength', {
         method: 'POST',
         body: { unit_name: unitName, rank, sanctioned_count: count }
+    });
+}
+
+// Excel Import
+async function importPersonnelExcel(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const url = `${API_BASE_URL}/personnel/import`;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${authToken}` },
+        body: formData
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Import failed');
+    return data;
+}
+
+// Audit Logs
+async function getAuditLogs(filters = {}) {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) {
+        if (value) params.append(key, value);
+    }
+    const query = params.toString();
+    return apiRequest('/audit-logs' + (query ? '?' + query : ''));
+}
+
+// User Management
+async function registerUser(email, password, role) {
+    return apiRequest('/auth/register', {
+        method: 'POST',
+        body: { email, password, role }
     });
 }

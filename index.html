@@ -30,6 +30,8 @@
         <div class="header-actions" id="adminActions">
             <span class="user-email" id="userEmail"></span>
             <span class="record-count" id="dataCount">0 records</span>
+            <input type="file" id="excelFileInput" accept=".xlsx,.xls" style="display:none" onchange="handleExcelUpload(this)">
+            <button class="btn btn-secondary" onclick="document.getElementById('excelFileInput').click()">📥 Import Excel</button>
             <button class="btn btn-primary" onclick="exportCSV()">Export CSV</button>
             <button class="btn btn-secondary" onclick="exportAllPDF()">Export PDF</button>
             <button class="btn btn-danger" onclick="clearAllData()">Clear All</button>
@@ -42,6 +44,8 @@
         <div class="nav-buttons">
             <button class="nav-btn" onclick="showPage('dashboard')">Home</button>
             <button class="nav-btn" onclick="openAddModal()">+ Add Personnel</button>
+            <button class="nav-btn" onclick="showPage('searchFilter')">🔍 Search & Filter</button>
+            <button class="nav-btn" onclick="showPage('auditLogs');loadAuditLogs()">Audit Logs</button>
         </div>
 
         <!-- Dashboard Page -->
@@ -339,9 +343,55 @@
                 </div>
             </div>
         </div>
-    </div>
+        </div>
 
-    <!-- Personnel Modal -->
+        <!-- Search & Filter Page -->
+        <div id="searchFilter" class="page">
+            <button class="back-btn" onclick="showPage('dashboard')">Back to Dashboard</button>
+            <div class="card">
+                <h2>Search & Filter Personnel</h2>
+                <div class="filter-bar">
+                    <input type="text" id="globalSearch" class="search-input" placeholder="Search by name, rank, genl.no, station, phone..." oninput="applySearchFilter()">
+                    <div class="filter-row">
+                        <select id="filterRank" onchange="applySearchFilter()"><option value="">All Ranks</option></select>
+                        <select id="filterDistrict" onchange="applySearchFilter()"><option value="">All Districts</option><option value="ERSTWHILE">Erstwhile Krishna</option><option value="NEW">Krishna Dist. (New)</option></select>
+                        <select id="filterType" onchange="applySearchFilter()"><option value="">All Types</option><option value="CIVIL">Civil</option><option value="AR">AR</option></select>
+                        <select id="filterStatus" onchange="applySearchFilter()"><option value="">All Status</option><option value="Present">Present</option><option value="Deserter">Deserter</option></select>
+                        <select id="filterGender" onchange="applySearchFilter()"><option value="">All Genders</option><option value="Male">Male</option><option value="Female">Female</option></select>
+                        <select id="filterDeployment" onchange="applySearchFilter()"><option value="">Deployment</option><option value="false">Not on Deputation</option><option value="true">On Deputation</option></select>
+                    </div>
+                </div>
+                <div class="result-info" id="filterResultInfo"></div>
+                <table id="searchFilterTable" style="display:none;">
+                    <thead>
+                        <tr><th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Type</th><th>District</th><th>Station</th><th>Status</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody id="searchFilterBody"></tbody>
+                </table>
+                <div id="searchFilterEmpty" class="empty-state">No personnel found matching your criteria.</div>
+            </div>
+        </div>
+
+        <!-- Audit Logs Page -->
+        <div id="auditLogs" class="page">
+            <button class="back-btn" onclick="showPage('dashboard')">Back to Dashboard</button>
+            <div class="card">
+                <h2>Audit Logs</h2>
+                <div class="filter-bar">
+                    <div class="filter-row">
+                        <select id="auditActionFilter" onchange="loadAuditLogs()"><option value="">All Actions</option><option value="CREATE">Create</option><option value="UPDATE">Update</option><option value="DELETE">Delete</option><option value="IMPORT">Import</option><option value="CLEAR_ALL">Clear All</option></select>
+                        <input type="text" id="auditUserFilter" class="search-input" placeholder="Filter by user email..." oninput="loadAuditLogs()">
+                    </div>
+                </div>
+                <table id="auditLogTable" style="display:none;">
+                    <thead>
+                        <tr><th>Date/Time</th><th>Action</th><th>Performed By</th><th>Target</th><th>Details</th></tr>
+                    </thead>
+                    <tbody id="auditLogBody"></tbody>
+                </table>
+                <div id="auditLogEmpty" class="empty-state">No audit logs found.</div>
+            </div>
+        </div>
     <div class="modal-overlay" id="personnelModal">
         <div class="modal">
             <div class="modal-header">
@@ -356,6 +406,7 @@
                     <div class="form-group"><label>Genl.No. *</label><input type="text" id="genlNo" required></div>
                     <div class="form-group"><label>Type *</label><select id="personnelType" onchange="updateRankOptions()"><option value="CIVIL">Civil</option><option value="AR">AR</option></select></div>
                     <div class="form-group"><label>District *</label><select id="district" onchange="updateRankOptions()"><option value="ERSTWHILE">Erstwhile Krishna District</option><option value="NEW">Krishna District (New)</option><option value="DEPUTATION">Deputation</option></select></div>
+                    <div class="form-group"><label>Gender</label><select id="gender"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
                     <div class="form-group"><label>Previous Station</label><textarea id="previousStation" rows="2" placeholder="Enter previous stations, one per line"></textarea></div>
                     <div class="form-group"><label>Status</label><select id="status"><option value="Present">Present</option><option value="Deserter">Deserter</option></select></div>
                     <div class="form-group"><label>Date of Birth</label><input type="date" id="dateOfBirth"></div>
@@ -389,6 +440,7 @@
     <script src="deputation.js"></script>
     <script src="policeStation.js"></script>
     <script src="export.js"></script>
+    <script src="auditlog.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

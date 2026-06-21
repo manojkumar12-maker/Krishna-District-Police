@@ -154,6 +154,13 @@ tr:hover { background: #e3f2fd; }
 .search-input:focus { border-color: var(--primary); background: #ffffff; outline: none; box-shadow: 0 0 0 3px rgba(13,71,161,0.1); }
 .search-input::placeholder { color: #90a4ae; }
 
+/* Filter Bar */
+.filter-bar { margin-bottom: 20px; }
+.filter-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 12px; }
+.filter-row select { width: 100%; padding: 10px 12px; border: 2px solid #e3f2fd; border-radius: 8px; font-size: 13px; background: #f8fbff; color: #333; cursor: pointer; }
+.filter-row select:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 3px rgba(13,71,161,0.1); }
+.result-info { margin: 10px 0; font-size: 13px; color: #1565c0; font-weight: 600; }
+
 /* Responsive */
 @media (max-width: 768px) {
     .district-tiles, .sub-tiles.dep-grid, .rank-tiles, .dep-strength-grid, .strength-row { grid-template-columns: repeat(2, 1fr); }
