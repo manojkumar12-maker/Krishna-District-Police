@@ -123,6 +123,10 @@ async function handleExcelUpload(input) {
     input.value = '';
 }
 
+function handleModalExcelUpload(input) {
+    handleExcelUpload(input);
+}
+
 // Audit Logs
 async function loadAuditLogs() {
     const action = document.getElementById('auditActionFilter').value;
