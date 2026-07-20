@@ -4,6 +4,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const xlsx = require('xlsx');
+const rateLimit = require('express-rate-limit');
+const { body, query, validationResult } = require('express-validator');
 const connectDB = require('./db');
 const User = require('./models/User');
 const Personnel = require('./models/Personnel');
@@ -30,8 +32,45 @@ const upload = multer({
 });
 
 // Middleware
-app.use(cors());
-app.use(express.json());
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',')
+    : ['http://localhost:5500', 'http://localhost:3000', 'http://127.0.0.1:5500', /^https?:\/\/.*\.github\.io$/];
+
+app.use(cors({
+    origin: allowedOrigins,
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+app.use(express.json({ limit: '1mb' }));
+
+// Rate limiting
+const generalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 200,
+    message: { error: 'Too many requests, please try again later' }
+});
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    message: { error: 'Too many login attempts, please try again later' }
+});
+
+// Validation error handler
+const validate = (validations) => {
+    return async (req, res, next) => {
+        for (const validation of validations) {
+            const result = await validation.run(req);
+            if (!result.isEmpty()) break;
+        }
+        const errors = validationResult(req);
+        if (errors.isEmpty()) return next();
+        res.status(400).json({ error: errors.array()[0].msg });
+    };
+};
+
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+app.use('/api/', generalLimiter);
 
 // First-run setup: seed an admin from env vars only if no users exist
 async function initFirstRunSetup() {
@@ -140,7 +179,13 @@ app.get('/', (req, res) => {
 // ===== Auth Routes =====
 
 // User registration (first user auto-gets ADMIN, subsequent need ADMIN to create)
-app.post('/api/auth/register', authenticateToken, checkRole(['ADMIN']), async (req, res) => {
+app.post('/api/auth/register', authenticateToken, checkRole(['ADMIN']),
+    validate([
+        body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+        body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+        body('role').optional().isIn(['ADMIN', 'USER']).withMessage('Invalid role')
+    ]),
+    async (req, res) => {
     try {
         const { email, password, role } = req.body;
 
@@ -169,7 +214,12 @@ app.post('/api/auth/register', authenticateToken, checkRole(['ADMIN']), async (r
     }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter,
+    validate([
+        body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+        body('password').notEmpty().withMessage('Password is required')
+    ]),
+    async (req, res) => {
     try {
         const { email, password } = req.body;
 
@@ -212,7 +262,8 @@ app.get('/api/personnel', authenticateToken, async (req, res) => {
         const filter = {};
 
         if (search) {
-            const regex = new RegExp(search, 'i');
+            const safeSearch = escapeRegex(search);
+            const regex = new RegExp(safeSearch, 'i');
             filter.$or = [
                 { name: regex },
                 { rank: regex },
@@ -223,14 +274,14 @@ app.get('/api/personnel', authenticateToken, async (req, res) => {
             ];
         }
 
-        if (name) filter.name = new RegExp(name, 'i');
+        if (name) filter.name = new RegExp(escapeRegex(name), 'i');
         if (rank) filter.rank = rank;
-        if (genl_no) filter.genl_no = new RegExp(genl_no, 'i');
+        if (genl_no) filter.genl_no = new RegExp(escapeRegex(genl_no), 'i');
         if (personnel_type) filter.personnel_type = personnel_type;
         if (district) filter.district = district;
         if (status) filter.status = status;
         if (gender) filter.gender = gender;
-        if (station) filter.present_working = new RegExp(station, 'i');
+        if (station) filter.present_working = new RegExp(escapeRegex(station), 'i');
         if (is_on_deployment !== undefined) filter.is_on_deployment = is_on_deployment === 'true';
 
         const personnel = await Personnel.find(filter).sort({ created_at: -1 });
@@ -256,7 +307,15 @@ app.get('/api/personnel/:id', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/personnel', authenticateToken, checkRole(['ADMIN']), async (req, res) => {
+app.post('/api/personnel', authenticateToken, checkRole(['ADMIN']),
+    validate([
+        body('name').trim().notEmpty().withMessage('Name is required'),
+        body('rank').trim().notEmpty().withMessage('Rank is required'),
+        body('genl_no').trim().notEmpty().withMessage('General Number is required'),
+        body('personnel_type').trim().notEmpty().withMessage('Personnel type is required'),
+        body('district').trim().notEmpty().withMessage('District is required')
+    ]),
+    async (req, res) => {
     try {
         const personnel = await Personnel.create(req.body);
         await createAuditLog('CREATE', req.user.email, personnel._id, 'Personnel', req.body);
@@ -270,7 +329,12 @@ app.post('/api/personnel', authenticateToken, checkRole(['ADMIN']), async (req, 
     }
 });
 
-app.put('/api/personnel/:id', authenticateToken, checkRole(['ADMIN']), async (req, res) => {
+app.put('/api/personnel/:id', authenticateToken, checkRole(['ADMIN']),
+    validate([
+        body('name').optional().trim().notEmpty().withMessage('Name cannot be empty'),
+        body('genl_no').optional().trim().notEmpty().withMessage('General Number cannot be empty')
+    ]),
+    async (req, res) => {
     try {
         const oldDoc = await Personnel.findById(req.params.id);
         if (!oldDoc) {
@@ -431,7 +495,7 @@ app.get('/api/audit-logs', authenticateToken, checkRole(['ADMIN']), async (req, 
         const { action, performedBy, limit } = req.query;
         const filter = {};
         if (action) filter.action = action;
-        if (performedBy) filter.performedBy = new RegExp(performedBy, 'i');
+        if (performedBy) filter.performedBy = new RegExp(escapeRegex(performedBy), 'i');
 
         const logs = await AuditLog.find(filter)
             .sort({ timestamp: -1 })
@@ -454,7 +518,14 @@ app.get('/api/sanctioned-strength', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/sanctioned-strength', authenticateToken, checkRole(['ADMIN']), async (req, res) => {
+app.post('/api/sanctioned-strength', authenticateToken, checkRole(['ADMIN']),
+    validate([
+        body('district').trim().notEmpty().withMessage('District is required'),
+        body('personnel_type').trim().notEmpty().withMessage('Personnel type is required'),
+        body('rank').trim().notEmpty().withMessage('Rank is required'),
+        body('sanctioned_count').isInt({ min: 0 }).withMessage('Sanctioned count must be a non-negative number')
+    ]),
+    async (req, res) => {
     try {
         const { district, personnel_type, rank, sanctioned_count } = req.body;
 
@@ -487,7 +558,13 @@ app.get('/api/deputation-strength', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/deputation-strength', authenticateToken, checkRole(['ADMIN']), async (req, res) => {
+app.post('/api/deputation-strength', authenticateToken, checkRole(['ADMIN']),
+    validate([
+        body('unit_name').trim().notEmpty().withMessage('Unit name is required'),
+        body('rank').trim().notEmpty().withMessage('Rank is required'),
+        body('sanctioned_count').isInt({ min: 0 }).withMessage('Sanctioned count must be a non-negative number')
+    ]),
+    async (req, res) => {
     try {
         const { unit_name, rank, sanctioned_count } = req.body;
 
@@ -511,7 +588,10 @@ app.post('/api/deputation-strength', authenticateToken, checkRole(['ADMIN']), as
 
 // Error handling
 app.use((err, req, res, next) => {
-    console.error(err.stack);
+    console.error('Unhandled error:', err.stack);
+    if (err.type === 'entity.too.large') {
+        return res.status(413).json({ error: 'Request body too large' });
+    }
     res.status(500).json({ error: 'Something went wrong!' });
 });
 

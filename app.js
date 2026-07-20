@@ -13,6 +13,14 @@ function showToast(message, type = 'info') {
     }, 3000);
 }
 
+function showLoading() {
+    document.getElementById('loadingSpinner').classList.add('show');
+}
+
+function hideLoading() {
+    document.getElementById('loadingSpinner').classList.remove('show');
+}
+
 // Initialize app when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
     // Attach event listeners
