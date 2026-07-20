@@ -2,6 +2,7 @@
 
 async function loadAllData() {
     showToast('Loading data...', 'loading');
+    showLoading();
 
     try {
         // Load personnel
@@ -27,8 +28,10 @@ async function loadAllData() {
 
         updateData();
         updateUIForRole();
+        hideLoading();
         showToast('Data loaded', 'success');
     } catch (e) {
+        hideLoading();
         console.error('Load data error:', e);
         showToast('Error loading data', 'error');
     }
@@ -40,6 +43,15 @@ function showPage(pageId) {
     if (pageId === 'deputation') {
         renderDepTiles();
         updateDepConsolidated();
+    }
+    if (pageId === 'searchFilter') {
+        if (!document.getElementById('filterRank').children.length > 1) {
+            populateFilterRanks();
+        }
+        applySearchFilter();
+    }
+    if (pageId === 'auditLogs') {
+        loadAuditLogs();
     }
 }
 

@@ -95,7 +95,6 @@ const depUnitGroups = {
 let allPersonnel = [];
 let sanctionedData = {};
 let depSanctionedData = {};
-let editingId = null;
 let knCurrentType = '';
 let knCurrentRank = '';
 let ewCurrentType = '';

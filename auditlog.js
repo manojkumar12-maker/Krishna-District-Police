@@ -16,24 +16,7 @@ function populateFilterRanks() {
     });
 }
 
-// Search & Filter
-function showPage(pageId) {
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    document.getElementById(pageId).classList.add('active');
-    if (pageId === 'deputation') {
-        renderDepTiles();
-        updateDepConsolidated();
-    }
-    if (pageId === 'searchFilter') {
-        if (!document.getElementById('filterRank').children.length > 1) {
-            populateFilterRanks();
-        }
-        applySearchFilter();
-    }
-    if (pageId === 'auditLogs') {
-        loadAuditLogs();
-    }
-}
+// showPage and page init logic is defined in dashboard.js
 
 async function applySearchFilter() {
     const search = document.getElementById('globalSearch').value.trim();

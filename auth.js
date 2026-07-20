@@ -16,6 +16,7 @@ async function handleAuth() {
 
     btn.disabled = true;
     btn.textContent = 'Logging in...';
+    showLoading();
 
     try {
         const result = await loginUser(email, password);
@@ -41,6 +42,7 @@ async function handleAuth() {
     } finally {
         btn.disabled = false;
         btn.textContent = 'Login';
+        hideLoading();
     }
 }
 
