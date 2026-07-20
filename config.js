@@ -1,5 +1,5 @@
-// Backend API URL - Update this with your Render deployment URL
-const API_BASE_URL = 'https://krishna-district-police.onrender.com/api';
+// Backend API URL - Update this with your Cloudflare Worker URL after deployment
+const API_BASE_URL = 'https://krishna-police-api.manojkumar.workers.dev/api';
 
 // Rank mappings
 const rankMap = {
