@@ -1,5 +1,6 @@
-// Backend API URL - Update this with your Cloudflare Worker URL after deployment
-const API_BASE_URL = 'https://krishna-police-api.manojkumar.workers.dev/api';
+// Cloudflare Worker + D1 API URL
+const API_BASE_URL = 'https://krishna-police-api.manoj-spoffice-kri.workers.dev/api';
+// For local dev: const API_BASE_URL = 'http://localhost:8787/api';
 
 // Rank mappings
 const rankMap = {
