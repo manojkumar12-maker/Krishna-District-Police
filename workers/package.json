@@ -6,6 +6,10 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create krishna-police-db",
+    "db:init": "wrangler d1 execute krishna-police-db --file=./schema.sql",
+    "db:init-remote": "wrangler d1 execute krishna-police-db --remote --file=./schema.sql",
+    "db:seed": "wrangler deploy",
     "tail": "wrangler tail"
   },
   "dependencies": {
@@ -13,6 +17,6 @@
     "jose": "^5.2.0"
   },
   "devDependencies": {
-    "wrangler": "^3.22.0"
+    "wrangler": "^4.112.0"
   }
 }

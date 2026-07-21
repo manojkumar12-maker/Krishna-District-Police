@@ -3,8 +3,7 @@ main = "src/index.js"
 compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
 
-[vars]
-MONGODB_DATABASE = "krishna-police"
-
-[env.production]
-vars = { MONGODB_DATABASE = "krishna-police" }
+[[d1_databases]]
+binding = "DB"
+database_name = "krishna-police-db"
+database_id = "77f776d0-36f4-4273-a9b5-984fba903c85"

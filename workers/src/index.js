@@ -4,66 +4,6 @@ import * as jose from 'jose';
 
 const app = new Hono();
 
-// ── Configuration ────────────────────────────────────────────────
-const getEnv = (c) => ({
-    MONGODB_APP_ID: c.env.MONGODB_APP_ID,
-    MONGODB_API_KEY: c.env.MONGODB_API_KEY,
-    MONGODB_DATA_SOURCE: c.env.MONGODB_DATA_SOURCE,
-    MONGODB_DATABASE: c.env.MONGODB_DATABASE || 'krishna-police',
-    JWT_SECRET: c.env.JWT_SECRET,
-    ADMIN_EMAIL: c.env.ADMIN_EMAIL,
-    ADMIN_PASSWORD: c.env.ADMIN_PASSWORD,
-});
-
-// ── MongoDB Data API helper ──────────────────────────────────────
-async function mongoAction(env, collection, action, body = {}) {
-    const url = `https://data.mongodb-api.com/app/${env.MONGODB_APP_ID}/endpoint/data/v1/action/${action}`;
-    const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'api-key': env.MONGODB_API_KEY,
-        },
-        body: JSON.stringify({
-            dataSource: env.MONGODB_DATA_SOURCE,
-            database: env.MONGODB_DATABASE,
-            collection,
-            ...body,
-        }),
-    });
-    if (!res.ok) {
-        const err = await res.text();
-        throw new Error(`MongoDB API error (${action}): ${res.status} ${err}`);
-    }
-    return res.json();
-}
-
-// Helpers for each collection
-const db = (env) => ({
-    find: (col, filter = {}, options = {}) =>
-        mongoAction(env, col, 'find', { filter, ...options }),
-    findOne: (col, filter = {}) =>
-        mongoAction(env, col, 'findOne', { filter }),
-    insertOne: (col, doc) =>
-        mongoAction(env, col, 'insertOne', { document: doc }),
-    insertMany: (col, docs) =>
-        mongoAction(env, col, 'insertMany', { documents: docs }),
-    updateOne: (col, filter, update) =>
-        mongoAction(env, col, 'updateOne', { filter, update: { $set: update } }),
-    updateOneRaw: (col, filter, update) =>
-        mongoAction(env, col, 'updateOne', { filter, update }),
-    replaceOne: (col, filter, replacement) =>
-        mongoAction(env, col, 'replaceOne', { filter, document: replacement }),
-    deleteOne: (col, filter) =>
-        mongoAction(env, col, 'deleteOne', { filter }),
-    deleteMany: (col, filter = {}) =>
-        mongoAction(env, col, 'deleteMany', { filter }),
-    countDocuments: (col, filter = {}) =>
-        mongoAction(env, col, 'aggregate', {
-            pipeline: [{ $match: filter }, { $count: 'count' }],
-        }).then(r => r.documents?.[0]?.count || 0),
-});
-
 // ── CORS ────────────────────────────────────────────────────────
 app.use('*', cors({
     origin: ['https://*.github.io', 'http://localhost:*'],
@@ -73,13 +13,13 @@ app.use('*', cors({
 
 // ── Auth helpers ─────────────────────────────────────────────────
 async function getJwtSecret(c) {
-    const env = getEnv(c);
-    return new TextEncoder().encode(env.JWT_SECRET);
+    const secret = c.env.JWT_SECRET;
+    return new TextEncoder().encode(secret);
 }
 
-async function createToken(user) {
-    const secret = await getJwtSecret({ env: getEnv });
-    return new jose.SignJWT({ userId: user._id, email: user.email, role: user.role })
+async function createToken(userId, email, role, jwtSecret) {
+    const secret = new TextEncoder().encode(jwtSecret);
+    return new jose.SignJWT({ userId, email, role })
         .setProtectedHeader({ alg: 'HS256' })
         .setExpirationTime('24h')
         .sign(secret);
@@ -108,49 +48,38 @@ const authRequired = () => async (c, next) => {
 
 const adminRequired = () => async (c, next) => {
     const user = c.get('user');
-    if (!user) {
-        const u = await verifyToken(c);
-        if (!u) return c.json({ error: 'Access token required' }, 401);
-        c.set('user', u);
-        if (u.role !== 'ADMIN') return c.json({ error: 'Admin access required' }, 403);
-    } else if (user.role !== 'ADMIN') {
-        return c.json({ error: 'Admin access required' }, 403);
-    }
+    if (!user) return c.json({ error: 'Access token required' }, 401);
+    if (user.role !== 'ADMIN') return c.json({ error: 'Admin access required' }, 403);
     await next();
 };
 
 // Audit log helper
-async function auditLog(env, action, performedBy, targetId, targetType, changes = {}) {
+async function auditLog(db, action, performedBy, targetId, targetType, changes = {}) {
     try {
-        await db(env).insertOne('auditlogs', {
-            action,
-            performedBy,
-            targetId,
-            targetType,
-            changes,
-            timestamp: new Date().toISOString(),
-        });
+        await db.prepare(
+            'INSERT INTO auditlogs (action, performedBy, targetId, targetType, changes) VALUES (?1, ?2, ?3, ?4, ?5)'
+        ).bind(action, performedBy, String(targetId), targetType, JSON.stringify(changes)).run();
     } catch (e) {
         console.error('Audit log error:', e.message);
     }
 }
 
 // ── First-run admin seeding ──────────────────────────────────────
-async function seedAdminOnce(env) {
-    const count = await db(env).countDocuments('users');
-    if (count === 0 && env.ADMIN_EMAIL && env.ADMIN_PASSWORD) {
-        const hash = await hashPassword(env.ADMIN_PASSWORD);
-        await db(env).insertOne('users', {
-            email: env.ADMIN_EMAIL.toLowerCase(),
-            password: hash,
-            role: 'ADMIN',
-            created_at: new Date().toISOString(),
-        });
-        console.log('Initial admin user seeded');
+async function seedAdminOnce(db, env) {
+    try {
+        const result = await db.prepare('SELECT COUNT(*) as count FROM users').first();
+        if (result.count === 0 && env.ADMIN_EMAIL && env.ADMIN_PASSWORD) {
+            const hash = await hashPassword(env.ADMIN_PASSWORD);
+            await db.prepare('INSERT INTO users (email, password, role) VALUES (?1, ?2, ?3)')
+                .bind(env.ADMIN_EMAIL.toLowerCase(), hash, 'ADMIN').run();
+            console.log('Initial admin user seeded');
+        }
+    } catch (e) {
+        console.error('Seed admin error:', e.message);
     }
 }
 
-// BCrypt alternative using Web Crypto
+// Password hashing using Web Crypto (PBKDF2)
 async function hashPassword(password) {
     const encoder = new TextEncoder();
     const data = encoder.encode(password);
@@ -160,8 +89,7 @@ async function hashPassword(password) {
     combined.set(salt);
     const bits = await crypto.subtle.deriveBits(
         { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
-        key,
-        512,
+        key, 512
     );
     combined.set(new Uint8Array(bits), salt.length);
     return btoa(String.fromCharCode(...combined));
@@ -175,8 +103,7 @@ async function verifyPassword(password, storedHash) {
         const key = await crypto.subtle.importKey('raw', salt, 'PBKDF2', false, ['deriveBits']);
         const bits = await crypto.subtle.deriveBits(
             { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
-            key,
-            512,
+            key, 512
         );
         const newKey = new Uint8Array(bits);
         if (storedKey.length !== newKey.length) return false;
@@ -186,11 +113,19 @@ async function verifyPassword(password, storedHash) {
     }
 }
 
+// ── Helpers ──────────────────────────────────────────────────────
+const db = (c) => c.env.DB;
+
+function transformRow(row) {
+    if (!row) return null;
+    return { ...row, is_on_deployment: Boolean(row.is_on_deployment) };
+}
+
 // ── Routes ───────────────────────────────────────────────────────
 
 // Health check
 app.get('/', (c) =>
-    c.json({ message: 'Krishna District Police API', status: 'running', version: '3.0.0' })
+    c.json({ message: 'Krishna District Police API', status: 'running', version: '4.0.0' })
 );
 
 // ── Auth routes ──────────────────────────────────────────────────
@@ -200,20 +135,18 @@ app.post('/api/auth/login', async (c) => {
         const { email, password } = await c.req.json();
         if (!email || !password) return c.json({ error: 'Email and password required' }, 400);
 
-        const env = getEnv(c);
-        const result = await db(env).findOne('users', { email: email.toLowerCase() });
-        const user = result.document;
+        const user = await db(c).prepare('SELECT * FROM users WHERE email = ?1').bind(email.toLowerCase()).first();
         if (!user) return c.json({ error: 'Invalid credentials' }, 400);
 
         const valid = await verifyPassword(password, user.password);
         if (!valid) return c.json({ error: 'Invalid credentials' }, 400);
 
-        const token = await createToken(user);
+        const token = await createToken(user.id, user.email, user.role, c.env.JWT_SECRET);
 
         return c.json({
             success: true,
             token,
-            user: { id: user._id, email: user.email, role: user.role },
+            user: { id: user.id, email: user.email, role: user.role },
         });
     } catch (e) {
         return c.json({ error: e.message }, 500);
@@ -226,25 +159,21 @@ app.post('/api/auth/register', authRequired(), adminRequired(), async (c) => {
         if (!email || !password) return c.json({ error: 'Email and password required' }, 400);
         if (password.length < 6) return c.json({ error: 'Password must be at least 6 characters' }, 400);
 
-        const env = getEnv(c);
-        const exist = await db(env).findOne('users', { email: email.toLowerCase() });
-        if (exist.document) return c.json({ error: 'User already exists' }, 400);
+        const exist = await db(c).prepare('SELECT id FROM users WHERE email = ?1').bind(email.toLowerCase()).first();
+        if (exist) return c.json({ error: 'User already exists' }, 400);
 
         const validRoles = ['ADMIN', 'USER'];
         const assignedRole = validRoles.includes(role) ? role : 'USER';
 
         const hashed = await hashPassword(password);
-        const result = await db(env).insertOne('users', {
-            email: email.toLowerCase(),
-            password: hashed,
-            role: assignedRole,
-            created_at: new Date().toISOString(),
-        });
+        const result = await db(c).prepare(
+            'INSERT INTO users (email, password, role) VALUES (?1, ?2, ?3)'
+        ).bind(email.toLowerCase(), hashed, assignedRole).run();
 
         return c.json({
             success: true,
             message: 'User created successfully',
-            user: { id: result.insertedId, email, role: assignedRole },
+            user: { id: result.meta.last_row_id, email, role: assignedRole },
         }, 201);
     } catch (e) {
         return c.json({ error: e.message }, 500);
@@ -253,74 +182,74 @@ app.post('/api/auth/register', authRequired(), adminRequired(), async (c) => {
 
 // ── Personnel routes ─────────────────────────────────────────────
 
+function buildPersonnelQuery(q) {
+    const conditions = [];
+    const params = [];
+    let paramIdx = 1;
+
+    if (q.search) {
+        const term = `%${q.search}%`;
+        conditions.push(`(name LIKE ?${paramIdx} OR rank LIKE ?${paramIdx} OR genl_no LIKE ?${paramIdx} OR previous_station LIKE ?${paramIdx} OR present_working LIKE ?${paramIdx} OR phone_number LIKE ?${paramIdx})`);
+        params.push(term);
+        paramIdx++;
+    }
+    if (q.name) {
+        conditions.push(`name LIKE ?${paramIdx}`); params.push(`%${q.name}%`); paramIdx++;
+    }
+    if (q.rank) {
+        conditions.push(`rank = ?${paramIdx}`); params.push(q.rank); paramIdx++;
+    }
+    if (q.genl_no) {
+        conditions.push(`genl_no LIKE ?${paramIdx}`); params.push(`%${q.genl_no}%`); paramIdx++;
+    }
+    if (q.personnel_type) {
+        conditions.push(`personnel_type = ?${paramIdx}`); params.push(q.personnel_type); paramIdx++;
+    }
+    if (q.district) {
+        conditions.push(`district = ?${paramIdx}`); params.push(q.district); paramIdx++;
+    }
+    if (q.status) {
+        conditions.push(`status = ?${paramIdx}`); params.push(q.status); paramIdx++;
+    }
+    if (q.gender) {
+        conditions.push(`gender = ?${paramIdx}`); params.push(q.gender); paramIdx++;
+    }
+    if (q.station) {
+        conditions.push(`present_working LIKE ?${paramIdx}`); params.push(`%${q.station}%`); paramIdx++;
+    }
+    if (q.is_on_deployment !== undefined) {
+        conditions.push(`is_on_deployment = ?${paramIdx}`); params.push(q.is_on_deployment === 'true' ? 1 : 0); paramIdx++;
+    }
+
+    return { conditions, params };
+}
+
 app.get('/api/personnel', authRequired(), async (c) => {
     try {
-        const env = getEnv(c);
         const q = c.req.query();
-        const filter = {};
+        const { conditions, params } = buildPersonnelQuery(q);
 
-        if (q.search) {
-            const re = new BSONRegExp(q.search, 'i');
-            filter.$or = [
-                { name: re }, { rank: re }, { genl_no: re },
-                { previous_station: re }, { present_working: re }, { phone_number: re },
-            ];
+        let sql = 'SELECT * FROM personnel';
+        if (conditions.length > 0) {
+            sql += ' WHERE ' + conditions.join(' AND ');
         }
-        if (q.name) filter.name = new BSONRegExp(q.name, 'i');
-        if (q.rank) filter.rank = q.rank;
-        if (q.genl_no) filter.genl_no = new BSONRegExp(q.genl_no, 'i');
-        if (q.personnel_type) filter.personnel_type = q.personnel_type;
-        if (q.district) filter.district = q.district;
-        if (q.status) filter.status = q.status;
-        if (q.gender) filter.gender = q.gender;
-        if (q.station) filter.present_working = new BSONRegExp(q.station, 'i');
-        if (q.is_on_deployment !== undefined) filter.is_on_deployment = q.is_on_deployment === 'true';
+        sql += ' ORDER BY created_at DESC';
 
-        // Simple regex workaround for BSONRegExp not being available in Data API directly
-        // We'll use $regex operator
-        const mongoFilter = buildFilter(filter, q);
+        const stmt = db(c).prepare(sql).bind(...params);
+        const { results } = await stmt.all();
+        const data = (results || []).map(transformRow);
 
-        const result = await db(env).find('personnel', mongoFilter, {
-            sort: { created_at: -1 },
-        });
-
-        return c.json({ success: true, data: result.documents || [], count: result.documents?.length || 0 });
+        return c.json({ success: true, data, count: data.length });
     } catch (e) {
         return c.json({ error: e.message }, 500);
     }
 });
 
-function buildFilter(filter, q) {
-    const mongoFilter = {};
-    const regexFields = [];
-
-    if (q.search) {
-        const re = { $regex: q.search, $options: 'i' };
-        mongoFilter.$or = [
-            { name: re }, { rank: re }, { genl_no: re },
-            { previous_station: re }, { present_working: re }, { phone_number: re },
-        ];
-    }
-
-    if (q.name) mongoFilter.name = { $regex: q.name, $options: 'i' };
-    if (q.rank) mongoFilter.rank = q.rank;
-    if (q.genl_no) mongoFilter.genl_no = { $regex: q.genl_no, $options: 'i' };
-    if (q.personnel_type) mongoFilter.personnel_type = q.personnel_type;
-    if (q.district) mongoFilter.district = q.district;
-    if (q.status) mongoFilter.status = q.status;
-    if (q.gender) mongoFilter.gender = q.gender;
-    if (q.station) mongoFilter.present_working = { $regex: q.station, $options: 'i' };
-    if (q.is_on_deployment !== undefined) mongoFilter.is_on_deployment = q.is_on_deployment === 'true';
-
-    return mongoFilter;
-}
-
 app.get('/api/personnel/:id', authRequired(), async (c) => {
     try {
-        const env = getEnv(c);
-        const result = await db(env).findOne('personnel', { _id: { $oid: c.req.param('id') } });
-        if (!result.document) return c.json({ error: 'Personnel not found' }, 404);
-        return c.json({ success: true, data: transformDoc(result.document) });
+        const row = await db(c).prepare('SELECT * FROM personnel WHERE id = ?1').bind(c.req.param('id')).first();
+        if (!row) return c.json({ error: 'Personnel not found' }, 404);
+        return c.json({ success: true, data: transformRow(row) });
     } catch (e) {
         return c.json({ error: e.message }, 500);
     }
@@ -328,15 +257,26 @@ app.get('/api/personnel/:id', authRequired(), async (c) => {
 
 app.post('/api/personnel', authRequired(), adminRequired(), async (c) => {
     try {
-        const env = getEnv(c);
         const body = await c.req.json();
         if (!body.name || !body.rank || !body.genl_no || !body.personnel_type || !body.district) {
             return c.json({ error: 'Missing required fields' }, 400);
         }
-        const doc = { ...body, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
-        const result = await db(env).insertOne('personnel', doc);
-        await auditLog(env, 'CREATE', c.get('user').email, result.insertedId, 'Personnel', body);
-        return c.json({ success: true, data: { ...doc, id: result.insertedId }, message: 'Personnel created' }, 201);
+
+        const cols = ['name','rank','genl_no','personnel_type','district','gender','previous_station',
+            'status','date_of_birth','caste','education','date_of_promotion','present_working',
+            'phone_number','punishments','is_on_deployment','deployment_unit','date_of_deployment'];
+        const values = cols.map(f => f === 'is_on_deployment' ? (body[f] ? 1 : 0) : (body[f] || ''));
+
+        const now = new Date().toISOString();
+        const result = await db(c).prepare(
+            `INSERT INTO personnel (${cols.join(',')}, created_at, updated_at) VALUES (${cols.map((_,i) => `?${i+1}`).join(',')}, ?${cols.length+1}, ?${cols.length+2})`
+        ).bind(...values, now, now).run();
+
+        const newId = result.meta.last_row_id;
+        await auditLog(c.env.DB, 'CREATE', c.get('user').email, newId, 'Personnel', body);
+
+        const created = await db(c).prepare('SELECT * FROM personnel WHERE id = ?1').bind(newId).first();
+        return c.json({ success: true, data: transformRow(created), message: 'Personnel created' }, 201);
     } catch (e) {
         return c.json({ error: e.message }, 500);
     }
@@ -344,23 +284,45 @@ app.post('/api/personnel', authRequired(), adminRequired(), async (c) => {
 
 app.put('/api/personnel/:id', authRequired(), adminRequired(), async (c) => {
     try {
-        const env = getEnv(c);
         const body = await c.req.json();
-        const oid = c.req.param('id');
+        const id = c.req.param('id');
 
-        const old = await db(env).findOne('personnel', { _id: { $oid: oid } });
-        if (!old.document) return c.json({ error: 'Personnel not found' }, 404);
+        const old = await db(c).prepare('SELECT * FROM personnel WHERE id = ?1').bind(id).first();
+        if (!old) return c.json({ error: 'Personnel not found' }, 404);
 
-        body.updated_at = new Date().toISOString();
-        await db(env).updateOne('personnel', { _id: { $oid: oid } }, body);
+        const now = new Date().toISOString();
+        const sets = [];
+        const vals = [];
+        let pi = 1;
 
+        const cols = ['name','rank','genl_no','personnel_type','district','gender','previous_station',
+            'status','date_of_birth','caste','education','date_of_promotion','present_working',
+            'phone_number','punishments','is_on_deployment','deployment_unit','date_of_deployment'];
         const changedFields = {};
-        for (const key of Object.keys(body)) {
-            if (JSON.stringify(old.document[key]) !== JSON.stringify(body[key])) {
-                changedFields[key] = { from: old.document[key], to: body[key] };
+
+        for (const col of cols) {
+            if (body[col] !== undefined) {
+                const val = col === 'is_on_deployment' ? (body[col] ? 1 : 0) : (body[col] || '');
+                sets.push(`${col} = ?${pi}`);
+                vals.push(val);
+                pi++;
+                const oldVal = col === 'is_on_deployment' ? Boolean(old[col]) : (old[col] || '');
+                if (String(oldVal) !== String(val)) {
+                    changedFields[col] = { from: oldVal, to: val };
+                }
             }
         }
-        await auditLog(env, 'UPDATE', c.get('user').email, oid, 'Personnel', changedFields);
+
+        sets.push(`updated_at = ?${pi}`); vals.push(now); pi++;
+
+        if (sets.length > 1) {
+            vals.push(id);
+            await db(c).prepare(`UPDATE personnel SET ${sets.join(', ')} WHERE id = ?${pi}`).bind(...vals).run();
+        }
+
+        if (Object.keys(changedFields).length > 0) {
+            await auditLog(c.env.DB, 'UPDATE', c.get('user').email, id, 'Personnel', changedFields);
+        }
 
         return c.json({ success: true, message: 'Personnel updated' });
     } catch (e) {
@@ -370,14 +332,13 @@ app.put('/api/personnel/:id', authRequired(), adminRequired(), async (c) => {
 
 app.delete('/api/personnel/:id', authRequired(), adminRequired(), async (c) => {
     try {
-        const env = getEnv(c);
-        const oid = c.req.param('id');
-        const old = await db(env).findOne('personnel', { _id: { $oid: oid } });
-        if (!old.document) return c.json({ error: 'Personnel not found' }, 404);
+        const id = c.req.param('id');
+        const old = await db(c).prepare('SELECT * FROM personnel WHERE id = ?1').bind(id).first();
+        if (!old) return c.json({ error: 'Personnel not found' }, 404);
 
-        await db(env).deleteOne('personnel', { _id: { $oid: oid } });
-        await auditLog(env, 'DELETE', c.get('user').email, oid, 'Personnel', {
-            name: old.document.name, rank: old.document.rank, genl_no: old.document.genl_no,
+        await db(c).prepare('DELETE FROM personnel WHERE id = ?1').bind(id).run();
+        await auditLog(c.env.DB, 'DELETE', c.get('user').email, id, 'Personnel', {
+            name: old.name, rank: old.rank, genl_no: old.genl_no,
         });
 
         return c.json({ success: true, message: 'Personnel deleted' });
@@ -388,9 +349,8 @@ app.delete('/api/personnel/:id', authRequired(), adminRequired(), async (c) => {
 
 app.delete('/api/personnel', authRequired(), adminRequired(), async (c) => {
     try {
-        const env = getEnv(c);
-        await auditLog(env, 'CLEAR_ALL', c.get('user').email, 'ALL', 'Personnel', {});
-        await db(env).deleteMany('personnel');
+        await auditLog(c.env.DB, 'CLEAR_ALL', c.get('user').email, 'ALL', 'Personnel', {});
+        await db(c).prepare('DELETE FROM personnel').run();
         return c.json({ success: true, message: 'All personnel data cleared' });
     } catch (e) {
         return c.json({ error: e.message }, 500);
@@ -400,7 +360,6 @@ app.delete('/api/personnel', authRequired(), adminRequired(), async (c) => {
 // Excel import
 app.post('/api/personnel/import', authRequired(), adminRequired(), async (c) => {
     try {
-        const env = getEnv(c);
         const formData = await c.req.parseBody();
         const file = formData.file;
 
@@ -413,15 +372,12 @@ app.post('/api/personnel/import', authRequired(), adminRequired(), async (c) => 
             buffer = new Uint8Array(Object.values(file)).buffer;
         }
 
-        // Simple CSV/TSV parsing (XLSX parsing is complex in Workers)
-        // Accept JSON array or simple CSV
         const text = new TextDecoder().decode(buffer);
         let rows;
         try {
             rows = JSON.parse(text);
             if (!Array.isArray(rows)) throw new Error('Not an array');
         } catch {
-            // Try CSV parsing
             rows = parseCSV(text);
         }
 
@@ -429,6 +385,10 @@ app.post('/api/personnel/import', authRequired(), adminRequired(), async (c) => 
 
         const imported = [];
         const errors = [];
+        const now = new Date().toISOString();
+        const cols = ['name','rank','genl_no','personnel_type','district','gender','previous_station',
+            'status','date_of_birth','caste','education','date_of_promotion','present_working',
+            'phone_number','punishments','is_on_deployment','deployment_unit','date_of_deployment','created_at','updated_at'];
 
         for (let i = 0; i < rows.length; i++) {
             const row = rows[i];
@@ -438,14 +398,22 @@ app.post('/api/personnel/import', authRequired(), adminRequired(), async (c) => 
             }
             try {
                 const doc = normalizeRow(row);
-                const result = await db(env).insertOne('personnel', doc);
-                imported.push({ ...doc, id: result.insertedId });
+                const values = cols.map(f => {
+                    if (f === 'is_on_deployment') return (doc[f] ? 1 : 0);
+                    if (f === 'created_at' || f === 'updated_at') return now;
+                    return doc[f] || '';
+                });
+                const placeholders = cols.map((_, j) => `?${j+1}`);
+                const result = await db(c).prepare(
+                    `INSERT INTO personnel (${cols.join(',')}) VALUES (${placeholders.join(',')})`
+                ).bind(...values).run();
+                imported.push({ ...doc, id: result.meta.last_row_id });
             } catch (err) {
                 errors.push({ row: i + 2, error: err.message });
             }
         }
 
-        await auditLog(env, 'IMPORT', c.get('user').email, 'BATCH', 'Personnel', {
+        await auditLog(c.env.DB, 'IMPORT', c.get('user').email, 'BATCH', 'Personnel', {
             importedCount: imported.length, errorCount: errors.length,
         });
 
@@ -496,8 +464,6 @@ function normalizeRow(row) {
             }
         }
     }
-    doc.created_at = new Date().toISOString();
-    doc.updated_at = new Date().toISOString();
     return doc;
 }
 
@@ -505,18 +471,27 @@ function normalizeRow(row) {
 
 app.get('/api/audit-logs', authRequired(), adminRequired(), async (c) => {
     try {
-        const env = getEnv(c);
         const q = c.req.query();
-        const filter = {};
-        if (q.action) filter.action = q.action;
-        if (q.performedBy) filter.performedBy = { $regex: q.performedBy, $options: 'i' };
+        const conditions = [];
+        const params = [];
+        let pi = 1;
 
-        const result = await db(env).find('auditlogs', filter, {
-            sort: { timestamp: -1 },
-            limit: parseInt(q.limit) || 500,
-        });
+        if (q.action) {
+            conditions.push(`action = ?${pi}`); params.push(q.action); pi++;
+        }
+        if (q.performedBy) {
+            conditions.push(`performedBy LIKE ?${pi}`); params.push(`%${q.performedBy}%`); pi++;
+        }
 
-        return c.json({ success: true, data: result.documents || [], count: result.documents?.length || 0 });
+        const limit = parseInt(q.limit) || 500;
+        let sql = 'SELECT * FROM auditlogs';
+        if (conditions.length > 0) sql += ' WHERE ' + conditions.join(' AND ');
+        sql += ' ORDER BY timestamp DESC LIMIT ?' + pi;
+        params.push(limit);
+
+        const { results } = await db(c).prepare(sql).bind(...params).all();
+
+        return c.json({ success: true, data: (results || []).map(r => ({ ...r, changes: JSON.parse(r.changes || '{}') })), count: results?.length || 0 });
     } catch (e) {
         return c.json({ error: e.message }, 500);
     }
@@ -526,9 +501,8 @@ app.get('/api/audit-logs', authRequired(), adminRequired(), async (c) => {
 
 app.get('/api/sanctioned-strength', authRequired(), async (c) => {
     try {
-        const env = getEnv(c);
-        const result = await db(env).find('sanctionedstrengths');
-        return c.json({ success: true, data: result.documents || [] });
+        const { results } = await db(c).prepare('SELECT * FROM sanctionedstrengths').all();
+        return c.json({ success: true, data: results || [] });
     } catch (e) {
         return c.json({ error: e.message }, 500);
     }
@@ -536,28 +510,29 @@ app.get('/api/sanctioned-strength', authRequired(), async (c) => {
 
 app.post('/api/sanctioned-strength', authRequired(), adminRequired(), async (c) => {
     try {
-        const env = getEnv(c);
         const { district, personnel_type, rank, sanctioned_count } = await c.req.json();
         if (!district || !personnel_type || !rank) {
             return c.json({ error: 'District, personnel_type, and rank are required' }, 400);
         }
 
-        const existing = await db(env).findOne('sanctionedstrengths', { district, personnel_type, rank });
-        if (existing.document) {
-            await db(env).updateOne('sanctionedstrengths', { _id: existing.document._id }, {
-                sanctioned_count: parseInt(sanctioned_count) || 0,
-                updated_at: new Date().toISOString(),
-            });
+        const count = parseInt(sanctioned_count) || 0;
+        const now = new Date().toISOString();
+
+        const existing = await db(c).prepare(
+            'SELECT id FROM sanctionedstrengths WHERE district = ?1 AND personnel_type = ?2 AND rank = ?3'
+        ).bind(district, personnel_type, rank).first();
+
+        if (existing) {
+            await db(c).prepare(
+                'UPDATE sanctionedstrengths SET sanctioned_count = ?1, updated_at = ?2 WHERE id = ?3'
+            ).bind(count, now, existing.id).run();
         } else {
-            await db(env).insertOne('sanctionedstrengths', {
-                district, personnel_type, rank,
-                sanctioned_count: parseInt(sanctioned_count) || 0,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-            });
+            await db(c).prepare(
+                'INSERT INTO sanctionedstrengths (district, personnel_type, rank, sanctioned_count, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)'
+            ).bind(district, personnel_type, rank, count, now, now).run();
         }
 
-        await auditLog(env, 'UPDATE_SANCTIONED', c.get('user').email, `${district}_${personnel_type}_${rank}`, 'SanctionedStrength', { district, personnel_type, rank, sanctioned_count });
+        await auditLog(c.env.DB, 'UPDATE_SANCTIONED', c.get('user').email, `${district}_${personnel_type}_${rank}`, 'SanctionedStrength', { district, personnel_type, rank, sanctioned_count: count });
 
         return c.json({ success: true, message: 'Sanctioned strength updated' });
     } catch (e) {
@@ -569,9 +544,8 @@ app.post('/api/sanctioned-strength', authRequired(), adminRequired(), async (c) 
 
 app.get('/api/deputation-strength', authRequired(), async (c) => {
     try {
-        const env = getEnv(c);
-        const result = await db(env).find('deputationstrengths');
-        return c.json({ success: true, data: result.documents || [] });
+        const { results } = await db(c).prepare('SELECT * FROM deputationstrengths').all();
+        return c.json({ success: true, data: results || [] });
     } catch (e) {
         return c.json({ error: e.message }, 500);
     }
@@ -579,28 +553,29 @@ app.get('/api/deputation-strength', authRequired(), async (c) => {
 
 app.post('/api/deputation-strength', authRequired(), adminRequired(), async (c) => {
     try {
-        const env = getEnv(c);
         const { unit_name, rank, sanctioned_count } = await c.req.json();
         if (!unit_name || !rank) {
             return c.json({ error: 'Unit name and rank are required' }, 400);
         }
 
-        const existing = await db(env).findOne('deputationstrengths', { unit_name, rank });
-        if (existing.document) {
-            await db(env).updateOne('deputationstrengths', { _id: existing.document._id }, {
-                sanctioned_count: parseInt(sanctioned_count) || 0,
-                updated_at: new Date().toISOString(),
-            });
+        const count = parseInt(sanctioned_count) || 0;
+        const now = new Date().toISOString();
+
+        const existing = await db(c).prepare(
+            'SELECT id FROM deputationstrengths WHERE unit_name = ?1 AND rank = ?2'
+        ).bind(unit_name, rank).first();
+
+        if (existing) {
+            await db(c).prepare(
+                'UPDATE deputationstrengths SET sanctioned_count = ?1, updated_at = ?2 WHERE id = ?3'
+            ).bind(count, now, existing.id).run();
         } else {
-            await db(env).insertOne('deputationstrengths', {
-                unit_name, rank,
-                sanctioned_count: parseInt(sanctioned_count) || 0,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-            });
+            await db(c).prepare(
+                'INSERT INTO deputationstrengths (unit_name, rank, sanctioned_count, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)'
+            ).bind(unit_name, rank, count, now, now).run();
         }
 
-        await auditLog(env, 'UPDATE_DEPUTATION', c.get('user').email, `${unit_name}_${rank}`, 'DeputationStrength', { unit_name, rank, sanctioned_count });
+        await auditLog(c.env.DB, 'UPDATE_DEPUTATION', c.get('user').email, `${unit_name}_${rank}`, 'DeputationStrength', { unit_name, rank, sanctioned_count: count });
 
         return c.json({ success: true, message: 'Deputation strength updated' });
     } catch (e) {
@@ -608,22 +583,10 @@ app.post('/api/deputation-strength', authRequired(), adminRequired(), async (c) 
     }
 });
 
-// ── Document transformer ─────────────────────────────────────────
-function transformDoc(doc) {
-    if (!doc) return doc;
-    const d = { ...doc };
-    if (d._id) {
-        d.id = typeof d._id === 'string' ? d._id : d._id.$oid || d._id;
-        delete d._id;
-    }
-    return d;
-}
-
 // ── Export ───────────────────────────────────────────────────────
 export default {
     async fetch(request, env, ctx) {
-        // Seed admin on first request
-        ctx.waitUntil(seedAdminOnce(env));
+        ctx.waitUntil(seedAdminOnce(env.DB, env));
         return app.fetch(request, env, ctx);
     },
 };
