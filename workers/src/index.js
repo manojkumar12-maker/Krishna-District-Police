@@ -6,7 +6,12 @@ const app = new Hono();
 
 // ── CORS ────────────────────────────────────────────────────────
 app.use('*', cors({
-    origin: ['https://*.github.io', 'http://localhost:*'],
+    origin: (origin) => {
+        if (!origin) return origin;
+        if (origin.endsWith('.github.io') && origin.startsWith('https://')) return origin;
+        if (origin.startsWith('http://localhost:')) return origin;
+        return origin;
+    },
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
 }));
