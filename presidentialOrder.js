@@ -309,10 +309,6 @@ function renderPOUnitDetail() {
                     <button class="action-btn btn-danger" onclick="deletePOUnitPersonnel(${p._idx})">Del</button>
                 </td>` : ''}
             </tr>`;
-                    <button class="action-btn btn-primary" onclick="editPOUnitPersonnel(${p._idx})">Edit</button>
-                    <button class="action-btn btn-danger" onclick="deletePOUnitPersonnel(${p._idx})">Del</button>
-                </td>` : ''}
-            </tr>`;
         }).join('');
         personnelHtml += '</tbody></table>';
     }
