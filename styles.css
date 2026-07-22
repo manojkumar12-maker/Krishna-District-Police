@@ -188,6 +188,8 @@ tr:hover { background: #e3f2fd; }
 
 .po-strength-input { width: 80px; padding: 5px; border: 1px solid #ddd; border-radius: 4px; text-align: center; font-size: 13px; }
 .po-strength-input:focus { border-color: var(--primary); outline: none; }
+.po-unit-strength-input { width: 80px; padding: 5px; border: 1px solid #ddd; border-radius: 4px; text-align: center; font-size: 13px; }
+.po-unit-strength-input:focus { border-color: var(--primary); outline: none; }
 
 /* Responsive */
 @media (max-width: 768px) {

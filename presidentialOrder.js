@@ -10,10 +10,11 @@ let poDSL = [];
 let poFSL = [];
 let poOptions = {};
 let poAllocations = [];
+let poUnitPersonnel = [];
 let poCadres = [];
 let poCadreStrength = {};
 let poStage = 'init';
-let poCurrentTab = 'overview';
+let poCurrentTab = 'unitdata';
 let poObjections = {};
 let poPreferentialCategories = [];
 
@@ -35,9 +36,28 @@ const SC_ST_GROUPS = [
     { id: 'ST', label: 'ST (6%)', percent: 6 }
 ];
 
+const PO_UNIT_RANKS = [
+    'Assistant Sub-Inspector of Police',
+    'Head Constable (Civil)',
+    'Police Constable (Civil)',
+    'Head Constable (AR)',
+    'Police Constable (AR)',
+    'Senior Assistant',
+    'Junior Assistant',
+    'Typists',
+    'Record Assistant',
+    'Office Sub-Ordinates',
+    'Sweepers',
+    'Scavengers',
+    'Dhobi',
+    'Barbers',
+    'Cobbler',
+    'Waterman'
+];
+
 const PO_STAGES = ['init', 'cadre_defined', 'dsl_published', 'objection_period', 'fsl_published', 'options_open', 'allocation_done'];
 
-const PO_DATA_VERSION = 2;
+const PO_DATA_VERSION = 3;
 
 function loadPOData() {
     try {
@@ -55,6 +75,7 @@ function loadPOData() {
             poFSL = parsed.poFSL || [];
             poOptions = parsed.poOptions || {};
             poAllocations = parsed.poAllocations || [];
+            poUnitPersonnel = parsed.poUnitPersonnel || [];
             poCadres = parsed.poCadres || [];
             poCadreStrength = parsed.poCadreStrength || {};
             poStage = parsed.poStage || 'init';
@@ -69,7 +90,7 @@ function loadPOData() {
 function savePOData() {
     localStorage.setItem('po_state', JSON.stringify({
         poDataVersion: PO_DATA_VERSION,
-        poData, poExtended, poDSL, poFSL, poOptions, poAllocations,
+        poData, poExtended, poDSL, poFSL, poOptions, poAllocations, poUnitPersonnel,
         poCadres, poCadreStrength, poStage, poObjections, poPreferentialCategories
     }));
 }
@@ -126,6 +147,7 @@ function renderPOModule() {
 
     container.innerHTML = `
         <div class="po-nav">
+            <button class="po-nav-btn ${poCurrentTab==='unitdata' ? 'active' : ''}" onclick="switchPOTab('unitdata')">Unit Data</button>
             <button class="po-nav-btn ${poCurrentTab==='overview' ? 'active' : ''}" onclick="switchPOTab('overview')">Overview</button>
             <button class="po-nav-btn ${poCurrentTab==='cadres' ? 'active' : ''}" onclick="switchPOTab('cadres')">Cadres & Strength</button>
             <button class="po-nav-btn ${poCurrentTab==='seniority' ? 'active' : ''}" onclick="switchPOTab('seniority')">Seniority List</button>
@@ -154,6 +176,7 @@ function renderCurrentPOTab() {
     const content = document.getElementById('poTabContent');
     if (!content) return;
     switch(poCurrentTab) {
+        case 'unitdata': renderPOUnitData(content); break;
         case 'overview': renderPOOverview(content); break;
         case 'cadres': renderPOCadres(content); break;
         case 'seniority': renderPOSeniority(content); break;
@@ -162,6 +185,253 @@ function renderCurrentPOTab() {
         case 'allocation': renderPOAllocation(content); break;
         case 'orders': renderPOOrders(content); break;
     }
+}
+
+// ==================== UNIT DATA TAB ====================
+let poUnitSelectedRank = '';
+
+function renderPOUnitData(content) {
+    const isAdmin = userRole === 'ADMIN';
+
+    let tilesHtml = PO_UNIT_RANKS.map(r => {
+        const active = poUnitSelectedRank === r ? ' active' : '';
+        return `<div class="rank-tile${active}" onclick="selectPOUnitRank('${escapeQuotes(r)}', this)">${r}</div>`;
+    }).join('');
+
+    content.innerHTML = `
+        <div class="card">
+            <h2>Unit Data - District Cadre Ranks</h2>
+            <p style="color:#666;margin-bottom:15px;">Define sanctioned working strength per cadre and manage personnel for each rank.</p>
+            <div class="rank-tiles" style="grid-template-columns: repeat(4, 1fr);">${tilesHtml}</div>
+            <div id="poUnitDetail" class="detail-section"></div>
+        </div>
+    `;
+
+    if (poUnitSelectedRank) {
+        renderPOUnitDetail();
+    }
+}
+
+function selectPOUnitRank(rank, el) {
+    poUnitSelectedRank = rank;
+    if (el && el.parentElement) {
+        el.parentElement.querySelectorAll('.rank-tile').forEach(t => t.classList.remove('active'));
+        el.classList.add('active');
+    }
+    renderPOUnitDetail();
+}
+
+function renderPOUnitDetail() {
+    const section = document.getElementById('poUnitDetail');
+    if (!section || !poUnitSelectedRank) return;
+
+    const isAdmin = userRole === 'ADMIN';
+    const rank = poUnitSelectedRank;
+    const cadreIds = poCadres.map(c => c.id);
+    const cadreNames = poCadres.map(c => c.name);
+    const rankKey = rank.replace(/[^a-zA-Z0-9]/g, '_');
+
+    let sanctionedHtml = cadreIds.map((cid, i) => {
+        const val = poCadreStrength[cid + '_' + rankKey] || 0;
+        return `<div class="strength-item">
+            <div class="strength-label">${cadreNames[i]}</div>
+            ${isAdmin
+                ? `<input type="number" class="po-unit-strength-input" data-cadre="${cid}" data-rank="${rankKey}" value="${val}" min="0" onchange="saveUnitCadreStrength(this)" style="width:80px;padding:6px;text-align:center;font-size:16px;margin-top:5px;">`
+                : `<div class="strength-value">${val}</div>`
+            }
+        </div>`;
+    }).join('');
+
+    const personnel = poUnitPersonnel.filter(p => p.rank === rank);
+
+    let personnelHtml = '';
+    if (isAdmin) {
+        personnelHtml += `<div style="display:flex;gap:10px;margin-bottom:15px;">
+            <button class="btn btn-primary" onclick="addPOUnitPersonnel('${escapeQuotes(rank)}')">+ Add Person</button>
+            <button class="btn btn-secondary" onclick="exportPOUnitCSV('${escapeQuotes(rank)}')">Export CSV</button>
+        </div>`;
+    }
+
+    if (personnel.length === 0) {
+        personnelHtml += '<div class="empty-state">No personnel added for this rank.</div>';
+    } else {
+        personnelHtml += `<table><thead><tr><th>Sl.No</th><th>Name</th><th>Gender</th><th>DOB</th><th>CFMS ID</th><th>Mobile</th><th>DOJ</th><th>Caste</th><th>SC/ST</th>${isAdmin ? '<th>Actions</th>' : ''}</tr></thead><tbody>`;
+
+        personnelHtml += personnel.map((p, i) => {
+            const doj = p.date_of_joining ? new Date(p.date_of_joining).toLocaleDateString('en-IN') : '-';
+            const dob = p.date_of_birth ? new Date(p.date_of_birth).toLocaleDateString('en-IN') : '-';
+            const cid = p.allocated_cadre_id ? (poCadres.find(c => c.id === p.allocated_cadre_id) || {}).name || p.allocated_cadre_id : '-';
+            return `<tr>
+                <td>${i+1}</td>
+                <td>${p.name}</td>
+                <td>${p.gender || '-'}</td>
+                <td>${dob}</td>
+                <td>${p.cfms_id || '-'}</td>
+                <td>${p.mobile || '-'}</td>
+                <td>${doj}</td>
+                <td>${p.caste || '-'}</td>
+                <td>${p.sc_st_group || '-'}</td>
+                ${isAdmin ? `<td>
+                    <button class="action-btn btn-primary" onclick="editPOUnitPersonnel(${p._idx})">Edit</button>
+                    <button class="action-btn btn-danger" onclick="deletePOUnitPersonnel(${p._idx})">Del</button>
+                </td>` : ''}
+            </tr>`;
+        }).join('');
+        personnelHtml += '</tbody></table>';
+    }
+
+    section.innerHTML = `
+        <div class="card" style="margin-top:15px;">
+            <h3>${rank} - Working Strength</h3>
+            <div class="strength-row" style="grid-template-columns: repeat(3, 1fr);">${sanctionedHtml}</div>
+        </div>
+        <div class="card" style="margin-top:15px;">
+            <h3>${rank} - Personnel (${personnel.length})</h3>
+            ${personnelHtml}
+        </div>
+    `;
+    section.classList.add('visible');
+}
+
+function saveUnitCadreStrength(input) {
+    const cadreId = input.dataset.cadre;
+    const rankKey = input.dataset.rank;
+    const val = parseInt(input.value) || 0;
+    poCadreStrength[cadreId + '_' + rankKey] = val;
+    savePOData();
+    showToast('Working strength updated', 'success');
+}
+
+function addPOUnitPersonnel(rank) {
+    if (userRole !== 'ADMIN') return;
+
+    const cadreOpts = poCadres.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    const scstOpts = SC_ST_GROUPS.map(g => `<option value="${g.id}">${g.label}</option>`).join('');
+
+    const dialog = document.createElement('div');
+    dialog.className = 'modal-overlay';
+    dialog.style.display = 'flex';
+    dialog.innerHTML = `
+        <div class="modal" style="max-width:550px;">
+            <div class="modal-header">
+                <h3>Add Person - ${rank}</h3>
+                <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-grid">
+                    <div class="form-group"><label>Name *</label><input type="text" id="pounit_name"></div>
+                    <div class="form-group"><label>Gender</label><select id="pounit_gender"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
+                    <div class="form-group"><label>Date of Birth</label><input type="date" id="pounit_dob"></div>
+                    <div class="form-group"><label>Date of Joining</label><input type="date" id="pounit_doj"></div>
+                    <div class="form-group"><label>CFMS ID</label><input type="text" id="pounit_cfms"></div>
+                    <div class="form-group"><label>Mobile</label><input type="text" id="pounit_mobile"></div>
+                    <div class="form-group"><label>Caste</label><input type="text" id="pounit_caste"></div>
+                    <div class="form-group"><label>SC/ST Group</label><select id="pounit_scst"><option value="">None</option>${scstOpts}</select></div>
+                    <div class="form-group"><label>Cadre</label><select id="pounit_cadre"><option value="">Unassigned</option>${cadreOpts}</select></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+                <button class="btn btn-primary" onclick="savePOUnitPersonnel('${escapeQuotes(rank)}', -1)">Add</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(dialog);
+}
+
+function editPOUnitPersonnel(idx) {
+    if (userRole !== 'ADMIN') return;
+    const p = poUnitPersonnel[idx];
+    if (!p) return;
+
+    const cadreOpts = poCadres.map(c => `<option value="${c.id}" ${p.allocated_cadre_id===c.id?'selected':''}>${c.name}</option>`).join('');
+    const scstOpts = SC_ST_GROUPS.map(g => `<option value="${g.id}" ${p.sc_st_group===g.id?'selected':''}>${g.label}</option>`).join('');
+    const genderOpts = ['Male','Female'].map(g => `<option value="${g}" ${p.gender===g?'selected':''}>${g}</option>`).join('');
+
+    const dialog = document.createElement('div');
+    dialog.className = 'modal-overlay';
+    dialog.style.display = 'flex';
+    dialog.innerHTML = `
+        <div class="modal" style="max-width:550px;">
+            <div class="modal-header">
+                <h3>Edit Person - ${p.rank}</h3>
+                <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-grid">
+                    <div class="form-group"><label>Name *</label><input type="text" id="pounit_name" value="${p.name}"></div>
+                    <div class="form-group"><label>Gender</label><select id="pounit_gender"><option value="">Select</option>${genderOpts}</select></div>
+                    <div class="form-group"><label>Date of Birth</label><input type="date" id="pounit_dob" value="${p.date_of_birth || ''}"></div>
+                    <div class="form-group"><label>Date of Joining</label><input type="date" id="pounit_doj" value="${p.date_of_joining || ''}"></div>
+                    <div class="form-group"><label>CFMS ID</label><input type="text" id="pounit_cfms" value="${p.cfms_id || ''}"></div>
+                    <div class="form-group"><label>Mobile</label><input type="text" id="pounit_mobile" value="${p.mobile || ''}"></div>
+                    <div class="form-group"><label>Caste</label><input type="text" id="pounit_caste" value="${p.caste || ''}"></div>
+                    <div class="form-group"><label>SC/ST Group</label><select id="pounit_scst"><option value="">None</option>${scstOpts}</select></div>
+                    <div class="form-group"><label>Cadre</label><select id="pounit_cadre"><option value="">Unassigned</option>${cadreOpts}</select></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+                <button class="btn btn-primary" onclick="savePOUnitPersonnel('${escapeQuotes(p.rank)}', ${idx})">Save</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(dialog);
+}
+
+function savePOUnitPersonnel(rank, editIdx) {
+    if (userRole !== 'ADMIN') return;
+    const name = document.getElementById('pounit_name').value.trim();
+    if (!name) { showToast('Name is required', 'error'); return; }
+
+    const entry = {
+        rank: rank,
+        name: name,
+        gender: document.getElementById('pounit_gender').value,
+        date_of_birth: document.getElementById('pounit_dob').value,
+        date_of_joining: document.getElementById('pounit_doj').value,
+        cfms_id: document.getElementById('pounit_cfms').value.trim(),
+        mobile: document.getElementById('pounit_mobile').value.trim(),
+        caste: document.getElementById('pounit_caste').value.trim(),
+        sc_st_group: document.getElementById('pounit_scst').value,
+        allocated_cadre_id: document.getElementById('pounit_cadre').value
+    };
+
+    if (editIdx >= 0) {
+        poUnitPersonnel[editIdx] = entry;
+    } else {
+        entry._idx = poUnitPersonnel.length;
+        poUnitPersonnel.push(entry);
+    }
+
+    // Re-index
+    poUnitPersonnel.forEach((p, i) => { p._idx = i; });
+
+    savePOData();
+    document.querySelector('.modal-overlay').remove();
+    renderPOUnitDetail();
+    showToast('Person saved', 'success');
+}
+
+function deletePOUnitPersonnel(idx) {
+    if (userRole !== 'ADMIN') return;
+    if (!confirm('Delete this person?')) return;
+    poUnitPersonnel.splice(idx, 1);
+    poUnitPersonnel.forEach((p, i) => { p._idx = i; });
+    savePOData();
+    renderPOUnitDetail();
+    showToast('Person deleted', 'success');
+}
+
+function exportPOUnitCSV(rank) {
+    const personnel = poUnitPersonnel.filter(p => p.rank === rank);
+    if (personnel.length === 0) { showToast('No data to export', 'error'); return; }
+    let csv = `Rank: ${rank}\nSl.No,Name,Gender,DOB,DOJ,CFMS ID,Mobile,Caste,SC/ST,Cadre\n`;
+    personnel.forEach((p, i) => {
+        csv += `${i+1},"${p.name}","${p.gender||''}","${p.date_of_birth||''}","${p.date_of_joining||''}","${p.cfms_id||''}","${p.mobile||''}","${p.caste||''}","${p.sc_st_group||''}","${p.allocated_cadre_id||''}"\n`;
+    });
+    downloadFile(csv, `PO_UnitData_${rank.replace(/[^a-zA-Z0-9]/g,'_')}.csv`, 'text/csv');
+    showToast('Exported to CSV', 'success');
 }
 
 // ==================== OVERVIEW TAB ====================
@@ -1316,12 +1586,13 @@ function resetPOModule() {
     poFSL = [];
     poOptions = {};
     poAllocations = [];
+    poUnitPersonnel = [];
     poCadres = [];
     poCadreStrength = {};
     poStage = 'init';
     poObjections = {};
     poPreferentialCategories = [];
-    poCurrentTab = 'overview';
+    poCurrentTab = 'unitdata';
     savePOData();
     defineDefaultCadres();
     renderPOModule();
@@ -1366,4 +1637,13 @@ window.viewAllocationSummary = viewAllocationSummary;
 window.exportPOPrintFormat = exportPOPrintFormat;
 window.exportPOData = exportPOData;
 window.resetPOModule = resetPOModule;
+window.renderPOUnitData = renderPOUnitData;
+window.selectPOUnitRank = selectPOUnitRank;
+window.renderPOUnitDetail = renderPOUnitDetail;
+window.saveUnitCadreStrength = saveUnitCadreStrength;
+window.addPOUnitPersonnel = addPOUnitPersonnel;
+window.editPOUnitPersonnel = editPOUnitPersonnel;
+window.savePOUnitPersonnel = savePOUnitPersonnel;
+window.deletePOUnitPersonnel = deletePOUnitPersonnel;
+window.exportPOUnitCSV = exportPOUnitCSV;
 window.downloadFile = downloadFile;
