@@ -169,6 +169,26 @@ tr:hover { background: #e3f2fd; }
 .filter-row select:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 3px rgba(13,71,161,0.1); }
 .result-info { margin: 10px 0; font-size: 13px; color: #1565c0; font-weight: 600; }
 
+/* Presidential Order Module */
+.po-nav { display: flex; gap: 4px; margin-bottom: 12px; flex-wrap: wrap; background: #f5f5f5; padding: 4px; border-radius: 8px; }
+.po-nav-btn { padding: 10px 18px; background: transparent; color: #555; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s; }
+.po-nav-btn:hover { background: #e3f2fd; color: var(--primary); }
+.po-nav-btn.active { background: linear-gradient(135deg, #1565c0, #0d47a1); color: white; box-shadow: 0 2px 8px rgba(13,71,161,0.3); }
+.po-stage-indicator { background: #fff3e0; border: 1px solid #ffe0b2; padding: 8px 16px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; color: #e65100; }
+.po-tab-content { min-height: 300px; }
+
+.po-workflow { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; padding: 15px; background: #f8fbff; border-radius: 10px; }
+.po-wf-step { display: flex; flex-direction: column; align-items: center; gap: 4px; opacity: 0.4; transition: all 0.3s; }
+.po-wf-step.done { opacity: 1; }
+.po-wf-num { width: 36px; height: 36px; border-radius: 50%; background: #ccc; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px; }
+.po-wf-step.done .po-wf-num { background: linear-gradient(135deg, #1565c0, #0d47a1); }
+.po-wf-label { font-size: 11px; color: #666; font-weight: 600; }
+.po-wf-step.done .po-wf-label { color: var(--primary); }
+.po-wf-arrow { font-size: 20px; color: #bbb; margin: 0 4px; }
+
+.po-strength-input { width: 80px; padding: 5px; border: 1px solid #ddd; border-radius: 4px; text-align: center; font-size: 13px; }
+.po-strength-input:focus { border-color: var(--primary); outline: none; }
+
 /* Responsive */
 @media (max-width: 768px) {
     .district-tiles, .sub-tiles.dep-grid, .rank-tiles, .dep-strength-grid, .strength-row { grid-template-columns: repeat(2, 1fr); }
