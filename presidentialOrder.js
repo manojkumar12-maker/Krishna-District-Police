@@ -81,9 +81,9 @@ function defineDefaultCadres() {
     const allARRanks = rankMap['ERSTWHILE_AR'] || [];
 
     const districtCadres = [
-        { id: 'DC_ERSTWHILE', name: 'Erstwhile Krishna District (Residuary)', type: 'DISTRICT', level: 'DISTRICT' },
-        { id: 'DC_VJA', name: 'Vijayawada District (New)', type: 'DISTRICT', level: 'DISTRICT' },
-        { id: 'DC_MTM', name: 'Machilipatnam District (New)', type: 'DISTRICT', level: 'DISTRICT' }
+        { id: 'DC_KRISHNA', name: 'Krishna District (Residuary)', type: 'DISTRICT', level: 'DISTRICT' },
+        { id: 'DC_NTR', name: 'NTR District', type: 'DISTRICT', level: 'DISTRICT' },
+        { id: 'DC_ELURU', name: 'Eluru District', type: 'DISTRICT', level: 'DISTRICT' }
     ];
 
     poCadres = [...districtCadres];
@@ -312,9 +312,9 @@ function viewCadreStrength(cadreId) {
 }
 
 function getPersonnelForCadre(cadreId) {
-    if (cadreId === 'DC_ERSTWHILE') return allPersonnel.filter(p => p.district === 'ERSTWHILE' && !p.is_on_deployment);
-    if (cadreId === 'DC_VJA') return allPersonnel.filter(p => p.district === 'NEW' && !p.is_on_deployment);
-    if (cadreId === 'DC_MTM') return [];
+    if (cadreId === 'DC_KRISHNA') return allPersonnel.filter(p => p.district === 'NEW' && !p.is_on_deployment);
+    if (cadreId === 'DC_NTR') return [];
+    if (cadreId === 'DC_ELURU') return [];
     return [];
 }
 
@@ -1157,7 +1157,7 @@ function renderPOOrders(content) {
             <div class="district-tiles" style="grid-template-columns: repeat(3, 1fr);margin:15px 0;">
                 <div class="district-tile"><h3>Total Allocated</h3><div class="tile-count">${allocated}</div></div>
                 <div class="district-tile" style="background:linear-gradient(135deg,#2e7d32,#1b5e20);"><h3>OOA Ready</h3><div class="tile-count">${allocated}</div></div>
-                <div class="district-tile" style="background:linear-gradient(135deg,#ef6c00,#e65100);"><h3>OOT Needed</h3><div class="tile-count">${poAllocations.filter(a => a.allocated_cadre_id !== 'DC_ERSTWHILE' && a.district === 'ERSTWHILE').length + poAllocations.filter(a => a.allocated_cadre_id === 'DC_VJA' && a.district !== 'NEW').length}</div></div>
+                <div class="district-tile" style="background:linear-gradient(135deg,#ef6c00,#e65100);"><h3>OOT Needed</h3><div class="tile-count">${poAllocations.filter(a => a.allocated_cadre_id !== 'DC_KRISHNA' && a.district === 'ERSTWHILE').length + poAllocations.filter(a => a.allocated_cadre_id === 'DC_KRISHNA' && a.district !== 'NEW').length}</div></div>
             </div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
                 <button class="btn btn-primary" onclick="exportOOA()">Export OOA (Annexure-IV)</button>
@@ -1218,8 +1218,8 @@ function exportOOT() {
     csv += 'SI.No,Name,Rank,Type,Allocated Cadre,Original District,Transfer Required,Date\n';
     poAllocations.forEach((a, i) => {
         let transferNeeded = 'No';
-        if ((a.district === 'ERSTWHILE' && a.allocated_cadre_id !== 'DC_ERSTWHILE') ||
-            (a.district === 'NEW' && a.allocated_cadre_id !== 'DC_VJA')) {
+        if ((a.district === 'ERSTWHILE' && a.allocated_cadre_id !== 'DC_KRISHNA') ||
+            (a.district === 'NEW' && a.allocated_cadre_id !== 'DC_KRISHNA')) {
             transferNeeded = 'Yes';
         }
         csv += `${i+1},"${a.name}","${a.rank}","${a.personnel_type}","${a.allocated_cadre_name}","${a.district}","${transferNeeded}","${new Date().toISOString().slice(0,10)}"\n`;
