@@ -57,7 +57,7 @@ const PO_UNIT_RANKS = [
 
 const PO_STAGES = ['init', 'cadre_defined', 'dsl_published', 'objection_period', 'fsl_published', 'options_open', 'allocation_done'];
 
-const PO_DATA_VERSION = 4;
+const PO_DATA_VERSION = 5;
 
 function loadPOData() {
     try {
@@ -255,15 +255,19 @@ function renderPOUnitDetail() {
     if (personnel.length === 0) {
         personnelHtml += '<div class="empty-state">No personnel added for this rank.</div>';
     } else {
-        personnelHtml += `<table style="font-size:12px;"><thead><tr>
-        <th>Sr.No</th><th>Name</th><th>Genl.No</th><th>Gender</th><th>DOB</th><th>DOJ</th>
-        <th>CFMS ID</th><th>Mobile</th><th>SC/ST</th><th>PwBD%</th><th>Widow</th>
-        <th>MCC</th><th>Medical</th><th>Cadre</th>${isAdmin ? '<th>Actions</th>' : ''}
+        personnelHtml += `<table style="font-size:11px;"><thead><tr>
+        <th>(1) Sr.No</th><th>(2) Type</th><th>(3) Proceed.No / Date</th>
+        <th>(4) Sr.No</th><th>(5) Name</th><th>(6) Gen</th>
+        <th>(7) CFMS ID</th><th>(8) Mobile</th><th>(9) DOB</th><th>(10) DOJ</th>
+        <th>(11) SC/ST</th><th>(12) PwBD%</th><th>(13) Widow</th>
+        <th>(14) MCC</th><th>(15) Medical</th><th>(16) Rank</th><th>(17) Genl.No</th>
+        <th>Cadre</th>${isAdmin ? '<th>Actions</th>' : ''}
     </tr></thead><tbody>`;
 
         personnelHtml += personnel.map((p, i) => {
             const doj = p.date_of_joining ? new Date(p.date_of_joining).toLocaleDateString('en-IN') : '-';
             const dob = p.date_of_birth ? new Date(p.date_of_birth).toLocaleDateString('en-IN') : '-';
+            const procDate = p.proceedings_date ? new Date(p.proceedings_date).toLocaleDateString('en-IN') : '-';
             const cid = p.allocated_cadre_id ? (poCadres.find(c => c.id === p.allocated_cadre_id) || {}).name || p.allocated_cadre_id : '-';
             const medicals = [];
             if (p.cancer) medicals.push('Cancer');
@@ -272,21 +276,29 @@ function renderPOUnitDetail() {
             if (p.liver) medicals.push('Liver');
             if (p.heart) medicals.push('Heart');
             return `<tr>
-                <td>${p.seniority_no || i+1}</td>
+                <td>${i+1}</td>
+                <td>${p.seniority_type || '-'}</td>
+                <td style="font-size:10px;">${p.proceedings_no || '-'}${p.proceedings_date ? ' / ' + procDate : ''}</td>
+                <td>${p.seniority_no || '-'}</td>
                 <td>${p.name}</td>
-                <td>${p.genl_no || '-'}</td>
                 <td>${p.gender || '-'}</td>
-                <td>${dob}</td>
-                <td>${doj}</td>
                 <td>${p.cfms_id || '-'}</td>
                 <td>${p.mobile || '-'}</td>
+                <td>${dob}</td>
+                <td>${doj}</td>
                 <td>${p.sc_st_group || '-'}</td>
                 <td>${p.pwbd_percent || '-'}</td>
                 <td>${p.widow === 'Yes' ? '✓' : '-'}</td>
                 <td>${p.disabled_children === 'Yes' ? '✓' : '-'}</td>
                 <td>${medicals.length > 0 ? medicals.join(', ') : '-'}</td>
-                <td style="font-size:11px;">${cid}</td>
+                <td>${p.rank}</td>
+                <td>${p.genl_no || '-'}</td>
+                <td style="font-size:10px;">${cid}</td>
                 ${isAdmin ? `<td>
+                    <button class="action-btn btn-primary" onclick="editPOUnitPersonnel(${p._idx})">Edit</button>
+                    <button class="action-btn btn-danger" onclick="deletePOUnitPersonnel(${p._idx})">Del</button>
+                </td>` : ''}
+            </tr>`;
                     <button class="action-btn btn-primary" onclick="editPOUnitPersonnel(${p._idx})">Edit</button>
                     <button class="action-btn btn-danger" onclick="deletePOUnitPersonnel(${p._idx})">Del</button>
                 </td>` : ''}
@@ -327,7 +339,7 @@ function addPOUnitPersonnel(rank) {
     dialog.className = 'modal-overlay';
     dialog.style.display = 'flex';
     dialog.innerHTML = `
-        <div class="modal" style="max-width:700px;">
+        <div class="modal" style="max-width:750px;">
             <div class="modal-header">
                 <h3>Add Person - ${rank}</h3>
                 <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</button>
@@ -335,27 +347,30 @@ function addPOUnitPersonnel(rank) {
             <div class="modal-body">
                 <div class="form-grid">
                     <div class="form-group"><label>Name *</label><input type="text" id="pounit_name"></div>
-                    <div class="form-group"><label>Genl. No.</label><input type="text" id="pounit_genlno"></div>
-                    <div class="form-group"><label>Seniority No.</label><input type="number" id="pounit_srno" min="1"></div>
-                    <div class="form-group"><label>Gender</label><select id="pounit_gender"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
-                    <div class="form-group"><label>Date of Birth</label><input type="date" id="pounit_dob"></div>
-                    <div class="form-group"><label>Date of Joining</label><input type="date" id="pounit_doj"></div>
-                    <div class="form-group"><label>CFMS ID</label><input type="text" id="pounit_cfms"></div>
-                    <div class="form-group"><label>Mobile No.</label><input type="text" id="pounit_mobile"></div>
+                    <div class="form-group"><label>Genl. No. (17)</label><input type="text" id="pounit_genlno"></div>
+                    <div class="form-group"><label>Seniority No. (4)</label><input type="number" id="pounit_srno" min="1"></div>
+                    <div class="form-group"><label>Gender (6)</label><select id="pounit_gender"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
+                    <div class="form-group"><label>Date of Birth (9)</label><input type="date" id="pounit_dob"></div>
+                    <div class="form-group"><label>Date of Joining (10)</label><input type="date" id="pounit_doj"></div>
+                    <div class="form-group"><label>CFMS ID (7)</label><input type="text" id="pounit_cfms"></div>
+                    <div class="form-group"><label>Mobile No. (8)</label><input type="text" id="pounit_mobile"></div>
                     <div class="form-group"><label>Caste</label><input type="text" id="pounit_caste"></div>
-                    <div class="form-group"><label>SC/ST Group</label><select id="pounit_scst"><option value="">None</option>${scstOpts}</select></div>
-                    <div class="form-group"><label>PwBD Disability %</label><input type="text" id="pounit_pwbd" placeholder="e.g. 70%"></div>
-                    <div class="form-group"><label>Widow</label><select id="pounit_widow"><option value="">No</option><option value="Yes">Yes</option></select></div>
-                    <div class="form-group"><label>Mentally Challenged Children</label><select id="pounit_mcc"><option value="">No</option><option value="Yes">Yes</option></select></div>
-                    <div class="form-group"><label>Medical Conditions</label>
+                    <div class="form-group"><label>SC/ST Group (11)</label><select id="pounit_scst"><option value="">None</option>${scstOpts}</select></div>
+                    <div class="form-group"><label>PwBD Disability % (12)</label><input type="text" id="pounit_pwbd" placeholder="e.g. 70%"></div>
+                    <div class="form-group"><label>Widow (13)</label><select id="pounit_widow"><option value="">No</option><option value="Yes">Yes</option></select></div>
+                    <div class="form-group"><label>MCC (14)</label><select id="pounit_mcc"><option value="">No</option><option value="Yes">Yes</option></select></div>
+                    <div class="form-group"><label>Medical Conditions (15)</label>
                         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">
-                            <label style="font-weight:normal;font-size:12px;"><input type="checkbox" id="pounit_cancer"> Cancer</label>
-                            <label style="font-weight:normal;font-size:12px;"><input type="checkbox" id="pounit_neuro"> Neuro Surgery</label>
-                            <label style="font-weight:normal;font-size:12px;"><input type="checkbox" id="pounit_kidney"> Kidney Trans.</label>
-                            <label style="font-weight:normal;font-size:12px;"><input type="checkbox" id="pounit_liver"> Liver Trans.</label>
-                            <label style="font-weight:normal;font-size:12px;"><input type="checkbox" id="pounit_heart"> Open Heart</label>
+                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_cancer"> Cancer</label>
+                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_neuro"> Neuro</label>
+                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_kidney"> Kidney</label>
+                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_liver"> Liver</label>
+                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_heart"> Heart</label>
                         </div>
                     </div>
+                    <div class="form-group"><label>Type of Seniority (2)</label><select id="pounit_srtype"><option value="">Provisional</option><option value="Final">Final</option><option value="Tentative">Tentative</option></select></div>
+                    <div class="form-group"><label>Proceed. Number (3a)</label><input type="text" id="pounit_procno"></div>
+                    <div class="form-group"><label>Proceed. Date (3b)</label><input type="date" id="pounit_procdate"></div>
                     <div class="form-group"><label>Cadre</label><select id="pounit_cadre"><option value="">Unassigned</option>${cadreOpts}</select></div>
                 </div>
             </div>
@@ -378,12 +393,13 @@ function editPOUnitPersonnel(idx) {
     const genderOpts = ['Male','Female'].map(g => `<option value="${g}" ${p.gender===g?'selected':''}>${g}</option>`).join('');
     const widowOpts = ['No','Yes'].map(v => `<option value="${v}" ${p.widow===v?'selected':''}>${v}</option>`).join('');
     const mccOpts = ['No','Yes'].map(v => `<option value="${v}" ${p.disabled_children===v?'selected':''}>${v}</option>`).join('');
+    const srTypes = ['Provisional','Final','Tentative'].map(v => `<option value="${v}" ${p.seniority_type===v?'selected':''}>${v}</option>`).join('');
 
     const dialog = document.createElement('div');
     dialog.className = 'modal-overlay';
     dialog.style.display = 'flex';
     dialog.innerHTML = `
-        <div class="modal" style="max-width:700px;">
+        <div class="modal" style="max-width:750px;">
             <div class="modal-header">
                 <h3>Edit Person - ${p.rank}</h3>
                 <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</button>
@@ -391,27 +407,30 @@ function editPOUnitPersonnel(idx) {
             <div class="modal-body">
                 <div class="form-grid">
                     <div class="form-group"><label>Name *</label><input type="text" id="pounit_name" value="${p.name}"></div>
-                    <div class="form-group"><label>Genl. No.</label><input type="text" id="pounit_genlno" value="${p.genl_no || ''}"></div>
-                    <div class="form-group"><label>Seniority No.</label><input type="number" id="pounit_srno" value="${p.seniority_no || ''}" min="1"></div>
-                    <div class="form-group"><label>Gender</label><select id="pounit_gender"><option value="">Select</option>${genderOpts}</select></div>
-                    <div class="form-group"><label>Date of Birth</label><input type="date" id="pounit_dob" value="${p.date_of_birth || ''}"></div>
-                    <div class="form-group"><label>Date of Joining</label><input type="date" id="pounit_doj" value="${p.date_of_joining || ''}"></div>
-                    <div class="form-group"><label>CFMS ID</label><input type="text" id="pounit_cfms" value="${p.cfms_id || ''}"></div>
-                    <div class="form-group"><label>Mobile No.</label><input type="text" id="pounit_mobile" value="${p.mobile || ''}"></div>
+                    <div class="form-group"><label>Genl. No. (17)</label><input type="text" id="pounit_genlno" value="${p.genl_no || ''}"></div>
+                    <div class="form-group"><label>Seniority No. (4)</label><input type="number" id="pounit_srno" value="${p.seniority_no || ''}" min="1"></div>
+                    <div class="form-group"><label>Gender (6)</label><select id="pounit_gender"><option value="">Select</option>${genderOpts}</select></div>
+                    <div class="form-group"><label>Date of Birth (9)</label><input type="date" id="pounit_dob" value="${p.date_of_birth || ''}"></div>
+                    <div class="form-group"><label>Date of Joining (10)</label><input type="date" id="pounit_doj" value="${p.date_of_joining || ''}"></div>
+                    <div class="form-group"><label>CFMS ID (7)</label><input type="text" id="pounit_cfms" value="${p.cfms_id || ''}"></div>
+                    <div class="form-group"><label>Mobile No. (8)</label><input type="text" id="pounit_mobile" value="${p.mobile || ''}"></div>
                     <div class="form-group"><label>Caste</label><input type="text" id="pounit_caste" value="${p.caste || ''}"></div>
-                    <div class="form-group"><label>SC/ST Group</label><select id="pounit_scst"><option value="">None</option>${scstOpts}</select></div>
-                    <div class="form-group"><label>PwBD Disability %</label><input type="text" id="pounit_pwbd" value="${p.pwbd_percent || ''}"></div>
-                    <div class="form-group"><label>Widow</label><select id="pounit_widow"><option value="">No</option>${widowOpts}</select></div>
-                    <div class="form-group"><label>MCC</label><select id="pounit_mcc"><option value="">No</option>${mccOpts}</select></div>
-                    <div class="form-group"><label>Medical Conditions</label>
+                    <div class="form-group"><label>SC/ST Group (11)</label><select id="pounit_scst"><option value="">None</option>${scstOpts}</select></div>
+                    <div class="form-group"><label>PwBD Disability % (12)</label><input type="text" id="pounit_pwbd" value="${p.pwbd_percent || ''}"></div>
+                    <div class="form-group"><label>Widow (13)</label><select id="pounit_widow"><option value="">No</option>${widowOpts}</select></div>
+                    <div class="form-group"><label>MCC (14)</label><select id="pounit_mcc"><option value="">No</option>${mccOpts}</select></div>
+                    <div class="form-group"><label>Medical Conditions (15)</label>
                         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">
-                            <label style="font-weight:normal;font-size:12px;"><input type="checkbox" id="pounit_cancer" ${p.cancer?'checked':''}> Cancer</label>
-                            <label style="font-weight:normal;font-size:12px;"><input type="checkbox" id="pounit_neuro" ${p.neurosurgery?'checked':''}> Neuro Surgery</label>
-                            <label style="font-weight:normal;font-size:12px;"><input type="checkbox" id="pounit_kidney" ${p.kidney?'checked':''}> Kidney Trans.</label>
-                            <label style="font-weight:normal;font-size:12px;"><input type="checkbox" id="pounit_liver" ${p.liver?'checked':''}> Liver Trans.</label>
-                            <label style="font-weight:normal;font-size:12px;"><input type="checkbox" id="pounit_heart" ${p.heart?'checked':''}> Open Heart</label>
+                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_cancer" ${p.cancer?'checked':''}> Cancer</label>
+                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_neuro" ${p.neurosurgery?'checked':''}> Neuro</label>
+                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_kidney" ${p.kidney?'checked':''}> Kidney</label>
+                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_liver" ${p.liver?'checked':''}> Liver</label>
+                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_heart" ${p.heart?'checked':''}> Heart</label>
                         </div>
                     </div>
+                    <div class="form-group"><label>Type of Seniority (2)</label><select id="pounit_srtype"><option value="">Provisional</option>${srTypes}</select></div>
+                    <div class="form-group"><label>Proceed. Number (3a)</label><input type="text" id="pounit_procno" value="${p.proceedings_no || ''}"></div>
+                    <div class="form-group"><label>Proceed. Date (3b)</label><input type="date" id="pounit_procdate" value="${p.proceedings_date || ''}"></div>
                     <div class="form-group"><label>Cadre</label><select id="pounit_cadre"><option value="">Unassigned</option>${cadreOpts}</select></div>
                 </div>
             </div>
@@ -449,6 +468,9 @@ function savePOUnitPersonnel(rank, editIdx) {
         kidney: document.getElementById('pounit_kidney').checked,
         liver: document.getElementById('pounit_liver').checked,
         heart: document.getElementById('pounit_heart').checked,
+        seniority_type: document.getElementById('pounit_srtype').value,
+        proceedings_no: document.getElementById('pounit_procno').value.trim(),
+        proceedings_date: document.getElementById('pounit_procdate').value,
         allocated_cadre_id: document.getElementById('pounit_cadre').value
     };
 
@@ -481,9 +503,9 @@ function deletePOUnitPersonnel(idx) {
 function exportPOUnitCSV(rank) {
     const personnel = poUnitPersonnel.filter(p => p.rank === rank);
     if (personnel.length === 0) { showToast('No data to export', 'error'); return; }
-    let csv = `Rank: ${rank}\nSr.No,Name,Genl.No,Gender,DOB,DOJ,CFMS ID,Mobile,Caste,SC/ST,PwBD%,Widow,MCC,Cancer,Neuro Surgery,Kidney Trans,Liver Trans,Open Heart,Cadre\n`;
+    let csv = `Rank: ${rank}\nSl.No,Type of Seniority,Proceedings No,Proceedings Date,Seniority No,Name,Gender,CFMS ID,Mobile,DOB,DOJ,SC/ST,PwBD%,Widow,MCC,Cancer,Neuro,Kidney,Liver,Heart,Genl.No,Cadre\n`;
     personnel.forEach((p, i) => {
-        csv += `${p.seniority_no || i+1},"${p.name}","${p.genl_no||''}","${p.gender||''}","${p.date_of_birth||''}","${p.date_of_joining||''}","${p.cfms_id||''}","${p.mobile||''}","${p.caste||''}","${p.sc_st_group||''}","${p.pwbd_percent||''}","${p.widow||''}","${p.disabled_children||''}","${p.cancer?'Yes':'No'}","${p.neurosurgery?'Yes':'No'}","${p.kidney?'Yes':'No'}","${p.liver?'Yes':'No'}","${p.heart?'Yes':'No'}","${p.allocated_cadre_id||''}"\n`;
+        csv += `${i+1},"${p.seniority_type||'Provisional'}","${p.proceedings_no||''}","${p.proceedings_date||''}",${p.seniority_no||i+1},"${p.name}","${p.gender||''}","${p.cfms_id||''}","${p.mobile||''}","${p.date_of_birth||''}","${p.date_of_joining||''}","${p.sc_st_group||''}","${p.pwbd_percent||''}","${p.widow||''}","${p.disabled_children||''}","${p.cancer?'Yes':'No'}","${p.neurosurgery?'Yes':'No'}","${p.kidney?'Yes':'No'}","${p.liver?'Yes':'No'}","${p.heart?'Yes':'No'}","${p.genl_no||''}","${p.allocated_cadre_id||''}"\n`;
     });
     downloadFile(csv, `PO_UnitData_${rank.replace(/[^a-zA-Z0-9]/g,'_')}.csv`, 'text/csv');
     showToast('Exported to CSV', 'success');
