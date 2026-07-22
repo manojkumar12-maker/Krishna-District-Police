@@ -57,7 +57,7 @@ const PO_UNIT_RANKS = [
 
 const PO_STAGES = ['init', 'cadre_defined', 'dsl_published', 'objection_period', 'fsl_published', 'options_open', 'allocation_done'];
 
-const PO_DATA_VERSION = 5;
+const PO_DATA_VERSION = 6;
 
 function loadPOData() {
     try {
@@ -138,29 +138,34 @@ function showPOPage() {
 
 function renderPOModule() {
     const container = document.getElementById('poMainContent');
-    if (!container) return;
+    if (!container) { console.error('poMainContent not found'); return; }
 
-    const isAdmin = userRole === 'ADMIN';
-    const stageLabel = { init:'Not Started', cadre_defined:'Cadres Defined', dsl_published:'DSL Published',
-        objection_period:'Objection Period', fsl_published:'FSL Published', options_open:'Options Open',
-        allocation_done:'Allocation Complete' }[poStage] || 'Unknown';
+    try {
+        const isAdmin = userRole === 'ADMIN';
+        const stageLabel = { init:'Not Started', cadre_defined:'Cadres Defined', dsl_published:'DSL Published',
+            objection_period:'Objection Period', fsl_published:'FSL Published', options_open:'Options Open',
+            allocation_done:'Allocation Complete' }[poStage] || 'Unknown';
 
-    container.innerHTML = `
-        <div class="po-nav">
-            <button class="po-nav-btn ${poCurrentTab==='unitdata' ? 'active' : ''}" onclick="switchPOTab('unitdata')">Unit Data</button>
-            <button class="po-nav-btn ${poCurrentTab==='overview' ? 'active' : ''}" onclick="switchPOTab('overview')">Overview</button>
-            <button class="po-nav-btn ${poCurrentTab==='cadres' ? 'active' : ''}" onclick="switchPOTab('cadres')">Cadres & Strength</button>
-            <button class="po-nav-btn ${poCurrentTab==='seniority' ? 'active' : ''}" onclick="switchPOTab('seniority')">Seniority List</button>
-            <button class="po-nav-btn ${poCurrentTab==='options' ? 'active' : ''}" onclick="switchPOTab('options')">Option Forms</button>
-            <button class="po-nav-btn ${poCurrentTab==='prefcat' ? 'active' : ''}" onclick="switchPOTab('prefcat')">Pref. Categories</button>
-            <button class="po-nav-btn ${poCurrentTab==='allocation' ? 'active' : ''}" onclick="switchPOTab('allocation')">Allocation</button>
-            <button class="po-nav-btn ${poCurrentTab==='orders' ? 'active' : ''}" onclick="switchPOTab('orders')">Final Orders</button>
-        </div>
-        <div class="po-stage-indicator">Current Stage: <strong>${stageLabel}</strong></div>
-        <div id="poTabContent" class="po-tab-content"></div>
-    `;
+        container.innerHTML = `
+            <div class="po-nav">
+                <button class="po-nav-btn ${poCurrentTab==='unitdata' ? 'active' : ''}" onclick="switchPOTab('unitdata')">Unit Data</button>
+                <button class="po-nav-btn ${poCurrentTab==='overview' ? 'active' : ''}" onclick="switchPOTab('overview')">Overview</button>
+                <button class="po-nav-btn ${poCurrentTab==='cadres' ? 'active' : ''}" onclick="switchPOTab('cadres')">Cadres & Strength</button>
+                <button class="po-nav-btn ${poCurrentTab==='seniority' ? 'active' : ''}" onclick="switchPOTab('seniority')">Seniority List</button>
+                <button class="po-nav-btn ${poCurrentTab==='options' ? 'active' : ''}" onclick="switchPOTab('options')">Option Forms</button>
+                <button class="po-nav-btn ${poCurrentTab==='prefcat' ? 'active' : ''}" onclick="switchPOTab('prefcat')">Pref. Categories</button>
+                <button class="po-nav-btn ${poCurrentTab==='allocation' ? 'active' : ''}" onclick="switchPOTab('allocation')">Allocation</button>
+                <button class="po-nav-btn ${poCurrentTab==='orders' ? 'active' : ''}" onclick="switchPOTab('orders')">Final Orders</button>
+            </div>
+            <div class="po-stage-indicator">Current Stage: <strong>${stageLabel}</strong></div>
+            <div id="poTabContent" class="po-tab-content"></div>
+        `;
 
-    renderCurrentPOTab();
+        renderCurrentPOTab();
+    } catch(e) {
+        console.error('renderPOModule error:', e);
+        container.innerHTML = `<div class="card"><h2>Error</h2><p style="color:red;">${e.message}</p><pre style="font-size:11px;">${e.stack || ''}</pre></div>`;
+    }
 }
 
 function switchPOTab(tab) {
@@ -191,24 +196,29 @@ function renderCurrentPOTab() {
 let poUnitSelectedRank = '';
 
 function renderPOUnitData(content) {
-    const isAdmin = userRole === 'ADMIN';
+    try {
+        const isAdmin = userRole === 'ADMIN';
 
-    let tilesHtml = PO_UNIT_RANKS.map(r => {
-        const active = poUnitSelectedRank === r ? ' active' : '';
-        return `<div class="rank-tile${active}" onclick="selectPOUnitRank('${escapeQuotes(r)}', this)">${r}</div>`;
-    }).join('');
+        let tilesHtml = PO_UNIT_RANKS.map(r => {
+            const active = poUnitSelectedRank === r ? ' active' : '';
+            return `<div class="rank-tile${active}" onclick="selectPOUnitRank('${escapeQuotes(r)}', this)">${r}</div>`;
+        }).join('');
 
-    content.innerHTML = `
-        <div class="card">
-            <h2>Unit Data - District Cadre Ranks</h2>
-            <p style="color:#666;margin-bottom:15px;">Define sanctioned working strength per cadre and manage personnel for each rank.</p>
-            <div class="rank-tiles" style="grid-template-columns: repeat(4, 1fr);">${tilesHtml}</div>
-            <div id="poUnitDetail" class="detail-section"></div>
-        </div>
-    `;
+        content.innerHTML = `
+            <div class="card">
+                <h2>Unit Data - District Cadre Ranks</h2>
+                <p style="color:#666;margin-bottom:15px;">Define sanctioned working strength per cadre and manage personnel for each rank.</p>
+                <div class="rank-tiles" style="grid-template-columns: repeat(4, 1fr);">${tilesHtml}</div>
+                <div id="poUnitDetail" class="detail-section"></div>
+            </div>
+        `;
 
-    if (poUnitSelectedRank) {
-        renderPOUnitDetail();
+        if (poUnitSelectedRank) {
+            renderPOUnitDetail();
+        }
+    } catch(e) {
+        console.error('renderPOUnitData error:', e);
+        content.innerHTML = `<div class="card"><h2>Error</h2><p style="color:red;">${e.message}</p></div>`;
     }
 }
 
@@ -1679,9 +1689,21 @@ function resetPOModule() {
 // Initialize from existing showPage flow
 const origShowPage = showPage;
 showPage = function(pageId) {
-    origShowPage(pageId);
+    try {
+        origShowPage(pageId);
+    } catch(e) {
+        console.error('showPage error:', e);
+    }
     if (pageId === 'presidentialOrder') {
-        showPOPage();
+        try {
+            showPOPage();
+        } catch(e) {
+            console.error('PO module render error:', e);
+            const container = document.getElementById('poMainContent');
+            if (container) {
+                container.innerHTML = `<div class="card"><h2>Error</h2><p style="color:red;">Failed to load: ${e.message}</p><p>Please hard-refresh (Ctrl+Shift+R) and try again.</p></div>`;
+            }
+        }
     }
 };
 
