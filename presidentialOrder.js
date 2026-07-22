@@ -37,11 +37,18 @@ const SC_ST_GROUPS = [
 
 const PO_STAGES = ['init', 'cadre_defined', 'dsl_published', 'objection_period', 'fsl_published', 'options_open', 'allocation_done'];
 
+const PO_DATA_VERSION = 2;
+
 function loadPOData() {
     try {
         const stored = localStorage.getItem('po_state');
         if (stored) {
             const parsed = JSON.parse(stored);
+
+            if (parsed.poDataVersion !== PO_DATA_VERSION) {
+                localStorage.removeItem('po_state');
+                return;
+            }
             poData = parsed.poData || {};
             poExtended = parsed.poExtended || {};
             poDSL = parsed.poDSL || [];
@@ -61,6 +68,7 @@ function loadPOData() {
 
 function savePOData() {
     localStorage.setItem('po_state', JSON.stringify({
+        poDataVersion: PO_DATA_VERSION,
         poData, poExtended, poDSL, poFSL, poOptions, poAllocations,
         poCadres, poCadreStrength, poStage, poObjections, poPreferentialCategories
     }));
