@@ -57,7 +57,7 @@ const PO_UNIT_RANKS = [
 
 const PO_STAGES = ['init', 'cadre_defined', 'dsl_published', 'objection_period', 'fsl_published', 'options_open', 'allocation_done'];
 
-const PO_DATA_VERSION = 6;
+const PO_DATA_VERSION = 7;
 
 function loadPOData() {
     try {
@@ -256,9 +256,12 @@ function renderPOUnitDetail() {
 
     let personnelHtml = '';
     if (isAdmin) {
-        personnelHtml += `<div style="display:flex;gap:10px;margin-bottom:15px;">
+        personnelHtml += `<div style="display:flex;gap:10px;margin-bottom:15px;flex-wrap:wrap;">
             <button class="btn btn-primary" onclick="addPOUnitPersonnel('${escapeQuotes(rank)}')">+ Add Person</button>
             <button class="btn btn-secondary" onclick="exportPOUnitCSV('${escapeQuotes(rank)}')">Export CSV</button>
+            <a class="btn btn-secondary" style="text-decoration:none;cursor:pointer;" onclick="downloadPOUnitTemplate('${escapeQuotes(rank)}')">Download Template</a>
+            <input type="file" id="poUnitFileInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="importPOUnitData(this, '${escapeQuotes(rank)}')">
+            <button class="btn btn-secondary" onclick="document.getElementById('poUnitFileInput').click()">Import CSV/Excel</button>
         </div>`;
     }
 
@@ -354,7 +357,7 @@ function addPOUnitPersonnel(rank) {
                 <div class="form-grid">
                     <div class="form-group"><label>Name *</label><input type="text" id="pounit_name"></div>
                     <div class="form-group"><label>Genl. No. (17)</label><input type="text" id="pounit_genlno"></div>
-                    <div class="form-group"><label>Seniority No. (4)</label><input type="number" id="pounit_srno" min="1"></div>
+                    <div class="form-group"><label>Sl.No *</label><input type="number" id="pounit_srno" min="1" value="${poUnitPersonnel.filter(p => p.rank === rank).length + 1}"></div>
                     <div class="form-group"><label>Gender (6)</label><select id="pounit_gender"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
                     <div class="form-group"><label>Date of Birth (9)</label><input type="date" id="pounit_dob"></div>
                     <div class="form-group"><label>Date of Joining (10)</label><input type="date" id="pounit_doj"></div>
@@ -414,7 +417,7 @@ function editPOUnitPersonnel(idx) {
                 <div class="form-grid">
                     <div class="form-group"><label>Name *</label><input type="text" id="pounit_name" value="${p.name}"></div>
                     <div class="form-group"><label>Genl. No. (17)</label><input type="text" id="pounit_genlno" value="${p.genl_no || ''}"></div>
-                    <div class="form-group"><label>Seniority No. (4)</label><input type="number" id="pounit_srno" value="${p.seniority_no || ''}" min="1"></div>
+                    <div class="form-group"><label>Sl.No *</label><input type="number" id="pounit_srno" min="1" value="${p.seniority_no || ''}"></div>
                     <div class="form-group"><label>Gender (6)</label><select id="pounit_gender"><option value="">Select</option>${genderOpts}</select></div>
                     <div class="form-group"><label>Date of Birth (9)</label><input type="date" id="pounit_dob" value="${p.date_of_birth || ''}"></div>
                     <div class="form-group"><label>Date of Joining (10)</label><input type="date" id="pounit_doj" value="${p.date_of_joining || ''}"></div>
@@ -515,6 +518,117 @@ function exportPOUnitCSV(rank) {
     });
     downloadFile(csv, `PO_UnitData_${rank.replace(/[^a-zA-Z0-9]/g,'_')}.csv`, 'text/csv');
     showToast('Exported to CSV', 'success');
+}
+
+function downloadPOUnitTemplate(rank) {
+    const headers = [
+        'Sl.No', 'Type of Seniority', 'Proceedings No', 'Proceedings Date',
+        'Seniority No', 'Name', 'Gender', 'CFMS ID', 'Mobile', 'DOB', 'DOJ',
+        'SC/ST', 'PwBD%', 'Widow', 'MCC',
+        'Cancer', 'Neuro Surgery', 'Kidney Trans', 'Liver Trans', 'Open Heart',
+        'Rank', 'Genl.No', 'Cadre'
+    ];
+    const sampleRow = [
+        '1', 'Provisional', '', '',
+        '1', 'Sample Name', 'Male', '', '', '', '',
+        '', '', '', '',
+        'No', 'No', 'No', 'No', 'No',
+        rank, '', ''
+    ];
+    let csv = headers.join(',') + '\n' + sampleRow.join(',') + '\n';
+    downloadFile(csv, `PO_Template_${rank.replace(/[^a-zA-Z0-9]/g,'_')}.csv`, 'text/csv');
+    showToast('Template downloaded', 'success');
+}
+
+function importPOUnitData(input, rank) {
+    if (userRole !== 'ADMIN') { showToast('Admin only', 'error'); input.value = ''; return; }
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const text = e.target.result;
+            const lines = text.trim().split('\n');
+            if (lines.length < 2) { showToast('Empty file', 'error'); input.value = ''; return; }
+
+            const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase().replace(/\s+/g, '_'));
+            const dataRows = lines.slice(1);
+
+            let imported = 0;
+            let errors = 0;
+            const startIdx = poUnitPersonnel.length;
+
+            dataRows.forEach((line, ri) => {
+                try {
+                    if (!line.trim()) return;
+                    const values = parseCSVLine(line);
+                    const row = {};
+                    headers.forEach((h, i) => { row[h] = (values[i] || '').trim().replace(/^"|"$/g, ''); });
+
+                    const name = row.name;
+                    if (!name) { errors++; return; }
+
+                    const scst = ['SC_1','SC_2','SC_3','ST'].includes(row.sc_st) ? row.sc_st : '';
+                    const srType = ['Final','Provisional','Tentative'].includes(row.type_of_seniority) ? row.type_of_seniority : 'Provisional';
+
+                    const entry = {
+                        rank: row.rank || rank,
+                        name: name,
+                        genl_no: row.genl_no || '',
+                        seniority_no: parseInt(row.seniority_no) || (poUnitPersonnel.length + 1 + imported),
+                        gender: row.gender || '',
+                        date_of_birth: row.dob || '',
+                        date_of_joining: row.doj || '',
+                        cfms_id: row.cfms_id || '',
+                        mobile: row.mobile || '',
+                        caste: row.caste || '',
+                        sc_st_group: scst,
+                        pwbd_percent: row.pwbd || row.pwbd_percent || '',
+                        widow: row.widow === 'Yes' ? 'Yes' : '',
+                        disabled_children: row.mcc === 'Yes' ? 'Yes' : '',
+                        cancer: row.cancer === 'Yes',
+                        neurosurgery: row.neuro_surgery === 'Yes' || row.neuro === 'Yes',
+                        kidney: row.kidney_trans === 'Yes' || row.kidney === 'Yes',
+                        liver: row.liver_trans === 'Yes' || row.liver === 'Yes',
+                        heart: row.open_heart === 'Yes' || row.heart === 'Yes',
+                        seniority_type: srType,
+                        proceedings_no: row.proceedings_no || '',
+                        proceedings_date: row.proceedings_date || '',
+                        allocated_cadre_id: row.cadre || '',
+                        _idx: startIdx + imported
+                    };
+                    poUnitPersonnel.push(entry);
+                    imported++;
+                } catch(err) {
+                    errors++;
+                }
+            });
+
+            poUnitPersonnel.forEach((p, i) => { p._idx = i; });
+            savePOData();
+            renderPOUnitDetail();
+            showToast(`Imported ${imported} records` + (errors ? `, ${errors} errors` : ''), imported > 0 ? 'success' : 'error');
+        } catch(err) {
+            showToast('Import failed: ' + err.message, 'error');
+        }
+        input.value = '';
+    };
+    reader.readAsText(file);
+}
+
+function parseCSVLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') { inQuotes = !inQuotes; }
+        else if (ch === ',' && !inQuotes) { result.push(current); current = ''; }
+        else { current += ch; }
+    }
+    result.push(current);
+    return result;
 }
 
 // ==================== OVERVIEW TAB ====================
@@ -1741,4 +1855,6 @@ window.editPOUnitPersonnel = editPOUnitPersonnel;
 window.savePOUnitPersonnel = savePOUnitPersonnel;
 window.deletePOUnitPersonnel = deletePOUnitPersonnel;
 window.exportPOUnitCSV = exportPOUnitCSV;
+window.downloadPOUnitTemplate = downloadPOUnitTemplate;
+window.importPOUnitData = importPOUnitData;
 window.downloadFile = downloadFile;
