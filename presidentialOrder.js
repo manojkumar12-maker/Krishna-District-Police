@@ -86,19 +86,9 @@ function defineDefaultCadres() {
         { id: 'DC_MTM', name: 'Machilipatnam District (New)', type: 'DISTRICT', level: 'DISTRICT' }
     ];
 
-    const zonalCadres = [
-        { id: 'ZC_ZONE1', name: 'Zone-I (Krishna)', type: 'ZONAL', level: 'ZONAL' },
-        { id: 'ZC_ZONE2', name: 'Zone-II', type: 'ZONAL', level: 'ZONAL' }
-    ];
+    poCadres = [...districtCadres];
 
-    const multiZonalCadres = [
-        { id: 'MZ_A', name: 'Multi-Zone A', type: 'MULTI_ZONAL', level: 'MULTI_ZONAL' },
-        { id: 'MZ_B', name: 'Multi-Zone B', type: 'MULTI_ZONAL', level: 'MULTI_ZONAL' }
-    ];
-
-    poCadres = [...districtCadres, ...zonalCadres, ...multiZonalCadres];
-
-    districtCadres.forEach(c => {
+    poCadres.forEach(c => {
         allCivRanks.forEach(r => {
             poCadreStrength[c.id + '_CIVIL_' + r] = 0;
         });
@@ -187,7 +177,7 @@ function renderPOOverview(content) {
                 <div class="district-tile" style="background:linear-gradient(135deg,#2e7d32,#1b5e20);">
                     <h3>Cadres Defined</h3>
                     <div class="tile-count">${poCadres.length}</div>
-                    <div class="tile-label">District: ${poCadres.filter(c=>c.level==='DISTRICT').length} | Zonal: ${poCadres.filter(c=>c.level==='ZONAL').length} | Multi-Zonal: ${poCadres.filter(c=>c.level==='MULTI_ZONAL').length}</div>
+                    <div class="tile-label">District Cadres</div>
                 </div>
                 <div class="district-tile" style="background:linear-gradient(135deg,#ef6c00,#e65100);">
                     <h3>Extended Data</h3>
@@ -242,38 +232,28 @@ function renderPOOverview(content) {
 // ==================== CADRES TAB ====================
 function renderPOCadres(content) {
     const isAdmin = userRole === 'ADMIN';
-    const districtCadres = poCadres.filter(c => c.level === 'DISTRICT');
-    const zonalCadres = poCadres.filter(c => c.level === 'ZONAL');
-    const multiZonalCadres = poCadres.filter(c => c.level === 'MULTI_ZONAL');
-
     let html = '';
-    function renderCadreGroup(title, cadres, color) {
-        html += `<h3 style="color:${color};margin-top:20px;margin-bottom:10px;">${title} (${cadres.length})</h3>`;
-        cadres.forEach(c => {
-            html += `
-            <div class="card" style="margin-bottom:10px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <h4 style="margin:0;">${c.name} <span style="font-size:12px;color:#888;">[${c.id}]</span></h4>
-                    <div>
-                        <button class="action-btn btn-primary" onclick="viewCadreStrength('${c.id}')">View Strength</button>
-                        ${isAdmin ? `<button class="action-btn btn-primary" onclick="editCadreStrength('${c.id}')">Edit Strength</button>` : ''}
-                    </div>
+    html += `<h3 style="color:#1565c0;margin-bottom:10px;">District Cadres (${poCadres.length})</h3>`;
+    poCadres.forEach(c => {
+        html += `
+        <div class="card" style="margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <h4 style="margin:0;">${c.name} <span style="font-size:12px;color:#888;">[${c.id}]</span></h4>
+                <div>
+                    <button class="action-btn btn-primary" onclick="viewCadreStrength('${c.id}')">View Strength</button>
+                    ${isAdmin ? `<button class="action-btn btn-primary" onclick="editCadreStrength('${c.id}')">Edit Strength</button>` : ''}
                 </div>
-                <div id="cadreStrength_${c.id}" class="detail-section"></div>
-            </div>`;
-        });
-    }
-
-    renderCadreGroup('District Cadres', districtCadres, '#1565c0');
-    renderCadreGroup('Zonal Cadres', zonalCadres, '#ef6c00');
-    renderCadreGroup('Multi-Zonal Cadres', multiZonalCadres, '#6a1b9a');
+            </div>
+            <div id="cadreStrength_${c.id}" class="detail-section"></div>
+        </div>`;
+    });
 
     if (isAdmin) {
         html += `
         <div class="card" style="margin-top:15px;">
             <h3>Add New Cadre</h3>
             <div class="filter-row">
-                <select id="newCadreLevel"><option value="DISTRICT">District</option><option value="ZONAL">Zonal</option><option value="MULTI_ZONAL">Multi-Zonal</option></select>
+                <select id="newCadreLevel"><option value="DISTRICT">District</option></select>
                 <input type="text" id="newCadreName" placeholder="Cadre Name">
                 <input type="text" id="newCadreId" placeholder="Cadre ID (short code)">
                 <button class="btn btn-primary" onclick="addNewCadre()">Add Cadre</button>
@@ -283,7 +263,7 @@ function renderPOCadres(content) {
             <h3>Bulk Set Working Strength</h3>
             <p style="font-size:13px;color:#666;">Assign sanctioned working strength from existing personnel distribution.</p>
             <div class="filter-row">
-                <select id="bulkStrengthCadre"><option value="">Select Cadre</option>${districtCadres.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
+                <select id="bulkStrengthCadre"><option value="">Select Cadre</option>${poCadres.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
                 <select id="bulkStrengthType"><option value="CIVIL">Civil</option><option value="AR">AR</option></select>
                 <button class="btn btn-primary" onclick="autoFillCadreStrength()">Auto-Fill from Personnel Data</button>
             </div>
