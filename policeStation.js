@@ -5,6 +5,35 @@ let psCurrentCircle = '';
 let psCurrentStation = '';
 let psViewRankGroup = '';
 
+// ── Station-specific sanctioned strength ──
+let stationSanctionedData = {};
+let ssCurrentSubDiv = '';
+let ssCurrentCircle = '';
+let ssCurrentStation = '';
+
+function loadStationSanctionedData() {
+    try {
+        const stored = localStorage.getItem('station_sanctioned_data');
+        if (stored) stationSanctionedData = JSON.parse(stored);
+    } catch(e) { console.error('Error loading station sanctioned data:', e); }
+}
+
+function saveStationSanctionedData() {
+    localStorage.setItem('station_sanctioned_data', JSON.stringify(stationSanctionedData));
+}
+
+function getStationSancKey(subDiv, circle, station, rank) {
+    return [subDiv, circle || '', station || '', rank].join('|');
+}
+
+function getStationSanctioned(subDiv, circle, station, rank) {
+    return stationSanctionedData[getStationSancKey(subDiv, circle, station, rank)] || 0;
+}
+
+function setStationSanctioned(subDiv, circle, station, rank, count) {
+    stationSanctionedData[getStationSancKey(subDiv, circle, station, rank)] = parseInt(count) || 0;
+}
+
 function escapeQuotes(str) {
     return str.replace(/'/g, "\\'");
 }
@@ -155,8 +184,36 @@ function showPSStrengthAbstract() {
     displayRanks.forEach(rg => {
         const ranks = rankGroups[rg] || [rg];
         const actual = personnel.filter(p => ranks.includes(p.rank)).length;
-        const sancKey = 'NEW_CIVIL_' + rg;
-        const sanctioned = sanctionedData[sancKey] || 0;
+
+        // Use location-specific sanctioned strength (set via Manage Station Sanctions)
+        let sanctioned = 0;
+        if (psCurrentStation) {
+            sanctioned = getStationSanctioned(psCurrentSubDivision, psCurrentCircle, psCurrentStation, rg);
+        } else if (psCurrentCircle) {
+            const circles = psHierarchy[psCurrentSubDivision];
+            const circle = circles.find(c => c.name === psCurrentCircle);
+            if (circle && circle.stations.length > 0) {
+                circle.stations.forEach(s => {
+                    sanctioned += getStationSanctioned(psCurrentSubDivision, psCurrentCircle, s, rg);
+                });
+            } else {
+                sanctioned = getStationSanctioned(psCurrentSubDivision, psCurrentCircle, '', rg);
+            }
+        } else if (psCurrentSubDivision) {
+            const circles = psHierarchy[psCurrentSubDivision];
+            circles.forEach(c => {
+                if (c.stations.length > 0) {
+                    c.stations.forEach(s => {
+                        sanctioned += getStationSanctioned(psCurrentSubDivision, c.name, s, rg);
+                    });
+                } else {
+                    sanctioned += getStationSanctioned(psCurrentSubDivision, c.name, '', rg);
+                }
+            });
+        } else {
+            const sancKey = 'NEW_CIVIL_' + rg;
+            sanctioned = sanctionedData[sancKey] || 0;
+        }
         const vac = sanctioned - actual;
 
         totalSanc += sanctioned;
@@ -241,3 +298,92 @@ function filterPSPersonnel() {
 
     renderPSPersonnel(personnel);
 }
+
+// ==================== STATION SANCTIONS MANAGEMENT ====================
+
+function showStationSanctionsPage() {
+    showPage('stationSanctions');
+    showSSLocationList();
+}
+
+function getAllLeafLocations() {
+    const locations = [];
+    for (const [subDiv, circles] of Object.entries(psHierarchy)) {
+        circles.forEach(c => {
+            if (c.stations.length === 0) {
+                locations.push({ subDiv, circle: c.name, station: '', label: c.name, path: `${subDiv} > ${c.name}` });
+            } else {
+                c.stations.forEach(s => {
+                    locations.push({ subDiv, circle: c.name, station: s, label: s, path: `${subDiv} > ${c.name} > ${s}` });
+                });
+            }
+        });
+    }
+    return locations;
+}
+
+function showSSLocationList() {
+    document.getElementById('ssLocationSection').classList.add('visible');
+    document.getElementById('ssRankEditor').classList.remove('visible');
+    renderSSLocations();
+}
+
+function renderSSLocations() {
+    const locations = getAllLeafLocations();
+    const searchTerm = document.getElementById('ssLocationSearch')?.value.toLowerCase().trim() || '';
+
+    let filtered = locations;
+    if (searchTerm) {
+        filtered = locations.filter(l => l.path.toLowerCase().includes(searchTerm) || l.label.toLowerCase().includes(searchTerm));
+    }
+
+    document.getElementById('ssLocationTiles').innerHTML = filtered.map(l =>
+        `<div class="sub-tile" onclick="selectSSLocation('${escapeQuotes(l.subDiv)}', '${escapeQuotes(l.circle)}', '${escapeQuotes(l.station)}', '${escapeQuotes(l.label)}')">${l.label}<div style="font-size:11px;color:#888;margin-top:4px;">${l.path}</div></div>`
+    ).join('');
+}
+
+function filterSSLocations() {
+    renderSSLocations();
+}
+
+function selectSSLocation(subDiv, circle, station, label) {
+    ssCurrentSubDiv = subDiv;
+    ssCurrentCircle = circle;
+    ssCurrentStation = station;
+
+    document.getElementById('ssEditorTitle').textContent = label + ' - Sanctioned Strength';
+
+    const displayRanks = displayRanksMap['NEW_CIVIL'] || [];
+    let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:15px;">';
+    displayRanks.forEach(rg => {
+        const val = getStationSanctioned(subDiv, circle, station, rg);
+        html += `
+            <div class="form-group">
+                <label style="font-size:13px;font-weight:600;">${rg}</label>
+                <input type="number" class="ss-sanc-input" data-rank="${escapeQuotes(rg)}" value="${val}" min="0" style="width:100%;padding:8px;text-align:center;font-size:16px;margin-top:5px;">
+            </div>
+        `;
+    });
+    html += '</div>';
+
+    document.getElementById('ssRankInputs').innerHTML = html;
+    document.getElementById('ssLocationSection').classList.remove('visible');
+    document.getElementById('ssRankEditor').classList.add('visible');
+}
+
+function saveStationSanctions() {
+    const inputs = document.querySelectorAll('.ss-sanc-input');
+    inputs.forEach(inp => {
+        setStationSanctioned(ssCurrentSubDiv, ssCurrentCircle, ssCurrentStation, inp.dataset.rank, inp.value);
+    });
+    saveStationSanctionedData();
+    showToast('Station sanctioned strengths saved', 'success');
+
+    // Refresh Police Station Data strength abstract if visible
+    if (document.getElementById('policeStation').classList.contains('active')) {
+        showPSStrengthAbstract();
+    }
+}
+
+// Initialize station sanctioned data on module load
+loadStationSanctionedData();

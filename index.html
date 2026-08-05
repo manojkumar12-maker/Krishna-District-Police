@@ -240,7 +240,10 @@
                     <div class="rank-tiles" id="knRankTiles"></div>
                 </div>
                 <div id="knPSLink" class="ps-link" style="display:none;">
-                    <div class="sub-tile" onclick="showPSPage()" style="max-width:280px;">Police Station Data</div>
+                    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+                        <div class="sub-tile" onclick="showPSPage()" style="max-width:280px;">Police Station Data</div>
+                        <div class="sub-tile" onclick="showStationSanctionsPage()" style="max-width:280px;background:linear-gradient(135deg,#1565c0,#0d47a1);">Manage Station Sanctions</div>
+                    </div>
                 </div>
                 <div class="detail-section" id="knStrengthSection">
                     <div class="strength-card">
@@ -329,6 +332,30 @@
                         <tbody id="psPersonnelBody"></tbody>
                     </table>
                     <div id="psPersonnelEmpty" class="empty-state">No personnel found.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Station Sanctions Management Page -->
+        <div id="stationSanctions" class="page">
+            <button class="back-btn" onclick="showPage('krishnaNew')">Back to Krishna District (New)</button>
+            <div class="card">
+                <h2>Manage Station Sanctioned Strengths</h2>
+                <p style="color:#666;margin-bottom:15px;">Set sanctioned strengths for each station / unit. These values are used in the Police Station Data page. The <strong>Actual</strong> count is taken from uploaded personnel whose <em>Present Working</em> matches the location.</p>
+                <div class="detail-section visible" id="ssLocationSection">
+                    <h3 style="color:var(--primary);margin-bottom:15px;">Select Location</h3>
+                    <div class="search-box" style="margin-bottom:15px;">
+                        <input type="text" id="ssLocationSearch" class="search-input" placeholder="Search by station or unit name..." oninput="filterSSLocations()">
+                    </div>
+                    <div class="sub-tiles dep-grid" id="ssLocationTiles"></div>
+                </div>
+                <div class="detail-section" id="ssRankEditor">
+                    <h3 id="ssEditorTitle" style="color:var(--primary);margin-bottom:15px;"></h3>
+                    <div id="ssRankInputs"></div>
+                    <div style="margin-top:15px;display:flex;gap:10px;flex-wrap:wrap;">
+                        <button class="btn btn-primary" onclick="saveStationSanctions()">Save Sanctions</button>
+                        <button class="btn btn-secondary" onclick="showSSLocationList()">Back to Locations</button>
+                    </div>
                 </div>
             </div>
         </div>
