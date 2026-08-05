@@ -643,6 +643,7 @@ function renderPOOverview(content) {
     const hasCFMS = poUnitPersonnel.filter(p => p.cfms_id).length;
     const optionSubmitted = Object.keys(poOptions).length;
     const allocated = poAllocations.length;
+    const dbPersonnelCount = (typeof allPersonnel !== 'undefined' ? allPersonnel : []).filter(p => (p.district === 'ERSTWHILE' || p.district === 'NEW') && !p.is_on_deployment).length;
 
     content.innerHTML = `
         <div class="card">
@@ -666,7 +667,7 @@ function renderPOOverview(content) {
                 <div class="district-tile" style="background:linear-gradient(135deg,#6a1b9a,#4a148c);">
                     <h3>Options Submitted</h3>
                     <div class="tile-count">${optionSubmitted}</div>
-                    <div class="tile-label">of ${erstwhileCount + newCount} employees</div>
+                    <div class="tile-label">of ${dbPersonnelCount} employees</div>
                 </div>
             </div>
             <div style="margin-top:20px;">
@@ -700,6 +701,7 @@ function renderPOOverview(content) {
             </div>
             ${isAdmin ? `
             <div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;">
+                <button class="btn btn-primary" onclick="syncAllPersonnelToPO()">Sync Personnel from District DB</button>
                 <button class="btn btn-primary" onclick="generateDSLFromPersonnel()">Generate Seniority List</button>
                 <button class="btn btn-secondary" onclick="exportPOData()">Export All PO Data (CSV)</button>
                 <button class="btn btn-danger" onclick="resetPOModule()">Reset PO Module</button>
@@ -909,9 +911,58 @@ function renderPOSeniority(content) {
     renderSeniorityTable();
 }
 
+function syncAllPersonnelToPO() {
+    if (userRole !== 'ADMIN') { showToast('Admin only', 'error'); return; }
+    if (!allPersonnel || allPersonnel.length === 0) { showToast('No district personnel data available. Upload or add personnel first.', 'error'); return; }
+
+    if (!confirm(`Import ${allPersonnel.length} personnel from District DB into Presidential Order module? This will replace current PO unit personnel.`)) return;
+
+    const districtPersonnel = allPersonnel.filter(p => (p.district === 'ERSTWHILE' || p.district === 'NEW') && !p.is_on_deployment);
+
+    poUnitPersonnel = districtPersonnel.map((p, i) => ({
+        rank: p.rank,
+        personnel_type: p.personnel_type || 'CIVIL',
+        name: p.name,
+        genl_no: p.genl_no,
+        seniority_no: i + 1,
+        gender: p.gender || '',
+        date_of_birth: p.date_of_birth || '',
+        date_of_joining: p.date_of_promotion || '',
+        cfms_id: '',
+        mobile: p.phone_number || '',
+        caste: p.caste || '',
+        sc_st_group: '',
+        pwbd_percent: '',
+        widow: '',
+        disabled_children: '',
+        cancer: false,
+        neurosurgery: false,
+        kidney: false,
+        liver: false,
+        heart: false,
+        seniority_type: 'Provisional',
+        proceedings_no: '',
+        proceedings_date: '',
+        allocated_cadre_id: '',
+        _idx: i
+    }));
+
+    // Reset PO stage so user can regenerate DSL
+    poStage = 'init';
+    poDSL = [];
+    poFSL = [];
+    poOptions = {};
+    poAllocations = [];
+    poObjections = {};
+
+    savePOData();
+    showToast(`Synced ${poUnitPersonnel.length} personnel to PO module`, 'success');
+    renderPOModule();
+}
+
 function generateDSLFromPersonnel() {
     if (userRole !== 'ADMIN') { showToast('Admin only', 'error'); return; }
-    if (poUnitPersonnel.length === 0) { showToast('No PO unit personnel data available. Add personnel in the Unit Data tab.', 'error'); return; }
+    if (poUnitPersonnel.length === 0) { showToast('No PO unit personnel data available. Sync from District DB or add personnel in the Unit Data tab.', 'error'); return; }
 
     poDSL = poUnitPersonnel.map((p, i) => {
         return {
@@ -1848,6 +1899,7 @@ window.exportOOA = exportOOA;
 window.exportOOT = exportOOT;
 window.viewAllocationSummary = viewAllocationSummary;
 window.exportPOPrintFormat = exportPOPrintFormat;
+window.syncAllPersonnelToPO = syncAllPersonnelToPO;
 window.exportPOData = exportPOData;
 window.resetPOModule = resetPOModule;
 window.renderPOUnitData = renderPOUnitData;

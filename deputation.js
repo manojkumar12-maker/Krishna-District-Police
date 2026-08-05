@@ -200,9 +200,9 @@ function exportDepUnitPersonnel(unitName) {
         showToast('No personnel to export', 'error');
         return;
     }
-    let csv = `Sl.No,Name,Rank,Genl.No,Type,District,Status\n`;
+    let csv = `Sl.No,Name,Rank,Genl.No,Type,District,Present District,Gender,Present Working,Status,DOB,Caste,Education,Promotion Date,Phone,Punishments,Deputation,Dep.Unit,Dep.Date\n`;
     data.forEach((p, i) => {
-        csv += `${i+1},"${p.name}","${p.rank}","${p.genl_no}","${p.personnel_type}","${p.district}","${p.status}"\n`;
+        csv += `${i+1},"${p.name}","${p.rank}","${p.genl_no}","${p.personnel_type}","${p.district}","${p.present_district || ''}","${p.gender || ''}","${p.present_working || ''}","${p.status}","${p.date_of_birth || ''}","${p.caste || ''}","${p.education || ''}","${p.date_of_promotion || ''}","${p.phone_number || ''}","${p.punishments || ''}","${p.is_on_deployment ? 'Yes' : 'No'}","${p.deployment_unit || ''}","${p.date_of_deployment || ''}"\n`;
     });
     downloadFile(csv, `${unitName.replace(/[^a-zA-Z0-9]/g, '_')}_Personnel.csv`, 'text/csv');
     showToast('Exported to CSV!', 'success');
@@ -270,29 +270,58 @@ function exportDepUnitPersonnelPDF(unitName) {
         return;
     }
 
-    const printWind = window.open('', '', 'width=800,height=600');
+    const printWind = window.open('', '', 'width=1200,height=800');
     printWind.document.write(`
         <!DOCTYPE html>
         <html>
         <head>
             <title>Deputation Unit Personnel</title>
             <style>
-                body { font-family: serif; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+                body { font-family: serif; margin: 20px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 10px; }
+                th, td { border: 1px solid #000; padding: 4px; text-align: left; word-wrap: break-word; }
+                th { background: #f0f0f0; }
                 h2, h3 { text-align: center; }
-                @media print { .no-print { display: none; } }
+                @media print {
+                    .no-print { display: none; }
+                    @page { size: landscape; margin: 10mm; }
+                    body { margin: 0; }
+                    table { font-size: 9px; }
+                    th, td { padding: 3px; }
+                }
             </style>
         </head>
         <body>
             <h2>Deputation Unit Personnel</h2>
-            <h3>${unitName}</h3>
+            <h3>${unitName} (${data.length} records)</h3>
             <table>
                 <thead>
-                    <tr><th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Type</th><th>District</th><th>Status</th></tr>
+                    <tr>
+                        <th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Type</th><th>District</th>
+                        <th>Present Dist</th><th>Gender</th><th>Present Working</th><th>Status</th><th>DOB</th>
+                        <th>Caste</th><th>Education</th><th>Promo.Date</th><th>Phone</th><th>Punishments</th><th>Dep.Date</th>
+                    </tr>
                 </thead>
                 <tbody>
-                    ${data.map((p, i) => `<tr><td>${i+1}</td><td>${p.name}</td><td>${p.rank}</td><td>${p.genl_no}</td><td>${p.personnel_type}</td><td>${p.district}</td><td>${p.status}</td></tr>`).join('')}
+                    ${data.map((p, i) => `<tr>
+                        <td>${i+1}</td>
+                        <td>${p.name}</td>
+                        <td>${p.rank}</td>
+                        <td>${p.genl_no}</td>
+                        <td>${p.personnel_type}</td>
+                        <td>${p.district}</td>
+                        <td>${p.present_district || '-'}</td>
+                        <td>${p.gender || '-'}</td>
+                        <td>${p.present_working || '-'}</td>
+                        <td>${p.status}</td>
+                        <td>${p.date_of_birth || '-'}</td>
+                        <td>${p.caste || '-'}</td>
+                        <td>${p.education || '-'}</td>
+                        <td>${p.date_of_promotion || '-'}</td>
+                        <td>${p.phone_number || '-'}</td>
+                        <td>${p.punishments || '-'}</td>
+                        <td>${p.date_of_deployment || '-'}</td>
+                    </tr>`).join('')}
                 </tbody>
             </table>
             <br>
@@ -320,9 +349,9 @@ function renderDepPersonnel(data) {
         personnelTable.style.display = 'table';
         personnelEmpty.style.display = 'none';
         depUnitStrength.querySelector('#deputationTableBody').innerHTML = data.map((p, i) => {
-            let actionCell = '';
+            let actionCell = `<button class="action-btn btn-primary" onclick="showPersonnelDetail('${p.id}')">Details</button>`;
             if (userRole === 'ADMIN') {
-                actionCell = `<button class="action-btn btn-primary" onclick="editPersonnel('${p.id}')">Edit</button>
+                actionCell += ` <button class="action-btn btn-primary" onclick="editPersonnel('${p.id}')">Edit</button>
                               <button class="action-btn btn-danger" onclick="deletePersonnelRecord('${p.id}')">Del</button>`;
             }
             return `

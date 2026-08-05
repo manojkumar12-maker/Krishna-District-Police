@@ -6,12 +6,10 @@ function exportCSV() {
         return;
     }
 
-    let csv = `Sl.No,Name,Rank,Genl.No,Type,District,Previous Station,Status,Date of Birth,Caste,Education,Date of Promotion,Present Working,On Deployment,Deployment Unit,Date of Deployment,Punishments,Phone Number
-`;
+    let csv = `Sl.No,Name,Rank,Genl.No,Type,District,Present District,Gender,Previous Station,Status,Date of Birth,Caste,Education,Date of Promotion,Present Working,Phone Number,Punishments,On Deployment,Deployment Unit,Date of Deployment\n`;
 
     allPersonnel.forEach((p, i) => {
-        csv += `${i+1},"${p.name}","${p.rank}","${p.genl_no}","${p.personnel_type}","${p.district}","${p.previous_station || ''}","${p.status}","${p.date_of_birth || ''}","${p.caste || ''}","${p.education || ''}","${p.date_of_promotion || ''}","${p.present_working || ''}","${p.is_on_deployment ? 'Yes' : 'No'}","${p.deployment_unit || ''}","${p.date_of_deployment || ''}","${p.punishments || ''}","${p.phone_number || ''}"
-`;
+        csv += `${i+1},"${p.name}","${p.rank}","${p.genl_no}","${p.personnel_type}","${p.district}","${p.present_district || ''}","${p.gender || ''}","${p.previous_station || ''}","${p.status}","${p.date_of_birth || ''}","${p.caste || ''}","${p.education || ''}","${p.date_of_promotion || ''}","${p.present_working || ''}","${p.phone_number || ''}","${p.punishments || ''}","${p.is_on_deployment ? 'Yes' : 'No'}","${p.deployment_unit || ''}","${p.date_of_deployment || ''}"\n`;
     });
 
     downloadFile(csv, `Krishna_District_Personnel_${new Date().toISOString().slice(0,10)}.csv`, 'text/csv');
@@ -24,29 +22,61 @@ function exportAllPDF() {
         return;
     }
 
-    const printWind = window.open('', '', 'width=800,height=600');
+    const printWind = window.open('', '', 'width=1200,height=800');
     printWind.document.write(`
         <!DOCTYPE html>
         <html>
         <head>
             <title>Krishna District Police - All Personnel</title>
             <style>
-                body { font-family: serif; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
-                th, td { border: 1px solid #000; padding: 6px; text-align: left; }
+                body { font-family: serif; margin: 20px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 10px; }
+                th, td { border: 1px solid #000; padding: 4px; text-align: left; word-wrap: break-word; }
+                th { background: #f0f0f0; }
                 h2, h3 { text-align: center; }
-                @media print { .no-print { display: none; } }
+                @media print {
+                    .no-print { display: none; }
+                    @page { size: landscape; margin: 10mm; }
+                    body { margin: 0; }
+                    table { font-size: 9px; }
+                    th, td { padding: 3px; }
+                }
             </style>
         </head>
         <body>
             <h2>Krishna District Police</h2>
-            <h3>All Personnel List</h3>
+            <h3>All Personnel List (${allPersonnel.length} records)</h3>
             <table>
                 <thead>
-                    <tr><th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Type</th><th>District</th><th>Present Working</th><th>Status</th></tr>
+                    <tr>
+                        <th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Type</th><th>District</th>
+                        <th>Present Dist</th><th>Gender</th><th>Status</th><th>DOB</th><th>Caste</th>
+                        <th>Education</th><th>Promo.Date</th><th>Present Working</th><th>Phone</th>
+                        <th>Punishments</th><th>Deputation</th><th>Dep.Unit</th><th>Dep.Date</th>
+                    </tr>
                 </thead>
                 <tbody>
-                    ${allPersonnel.map((p, i) => `<tr><td>${i+1}</td><td>${p.name}</td><td>${p.rank}</td><td>${p.genl_no}</td><td>${p.personnel_type}</td><td>${p.district}</td><td>${p.present_working || '-'}</td><td>${p.status}</td></tr>`).join('')}
+                    ${allPersonnel.map((p, i) => `<tr>
+                        <td>${i+1}</td>
+                        <td>${p.name}</td>
+                        <td>${p.rank}</td>
+                        <td>${p.genl_no}</td>
+                        <td>${p.personnel_type}</td>
+                        <td>${p.district}</td>
+                        <td>${p.present_district || '-'}</td>
+                        <td>${p.gender || '-'}</td>
+                        <td>${p.status}</td>
+                        <td>${p.date_of_birth || '-'}</td>
+                        <td>${p.caste || '-'}</td>
+                        <td>${p.education || '-'}</td>
+                        <td>${p.date_of_promotion || '-'}</td>
+                        <td>${p.present_working || '-'}</td>
+                        <td>${p.phone_number || '-'}</td>
+                        <td>${p.punishments || '-'}</td>
+                        <td>${p.is_on_deployment ? 'Yes' : 'No'}</td>
+                        <td>${p.deployment_unit || '-'}</td>
+                        <td>${p.date_of_deployment || '-'}</td>
+                    </tr>`).join('')}
                 </tbody>
             </table>
             <br>
@@ -60,7 +90,7 @@ function exportAllPDF() {
 function exportKNExcel() {
     const groupFilter = rankGroups[knCurrentRank] || [knCurrentRank];
     const data = allPersonnel.filter(p => 
-        p.district === 'NEW' && 
+        isNewKrishnaDistrict(p) && 
         p.personnel_type === knCurrentType && 
         groupFilter.includes(p.rank) && 
         !p.is_on_deployment
@@ -71,19 +101,12 @@ function exportKNExcel() {
     const actualCount = data.length;
     const vac = sanctionedCount - actualCount;
 
-    let csv = `Krishna District (New) - ${knCurrentType} - ${knCurrentRank}
-`;
-    csv += `Sanctioned Strength,${sanctionedCount}
-Actual Strength,${actualCount}
-Vacancies,${vac}
-
-`;
-    csv += `Sl.No,Name,Genl.No,Present Working,Status
-`;
+    let csv = `Krishna District (New) - ${knCurrentType} - ${knCurrentRank}\n`;
+    csv += `Sanctioned Strength,${sanctionedCount}\nActual Strength,${actualCount}\nVacancies,${vac}\n\n`;
+    csv += `Sl.No,Name,Rank,Genl.No,Present District,Gender,Present Working,Status,DOB,Caste,Education,Promotion Date,Phone,Punishments,Deputation,Dep.Unit,Dep.Date\n`;
 
     data.forEach((p, i) => { 
-        csv += `${i+1},"${p.name}","${p.genl_no}","${p.present_working || ''}","${p.status}"
-`; 
+        csv += `${i+1},"${p.name}","${p.rank}","${p.genl_no}","${p.present_district || ''}","${p.gender || ''}","${p.present_working || ''}","${p.status}","${p.date_of_birth || ''}","${p.caste || ''}","${p.education || ''}","${p.date_of_promotion || ''}","${p.phone_number || ''}","${p.punishments || ''}","${p.is_on_deployment ? 'Yes' : 'No'}","${p.deployment_unit || ''}","${p.date_of_deployment || ''}"\n`; 
     });
 
     downloadFile(csv, `Krishna_New_${knCurrentType}_${knCurrentRank.replace(/[^a-zA-Z0-9]/g, '_')}.csv`, 'text/csv');
@@ -93,7 +116,7 @@ Vacancies,${vac}
 function exportKNPDF() {
     const groupFilter = rankGroups[knCurrentRank] || [knCurrentRank];
     const data = allPersonnel.filter(p => 
-        p.district === 'NEW' && 
+        isNewKrishnaDistrict(p) && 
         p.personnel_type === knCurrentType && 
         groupFilter.includes(p.rank) && 
         !p.is_on_deployment
@@ -103,19 +126,26 @@ function exportKNPDF() {
     const sanctionedCount = sanctionedData[sancKey] || 0;
     const vac = sanctionedCount - data.length;
 
-    const printWind = window.open('', '', 'width=800,height=600');
+    const printWind = window.open('', '', 'width=1200,height=800');
     printWind.document.write(`
         <!DOCTYPE html>
         <html>
         <head>
             <title>Krishna District Police</title>
             <style>
-                body { font-family: serif; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+                body { font-family: serif; margin: 20px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 10px; }
+                th, td { border: 1px solid #000; padding: 4px; text-align: left; word-wrap: break-word; }
+                th { background: #f0f0f0; }
                 h2, h3 { text-align: center; }
                 .summary { display: flex; justify-content: space-around; margin: 20px 0; font-size: 18px; }
-                @media print { .no-print { display: none; } }
+                @media print {
+                    .no-print { display: none; }
+                    @page { size: landscape; margin: 10mm; }
+                    body { margin: 0; }
+                    table { font-size: 9px; }
+                    th, td { padding: 3px; }
+                }
             </style>
         </head>
         <body>
@@ -128,10 +158,31 @@ function exportKNPDF() {
             </div>
             <table>
                 <thead>
-                    <tr><th>Sl.No</th><th>Name</th><th>Genl.No</th><th>Present Working</th><th>Status</th></tr>
+                    <tr>
+                        <th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Present Dist</th><th>Gender</th>
+                        <th>Present Working</th><th>Status</th><th>DOB</th><th>Caste</th><th>Education</th>
+                        <th>Promo.Date</th><th>Phone</th><th>Punishments</th><th>Deputation</th><th>Dep.Unit</th>
+                    </tr>
                 </thead>
                 <tbody>
-                    ${data.map((p, i) => `<tr><td>${i+1}</td><td>${p.name}</td><td>${p.genl_no}</td><td>${p.present_working || '-'}</td><td>${p.status}</td></tr>`).join('')}
+                    ${data.map((p, i) => `<tr>
+                        <td>${i+1}</td>
+                        <td>${p.name}</td>
+                        <td>${p.rank}</td>
+                        <td>${p.genl_no}</td>
+                        <td>${p.present_district || '-'}</td>
+                        <td>${p.gender || '-'}</td>
+                        <td>${p.present_working || '-'}</td>
+                        <td>${p.status}</td>
+                        <td>${p.date_of_birth || '-'}</td>
+                        <td>${p.caste || '-'}</td>
+                        <td>${p.education || '-'}</td>
+                        <td>${p.date_of_promotion || '-'}</td>
+                        <td>${p.phone_number || '-'}</td>
+                        <td>${p.punishments || '-'}</td>
+                        <td>${p.is_on_deployment ? 'Yes' : 'No'}</td>
+                        <td>${p.deployment_unit || '-'}</td>
+                    </tr>`).join('')}
                 </tbody>
             </table>
             <br>
@@ -156,19 +207,12 @@ function exportEWExcel() {
     const actualCount = data.length;
     const vac = sanctionedCount - actualCount;
 
-    let csv = `Erstwhile Krishna District - ${ewCurrentType} - ${ewCurrentRank}
-`;
-    csv += `Sanctioned Strength,${sanctionedCount}
-Actual Strength,${actualCount}
-Vacancies,${vac}
-
-`;
-    csv += `Sl.No,Name,Genl.No,Present Working,Status
-`;
+    let csv = `Erstwhile Krishna District - ${ewCurrentType} - ${ewCurrentRank}\n`;
+    csv += `Sanctioned Strength,${sanctionedCount}\nActual Strength,${actualCount}\nVacancies,${vac}\n\n`;
+    csv += `Sl.No,Name,Rank,Genl.No,Present District,Gender,Present Working,Status,DOB,Caste,Education,Promotion Date,Phone,Punishments,Deputation,Dep.Unit,Dep.Date\n`;
 
     data.forEach((p, i) => { 
-        csv += `${i+1},"${p.name}","${p.genl_no}","${p.present_working || ''}","${p.status}"
-`; 
+        csv += `${i+1},"${p.name}","${p.rank}","${p.genl_no}","${p.present_district || ''}","${p.gender || ''}","${p.present_working || ''}","${p.status}","${p.date_of_birth || ''}","${p.caste || ''}","${p.education || ''}","${p.date_of_promotion || ''}","${p.phone_number || ''}","${p.punishments || ''}","${p.is_on_deployment ? 'Yes' : 'No'}","${p.deployment_unit || ''}","${p.date_of_deployment || ''}"\n`; 
     });
 
     downloadFile(csv, `Erstwhile_${ewCurrentType}_${ewCurrentRank.replace(/[^a-zA-Z0-9]/g, '_')}.csv`, 'text/csv');
@@ -188,19 +232,26 @@ function exportEWPDF() {
     const sanctionedCount = sanctionedData[sancKey] || 0;
     const vac = sanctionedCount - data.length;
 
-    const printWind = window.open('', '', 'width=800,height=600');
+    const printWind = window.open('', '', 'width=1200,height=800');
     printWind.document.write(`
         <!DOCTYPE html>
         <html>
         <head>
             <title>Krishna District Police</title>
             <style>
-                body { font-family: serif; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+                body { font-family: serif; margin: 20px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 10px; }
+                th, td { border: 1px solid #000; padding: 4px; text-align: left; word-wrap: break-word; }
+                th { background: #f0f0f0; }
                 h2, h3 { text-align: center; }
                 .summary { display: flex; justify-content: space-around; margin: 20px 0; font-size: 18px; }
-                @media print { .no-print { display: none; } }
+                @media print {
+                    .no-print { display: none; }
+                    @page { size: landscape; margin: 10mm; }
+                    body { margin: 0; }
+                    table { font-size: 9px; }
+                    th, td { padding: 3px; }
+                }
             </style>
         </head>
         <body>
@@ -213,10 +264,31 @@ function exportEWPDF() {
             </div>
             <table>
                 <thead>
-                    <tr><th>Sl.No</th><th>Name</th><th>Genl.No</th><th>Present Working</th><th>Status</th></tr>
+                    <tr>
+                        <th>Sl.No</th><th>Name</th><th>Rank</th><th>Genl.No</th><th>Present Dist</th><th>Gender</th>
+                        <th>Present Working</th><th>Status</th><th>DOB</th><th>Caste</th><th>Education</th>
+                        <th>Promo.Date</th><th>Phone</th><th>Punishments</th><th>Deputation</th><th>Dep.Unit</th>
+                    </tr>
                 </thead>
                 <tbody>
-                    ${data.map((p, i) => `<tr><td>${i+1}</td><td>${p.name}</td><td>${p.genl_no}</td><td>${p.present_working || '-'}</td><td>${p.status}</td></tr>`).join('')}
+                    ${data.map((p, i) => `<tr>
+                        <td>${i+1}</td>
+                        <td>${p.name}</td>
+                        <td>${p.rank}</td>
+                        <td>${p.genl_no}</td>
+                        <td>${p.present_district || '-'}</td>
+                        <td>${p.gender || '-'}</td>
+                        <td>${p.present_working || '-'}</td>
+                        <td>${p.status}</td>
+                        <td>${p.date_of_birth || '-'}</td>
+                        <td>${p.caste || '-'}</td>
+                        <td>${p.education || '-'}</td>
+                        <td>${p.date_of_promotion || '-'}</td>
+                        <td>${p.phone_number || '-'}</td>
+                        <td>${p.punishments || '-'}</td>
+                        <td>${p.is_on_deployment ? 'Yes' : 'No'}</td>
+                        <td>${p.deployment_unit || '-'}</td>
+                    </tr>`).join('')}
                 </tbody>
             </table>
             <br>

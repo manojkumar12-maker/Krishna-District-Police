@@ -107,7 +107,7 @@ function getPSPersonnelForLocation() {
     }
 
     return allPersonnel.filter(p =>
-        p.district === 'NEW' &&
+        isNewKrishnaDistrict(p) &&
         !p.is_on_deployment &&
         locationNames.some(loc => p.present_working && p.present_working.toUpperCase() === loc.toUpperCase())
     );
@@ -207,9 +207,9 @@ function renderPSPersonnel(personnel) {
         document.getElementById('psPersonnelTable').style.display = 'table';
         document.getElementById('psPersonnelEmpty').style.display = 'none';
         document.getElementById('psPersonnelBody').innerHTML = personnel.map((p, i) => {
-            let actionCell = '';
+            let actionCell = `<button class="action-btn btn-primary" onclick="showPersonnelDetail('${p.id}')">Details</button>`;
             if (userRole === 'ADMIN') {
-                actionCell = `<button class="action-btn btn-primary" onclick="editPersonnel('${p.id}')">Edit</button>
+                actionCell += ` <button class="action-btn btn-primary" onclick="editPersonnel('${p.id}')">Edit</button>
                               <button class="action-btn btn-danger" onclick="deletePersonnelRecord('${p.id}')">Del</button>`;
             }
             return `<tr>

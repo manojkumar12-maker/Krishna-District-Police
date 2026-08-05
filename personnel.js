@@ -38,22 +38,47 @@ function openAddModal() {
 function downloadPersonnelTemplate() {
     try {
         const headers = [
-            'name', 'rank', 'genl_no', 'personnel_type', 'district',
+            'name', 'rank', 'genl_no', 'personnel_type', 'district', 'present_district',
             'gender', 'previous_station', 'status', 'date_of_birth',
             'caste', 'education', 'date_of_promotion', 'present_working',
             'phone_number', 'punishments', 'is_on_deployment',
-            'deployment_unit', 'date_of_deployment', 'present_district'
+            'deployment_unit', 'date_of_deployment'
         ];
-        const sampleRow = [
-            'John Doe', 'Police Constable (Civil)', '12345', 'CIVIL', 'ERSTWHILE',
-            'Male', 'Vijayawada', 'Present', '',
-            '', '', '', '',
-            '', '', 'false',
-            '', '', '', ''
+        const districts = [
+            { code: 'ERSTWHILE', label: 'Erstwhile Krishna District' },
+            { code: 'NEW', label: 'Krishna District (New)' }
         ];
-        const csvContent = '\uFEFF' + headers.join(',') + '\n' + sampleRow.join(',');
+        let csvContent = '\uFEFF' + headers.join(',') + '\n';
+
+        // Generate mock rows for all CIVIL and AR ranks in both districts
+        districts.forEach(d => {
+            const civRanks = rankMap[d.code + '_CIVIL'] || [];
+            const arRanks = rankMap[d.code + '_AR'] || [];
+            let rowNum = 1;
+            civRanks.forEach((r, idx) => {
+                csvContent += [
+                    `Sample ${r} Civil ${d.label}`, r, `${1000 + rowNum}`, 'CIVIL', d.code, 'KRISHNA',
+                    idx % 2 === 0 ? 'Male' : 'Female', '', 'Present', '',
+                    '', '', '', '',
+                    '', '', 'false',
+                    '', ''
+                ].join(',') + '\n';
+                rowNum++;
+            });
+            arRanks.forEach((r, idx) => {
+                csvContent += [
+                    `Sample ${r} AR ${d.label}`, r, `${2000 + rowNum}`, 'AR', d.code, 'KRISHNA',
+                    idx % 2 === 0 ? 'Male' : 'Female', '', 'Present', '',
+                    '', '', '', '',
+                    '', '', 'false',
+                    '', ''
+                ].join(',') + '\n';
+                rowNum++;
+            });
+        });
+
         downloadFile(csvContent, 'personnel_template.csv', 'text/csv;charset=utf-8');
-        showToast('Template downloaded!', 'success');
+        showToast('Template downloaded with all ranks!', 'success');
     } catch (e) {
         console.error('Template download error:', e);
         showToast('Failed to download template: ' + e.message, 'error');
@@ -207,4 +232,63 @@ async function deletePersonnelRecord(id) {
         console.error('Error deleting personnel:', error);
         showToast('Error deleting personnel: ' + error.message, 'error');
     }
+}
+
+function showPersonnelDetail(id) {
+    const p = allPersonnel.find(x => String(x.id) === String(id));
+    if (!p) { showToast('Personnel not found', 'error'); return; }
+
+    const dialog = document.createElement('div');
+    dialog.className = 'modal-overlay';
+    dialog.style.display = 'flex';
+    dialog.id = 'detailModal';
+
+    const fields = [
+        { label: 'Name', value: p.name },
+        { label: 'Rank', value: p.rank },
+        { label: 'Genl. No.', value: p.genl_no },
+        { label: 'Type', value: p.personnel_type },
+        { label: 'District', value: p.district === 'ERSTWHILE' ? 'Erstwhile Krishna District' : p.district === 'NEW' ? 'Krishna District (New)' : p.district },
+        { label: 'Present District', value: p.present_district || '-' },
+        { label: 'Gender', value: p.gender || '-' },
+        { label: 'Status', value: p.status || '-' },
+        { label: 'Date of Birth', value: p.date_of_birth || '-' },
+        { label: 'Caste', value: p.caste || '-' },
+        { label: 'Education', value: p.education || '-' },
+        { label: 'Date of Promotion', value: p.date_of_promotion || '-' },
+        { label: 'Present Working', value: p.present_working || '-' },
+        { label: 'Previous Station', value: p.previous_station || '-' },
+        { label: 'Phone Number', value: p.phone_number || '-' },
+        { label: 'On Deputation', value: p.is_on_deployment ? 'Yes' : 'No' },
+        { label: 'Deployment Unit', value: p.deployment_unit || '-' },
+        { label: 'Date of Deployment', value: p.date_of_deployment || '-' },
+        { label: 'Punishments', value: p.punishments || '-' }
+    ];
+
+    const rowsHtml = fields.map(f => `
+        <div class="form-group" style="margin-bottom:8px;">
+            <label style="font-size:12px;color:#666;margin-bottom:2px;">${f.label}</label>
+            <div style="font-size:14px;font-weight:500;word-break:break-word;">${f.value}</div>
+        </div>
+    `).join('');
+
+    dialog.innerHTML = `
+        <div class="modal" style="max-width:700px;max-height:90vh;overflow-y:auto;">
+            <div class="modal-header">
+                <h3>Personnel Details</h3>
+                <button class="modal-close" onclick="document.getElementById('detailModal').remove()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-grid" style="grid-template-columns: 1fr 1fr;">${rowsHtml}</div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="document.getElementById('detailModal').remove()">Close</button>
+                ${userRole === 'ADMIN' ? `
+                <button class="btn btn-primary" onclick="document.getElementById('detailModal').remove(); editPersonnel('${p.id}')">Edit</button>
+                <button class="btn btn-danger" onclick="if(confirm('Delete this record?')){ document.getElementById('detailModal').remove(); deletePersonnelRecord('${p.id}'); }">Delete</button>
+                ` : ''}
+            </div>
+        </div>
+    `;
+    document.body.appendChild(dialog);
 }

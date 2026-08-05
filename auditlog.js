@@ -63,7 +63,7 @@ async function applySearchFilter() {
                     <td>${p.district === 'ERSTWHILE' ? 'Erstwhile' : p.district === 'NEW' ? 'Krishna New' : 'Deputation'}</td>
                     <td>${p.present_working || '-'}</td>
                     <td style="color:${p.status === 'Present' ? 'green' : 'red'}">${p.status}</td>
-                    <td>${actions}</td>
+                    <td><button class="action-btn btn-primary" onclick="showPersonnelDetail('${p.id}')">Details</button> ${actions}</td>
                 </tr>`;
             }).join('');
         }
@@ -73,7 +73,7 @@ async function applySearchFilter() {
     }
 }
 
-// Excel Import
+// Excel Import (client-side xlsx -> csv conversion for backend compatibility)
 async function handleExcelUpload(input) {
     const file = input.files[0];
     if (!file) return;
@@ -84,14 +84,29 @@ async function handleExcelUpload(input) {
         return;
     }
 
-    if (!confirm(`Import personnel from "${file.name}"? This will add all records from the Excel file.`)) {
+    if (!confirm(`Import personnel from "${file.name}"? This will add all records from the file.`)) {
         input.value = '';
         return;
     }
 
     showToast('Importing...', 'loading');
     try {
-        const result = await importPersonnelExcel(file);
+        let csvText;
+        if (file.name.toLowerCase().endsWith('.csv')) {
+            csvText = await file.text();
+        } else {
+            // Parse xlsx client-side using SheetJS
+            const data = await file.arrayBuffer();
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            csvText = XLSX.utils.sheet_to_csv(firstSheet);
+        }
+
+        // Send as CSV file to backend
+        const csvBlob = new Blob([csvText], { type: 'text/csv' });
+        const csvFile = new File([csvBlob], file.name.replace(/\.xlsx?$/, '.csv'), { type: 'text/csv' });
+
+        const result = await importPersonnelExcel(csvFile);
         showToast(result.message, 'success');
         await loadAllData();
         if (result.errors && result.errors.length > 0) {

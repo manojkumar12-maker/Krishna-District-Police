@@ -55,9 +55,13 @@ function showPage(pageId) {
     }
 }
 
+function isNewKrishnaDistrict(p) {
+    return p.district === 'NEW' || (p.district === 'ERSTWHILE' && p.present_district === 'KRISHNA');
+}
+
 function updateData() {
     const erstwhileCount = allPersonnel.filter(p => p.district === 'ERSTWHILE' && !p.is_on_deployment).length;
-    const newCount = allPersonnel.filter(p => p.district === 'NEW' && !p.is_on_deployment).length;
+    const newCount = allPersonnel.filter(p => isNewKrishnaDistrict(p) && !p.is_on_deployment).length;
     const depCount = allPersonnel.filter(p => p.is_on_deployment).length;
 
     document.getElementById('erstwhileCount').textContent = erstwhileCount;
@@ -65,8 +69,8 @@ function updateData() {
     document.getElementById('deputationCount').textContent = depCount;
     document.getElementById('erstwhileCivilCount').textContent = allPersonnel.filter(p => p.district === 'ERSTWHILE' && p.personnel_type === 'CIVIL' && !p.is_on_deployment).length;
     document.getElementById('erstwhileArCount').textContent = allPersonnel.filter(p => p.district === 'ERSTWHILE' && p.personnel_type === 'AR' && !p.is_on_deployment).length;
-    document.getElementById('krishnaNewCivilCount').textContent = allPersonnel.filter(p => p.district === 'NEW' && p.personnel_type === 'CIVIL' && !p.is_on_deployment).length;
-    document.getElementById('krishnaNewArCount').textContent = allPersonnel.filter(p => p.district === 'NEW' && p.personnel_type === 'AR' && !p.is_on_deployment).length;
+    document.getElementById('krishnaNewCivilCount').textContent = allPersonnel.filter(p => isNewKrishnaDistrict(p) && p.personnel_type === 'CIVIL' && !p.is_on_deployment).length;
+    document.getElementById('krishnaNewArCount').textContent = allPersonnel.filter(p => isNewKrishnaDistrict(p) && p.personnel_type === 'AR' && !p.is_on_deployment).length;
     document.getElementById('dataCount').textContent = allPersonnel.length + ' records';
 
     if (knCurrentRank && document.getElementById('knStrengthSection')?.classList.contains('visible')) {
@@ -184,7 +188,7 @@ function selectKNRank(rank, el) {
 function refreshKNStrength() {
     const groupFilter = rankGroups[knCurrentRank] || [knCurrentRank];
     const actualCount = allPersonnel.filter(p => 
-        p.district === 'NEW' && 
+        isNewKrishnaDistrict(p) && 
         p.personnel_type === knCurrentType && 
         groupFilter.includes(p.rank) && 
         !p.is_on_deployment
@@ -236,7 +240,7 @@ async function saveSanctionedKN() {
 function showKNPersonnel() {
     const groupFilter = rankGroups[knCurrentRank] || [knCurrentRank];
     const data = allPersonnel.filter(p => 
-        p.district === 'NEW' && 
+        isNewKrishnaDistrict(p) && 
         p.personnel_type === knCurrentType && 
         groupFilter.includes(p.rank) && 
         !p.is_on_deployment
@@ -255,15 +259,16 @@ function renderKNPersonnel(data) {
         document.getElementById('knPersonnelTable').style.display = 'table';
         document.getElementById('knPersonnelEmpty').style.display = 'none';
         document.getElementById('knPersonnelBody').innerHTML = data.map((p, i) => {
-            let actionCell = '';
+            let actionCell = `<button class="action-btn btn-primary" onclick="showPersonnelDetail('${p.id}')">Details</button>`;
             if (userRole === 'ADMIN') {
-                actionCell = `<button class="action-btn btn-primary" onclick="editPersonnel('${p.id}')">Edit</button>
+                actionCell += ` <button class="action-btn btn-primary" onclick="editPersonnel('${p.id}')">Edit</button>
                               <button class="action-btn btn-danger" onclick="deletePersonnelRecord('${p.id}')">Del</button>`;
             }
             return `
             <tr>
                 <td>${i+1}</td>
                 <td>${p.name}</td>
+                <td>${p.rank}</td>
                 <td>${p.genl_no}</td>
                 <td>${p.present_working || '-'}</td>
                 <td style="color:${p.status === 'Present' ? 'green' : 'red'}">${p.status}</td>
@@ -278,7 +283,7 @@ function filterKNPersonnel() {
     const searchTerm = document.getElementById('knSearchInput').value.toLowerCase().trim();
     const groupFilter = rankGroups[knCurrentRank] || [knCurrentRank];
     let data = allPersonnel.filter(p => 
-        p.district === 'NEW' && 
+        isNewKrishnaDistrict(p) && 
         p.personnel_type === knCurrentType && 
         groupFilter.includes(p.rank) && 
         !p.is_on_deployment
@@ -381,15 +386,16 @@ function renderEWPersonnel(data) {
         document.getElementById('ewPersonnelTable').style.display = 'table';
         document.getElementById('ewPersonnelEmpty').style.display = 'none';
         document.getElementById('ewPersonnelBody').innerHTML = data.map((p, i) => {
-            let actionCell = '';
+            let actionCell = `<button class="action-btn btn-primary" onclick="showPersonnelDetail('${p.id}')">Details</button>`;
             if (userRole === 'ADMIN') {
-                actionCell = `<button class="action-btn btn-primary" onclick="editPersonnel('${p.id}')">Edit</button>
+                actionCell += ` <button class="action-btn btn-primary" onclick="editPersonnel('${p.id}')">Edit</button>
                               <button class="action-btn btn-danger" onclick="deletePersonnelRecord('${p.id}')">Del</button>`;
             }
             return `
             <tr>
                 <td>${i+1}</td>
                 <td>${p.name}</td>
+                <td>${p.rank}</td>
                 <td>${p.genl_no}</td>
                 <td>${p.present_working || '-'}</td>
                 <td style="color:${p.status === 'Present' ? 'green' : 'red'}">${p.status}</td>
