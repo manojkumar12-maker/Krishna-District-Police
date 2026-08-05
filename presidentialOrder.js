@@ -462,6 +462,7 @@ function savePOUnitPersonnel(rank, editIdx) {
 
     const entry = {
         rank: rank,
+        personnel_type: rank.includes('(AR)') ? 'AR' : 'CIVIL',
         name: name,
         genl_no: document.getElementById('pounit_genlno').value.trim(),
         seniority_no: parseInt(document.getElementById('pounit_srno').value) || 0,
@@ -577,6 +578,7 @@ function importPOUnitData(input, rank) {
 
                     const entry = {
                         rank: row.rank || rank,
+                        personnel_type: (row.rank || rank).includes('(AR)') ? 'AR' : 'CIVIL',
                         name: name,
                         genl_no: row.genl_no || '',
                         seniority_no: parseInt(row.seniority_no) || (poUnitPersonnel.length + 1 + imported),
@@ -637,9 +639,8 @@ function parseCSVLine(line) {
 // ==================== OVERVIEW TAB ====================
 function renderPOOverview(content) {
     const isAdmin = userRole === 'ADMIN';
-    const erstwhileCount = allPersonnel.filter(p => p.district === 'ERSTWHILE' && !p.is_on_deployment).length;
-    const newCount = allPersonnel.filter(p => p.district === 'NEW' && !p.is_on_deployment).length;
-    const hasCFMS = Object.keys(poExtended).length;
+    const totalPersonnel = poUnitPersonnel.length;
+    const hasCFMS = poUnitPersonnel.filter(p => p.cfms_id).length;
     const optionSubmitted = Object.keys(poOptions).length;
     const allocated = poAllocations.length;
 
@@ -649,8 +650,8 @@ function renderPOOverview(content) {
             <div class="district-tiles" style="grid-template-columns: repeat(4, 1fr);">
                 <div class="district-tile">
                     <h3>Total Personnel</h3>
-                    <div class="tile-count">${erstwhileCount + newCount}</div>
-                    <div class="tile-label">Estwhile: ${erstwhileCount} | New: ${newCount}</div>
+                    <div class="tile-count">${totalPersonnel}</div>
+                    <div class="tile-label">PO Unit Personnel</div>
                 </div>
                 <div class="district-tile" style="background:linear-gradient(135deg,#2e7d32,#1b5e20);">
                     <h3>Cadres Defined</h3>
@@ -790,10 +791,7 @@ function viewCadreStrength(cadreId) {
 }
 
 function getPersonnelForCadre(cadreId) {
-    if (cadreId === 'DC_KRISHNA') return allPersonnel.filter(p => p.district === 'NEW' && !p.is_on_deployment);
-    if (cadreId === 'DC_NTR') return [];
-    if (cadreId === 'DC_ELURU') return [];
-    return [];
+    return poUnitPersonnel.filter(p => p.allocated_cadre_id === cadreId);
 }
 
 function editCadreStrength(cadreId) {
@@ -913,28 +911,36 @@ function renderPOSeniority(content) {
 
 function generateDSLFromPersonnel() {
     if (userRole !== 'ADMIN') { showToast('Admin only', 'error'); return; }
-    if (allPersonnel.length === 0) { showToast('No personnel data available', 'error'); return; }
+    if (poUnitPersonnel.length === 0) { showToast('No PO unit personnel data available. Add personnel in the Unit Data tab.', 'error'); return; }
 
-    const personnel = allPersonnel.filter(p => !p.is_on_deployment);
-
-    poDSL = personnel.map((p, i) => {
-        const ext = poExtended[p.id] || {};
+    poDSL = poUnitPersonnel.map((p, i) => {
         return {
-            id: p.id,
+            id: p._idx,
             name: p.name,
             gender: p.gender || '-',
-            cfms_id: ext.cfms_id || '',
-            mobile: p.phone_number || '',
+            cfms_id: p.cfms_id || '',
+            mobile: p.mobile || '',
             date_of_birth: p.date_of_birth || '',
-            date_of_joining: ext.date_of_joining || p.date_of_promotion || '',
-            sc_st_group: ext.sc_st_group || '',
+            date_of_joining: p.date_of_joining || '',
+            sc_st_group: p.sc_st_group || '',
+            pwbd_percent: p.pwbd_percent || '',
+            widow: p.widow || '',
+            disabled_children: p.disabled_children || '',
+            cancer: p.cancer || false,
+            neurosurgery: p.neurosurgery || false,
+            kidney: p.kidney || false,
+            liver: p.liver || false,
+            heart: p.heart || false,
+            seniority_type: p.seniority_type || 'Provisional',
+            proceedings_no: p.proceedings_no || '',
+            proceedings_date: p.proceedings_date || '',
             rank: p.rank,
-            personnel_type: p.personnel_type,
-            district: p.district,
-            present_working: p.present_working || '',
-            status: p.status,
-            is_on_deployment: p.is_on_deployment,
-            seniority_no: ext.seniority_no || (i + 1)
+            personnel_type: p.personnel_type || 'CIVIL',
+            district: 'ERSTWHILE',
+            present_working: '',
+            status: 'Present',
+            is_on_deployment: false,
+            seniority_no: p.seniority_no || (i + 1)
         };
     });
 
@@ -1041,7 +1047,6 @@ function renderSeniorityTable() {
             <td style="color:${p.status==='Present'?'green':'red'}">${p.status}</td>
             ${objectionCol}
             <td>
-                ${isAdmin ? `<button class="action-btn btn-primary" onclick="editPOExtended('${p.id}')">Edit</button>` : ''}
                 ${poStage === 'objection_period' && isAdmin ? `<button class="action-btn" style="background:#ef6c00;color:white;" onclick="addObjection('${p.id}')">Object</button>` : ''}
             </td>
         </tr>`;
@@ -1108,7 +1113,7 @@ function filterPOSeniority() {
 function editPOExtended(persId) {
     if (userRole !== 'ADMIN') return;
     const ext = poExtended[persId] || {};
-    const pers = allPersonnel.find(p => p.id == persId);
+    const pers = poUnitPersonnel.find(p => p._idx == persId);
     if (!pers) return;
 
     const scstOpts = SC_ST_GROUPS.map(g => `<option value="${g.id}" ${ext.sc_st_group===g.id?'selected':''}>${g.label}</option>`).join('');
@@ -1296,9 +1301,8 @@ function renderPOPrefCat(content) {
     PREF_CATEGORIES.forEach(pc => { prefCounts[pc.id] = 0; });
 
     list.forEach(p => {
-        const ext = poExtended[p.id] || {};
         PREF_CATEGORIES.forEach(pc => {
-            if (ext[pc.id]) prefCounts[pc.id]++;
+            if (p[pc.id]) prefCounts[pc.id]++;
         });
     });
 
@@ -1316,22 +1320,20 @@ function renderPOPrefCat(content) {
     html += '<div style="overflow-x:auto;" id="poPrefTableContainer">';
 
     const prefEntries = list.filter(p => {
-        const ext = poExtended[p.id] || {};
-        return PREF_CATEGORIES.some(pc => ext[pc.id]);
+        return PREF_CATEGORIES.some(pc => p[pc.id]);
     });
 
     if (prefEntries.length === 0) {
-        html += '<div class="empty-state">No employees identified in preferential categories. Edit extended data in Seniority List tab.</div>';
+        html += '<div class="empty-state">No employees identified in preferential categories. Use the Seniority List tab to add extended data.</div>';
     } else {
         html += '<table><thead><tr><th>Sr.No</th><th>Name</th><th>Rank</th><th>District</th>';
         PREF_CATEGORIES.forEach(pc => { html += `<th>${pc.label}</th>`; });
         html += '</tr></thead><tbody>';
 
         prefEntries.forEach(p => {
-            const ext = poExtended[p.id] || {};
             html += `<tr><td>${p.seniority_no}</td><td>${p.name}</td><td>${p.rank}</td><td>${p.district==='ERSTWHILE'?'Erstwhile':'Krishna New'}</td>`;
             PREF_CATEGORIES.forEach(pc => {
-                html += `<td style="text-align:center;">${ext[pc.id] ? '✓' : '-'}</td>`;
+                html += `<td style="text-align:center;">${p[pc.id] ? '✓' : '-'}</td>`;
             });
             html += '</tr>';
         });
@@ -1348,8 +1350,7 @@ function filterPOPrefCat() {
     if (!container) return;
     const list = poFSL.length > 0 ? poFSL : poDSL;
     let prefEntries = list.filter(p => {
-        const ext = poExtended[p.id] || {};
-        return PREF_CATEGORIES.some(pc => ext[pc.id]);
+        return PREF_CATEGORIES.some(pc => p[pc.id]);
     });
     if (search) prefEntries = prefEntries.filter(p => p.name.toLowerCase().includes(search));
 
@@ -1363,10 +1364,9 @@ function filterPOPrefCat() {
     html += '</tr></thead><tbody>';
 
     prefEntries.forEach(p => {
-        const ext = poExtended[p.id] || {};
         html += `<tr><td>${p.seniority_no}</td><td>${p.name}</td><td>${p.rank}</td><td>${p.district==='ERSTWHILE'?'Erstwhile':'Krishna New'}</td>`;
         PREF_CATEGORIES.forEach(pc => {
-            html += `<td style="text-align:center;">${ext[pc.id] ? '✓' : '-'}</td>`;
+            html += `<td style="text-align:center;">${p[pc.id] ? '✓' : '-'}</td>`;
         });
         html += '</tr>';
     });
@@ -1421,10 +1421,9 @@ function runAllocation() {
     const nonPrefEmployees = [];
 
     list.forEach(p => {
-        const ext = poExtended[p.id] || {};
         let prefCat = null;
         for (const pc of PREF_CATEGORIES) {
-            if (ext[pc.id]) { prefCat = pc; break; }
+            if (p[pc.id]) { prefCat = pc; break; }
         }
         if (prefCat) {
             prefEmployees.push({ ...p, prefCategory: prefCat });
@@ -1749,7 +1748,8 @@ function exportPOPrintFormat() {
 
 // ==================== EXPORT / RESET ====================
 function exportPOData() {
-    if (Object.keys(poExtended).length === 0 && poAllocations.length === 0) {
+    const list = poFSL.length > 0 ? poFSL : poDSL;
+    if (list.length === 0 && poAllocations.length === 0) {
         showToast('No PO data to export', 'error');
         return;
     }
@@ -1764,12 +1764,13 @@ function exportPOData() {
         });
     }
 
-    csv += '\n--- Extended Personnel Data ---\n';
-    csv += 'Name,CFMS ID,SC/ST Group,Seniority No.,DOJ\n';
-    Object.entries(poExtended).forEach(([id, ext]) => {
-        const pers = allPersonnel.find(p => p.id == id);
-        csv += `"${pers ? pers.name : id}",${ext.cfms_id || ''},${ext.sc_st_group || ''},${ext.seniority_no || ''},${ext.date_of_joining || ''}\n`;
-    });
+    if (list.length > 0) {
+        csv += '\n--- Personnel Data ---\n';
+        csv += 'Name,CFMS ID,SC/ST Group,Seniority No.,DOJ\n';
+        list.forEach(p => {
+            csv += `"${p.name}",${p.cfms_id || ''},${p.sc_st_group || ''},${p.seniority_no || ''},${p.date_of_joining || ''}\n`;
+        });
+    }
 
     downloadFile(csv, 'PO2025_Complete_Data.csv', 'text/csv');
     showToast('PO data exported to CSV', 'success');
