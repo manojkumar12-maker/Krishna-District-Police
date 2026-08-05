@@ -32,7 +32,7 @@
             <span class="record-count" id="dataCount">0 records</span>
             <input type="file" id="excelFileInput" accept=".xlsx,.xls" style="display:none" onchange="handleExcelUpload(this)">
             <button class="btn btn-secondary" onclick="document.getElementById('excelFileInput').click()">📥 Import Excel</button>
-            <a class="btn btn-secondary" href="personnel.xlsx" download style="text-decoration:none;">📋 Download Template</a>
+            <button class="btn btn-secondary" onclick="downloadPersonnelTemplate()" style="text-decoration:none;">📋 Download Template</button>
             <button class="btn btn-primary" onclick="exportCSV()">Export CSV</button>
             <button class="btn btn-secondary" onclick="exportAllPDF()">Export PDF</button>
             <button class="btn btn-danger" onclick="clearAllData()">Clear All</button>
@@ -418,6 +418,7 @@
                     <div class="form-group"><label>Genl.No. *</label><input type="text" id="genlNo" required></div>
                     <div class="form-group"><label>Type *</label><select id="personnelType" onchange="updateRankOptions()"><option value="CIVIL">Civil</option><option value="AR">AR</option></select></div>
                     <div class="form-group"><label>District *</label><select id="district" onchange="updateRankOptions()"><option value="ERSTWHILE">Erstwhile Krishna District</option><option value="NEW">Krishna District (New)</option><option value="DEPUTATION">Deputation</option></select></div>
+                    <div class="form-group"><label>Present District</label><select id="presentDistrict"><option value="">Select</option><option value="KRISHNA">KRISHNA</option><option value="NTR">NTR</option><option value="ELURU">ELURU</option></select></div>
                     <div class="form-group"><label>Gender</label><select id="gender"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
                     <div class="form-group"><label>Previous Station</label><textarea id="previousStation" rows="2" placeholder="Enter previous stations, one per line"></textarea></div>
                     <div class="form-group"><label>Status</label><select id="status"><option value="Present">Present</option><option value="Deserter">Deserter</option></select></div>
@@ -439,7 +440,7 @@
                     <div class="modal-import-row">
                         <input type="file" id="modalExcelFileInput" accept=".xlsx,.xls" style="display:none" onchange="handleModalExcelUpload(this)">
                         <button class="btn btn-secondary" onclick="document.getElementById('modalExcelFileInput').click()">📥 Choose .xlsx File</button>
-                        <a class="btn btn-secondary" href="personnel.xlsx" download style="text-decoration:none;">📋 Download Template</a>
+                        <button class="btn btn-secondary" onclick="downloadPersonnelTemplate()" style="text-decoration:none;">📋 Download Template</button>
                     </div>
                 </div>
             </div>

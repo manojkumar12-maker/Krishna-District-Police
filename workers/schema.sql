@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS personnel (
     is_on_deployment INTEGER DEFAULT 0,
     deployment_unit TEXT DEFAULT '',
     date_of_deployment TEXT DEFAULT '',
+    present_district TEXT DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -63,3 +64,6 @@ CREATE TABLE IF NOT EXISTS deputationstrengths (
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(unit_name, rank)
 );
+
+-- Migration: add present_district column (for existing databases)
+ALTER TABLE personnel ADD COLUMN present_district TEXT DEFAULT '';

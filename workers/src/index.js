@@ -269,7 +269,7 @@ app.post('/api/personnel', authRequired(), adminRequired(), async (c) => {
 
         const cols = ['name','rank','genl_no','personnel_type','district','gender','previous_station',
             'status','date_of_birth','caste','education','date_of_promotion','present_working',
-            'phone_number','punishments','is_on_deployment','deployment_unit','date_of_deployment'];
+            'phone_number','punishments','is_on_deployment','deployment_unit','date_of_deployment','present_district'];
         const values = cols.map(f => f === 'is_on_deployment' ? (body[f] ? 1 : 0) : (body[f] || ''));
 
         const now = new Date().toISOString();
@@ -302,7 +302,7 @@ app.put('/api/personnel/:id', authRequired(), adminRequired(), async (c) => {
 
         const cols = ['name','rank','genl_no','personnel_type','district','gender','previous_station',
             'status','date_of_birth','caste','education','date_of_promotion','present_working',
-            'phone_number','punishments','is_on_deployment','deployment_unit','date_of_deployment'];
+            'phone_number','punishments','is_on_deployment','deployment_unit','date_of_deployment','present_district'];
         const changedFields = {};
 
         for (const col of cols) {
@@ -393,7 +393,7 @@ app.post('/api/personnel/import', authRequired(), adminRequired(), async (c) => 
         const now = new Date().toISOString();
         const cols = ['name','rank','genl_no','personnel_type','district','gender','previous_station',
             'status','date_of_birth','caste','education','date_of_promotion','present_working',
-            'phone_number','punishments','is_on_deployment','deployment_unit','date_of_deployment','created_at','updated_at'];
+            'phone_number','punishments','is_on_deployment','deployment_unit','date_of_deployment','present_district','created_at','updated_at'];
 
         for (let i = 0; i < rows.length; i++) {
             const row = rows[i];
@@ -456,6 +456,7 @@ function normalizeRow(row) {
         punishments: ['punishments'],
         is_on_deployment: ['is_on_deployment', 'on_deputation'],
         deployment_unit: ['deployment_unit'], date_of_deployment: ['date_of_deployment'],
+        present_district: ['present_district'],
     };
     for (const [field, aliases] of Object.entries(fieldMap)) {
         for (const alias of aliases) {

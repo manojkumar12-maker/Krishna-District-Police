@@ -16,6 +16,7 @@ function openAddModal() {
     document.getElementById('genlNo').value = '';
     document.getElementById('personnelType').value = 'CIVIL';
     document.getElementById('district').value = 'ERSTWHILE';
+    document.getElementById('presentDistrict').value = '';
     document.getElementById('gender').value = '';
     document.getElementById('previousStation').value = '';
     document.getElementById('status').value = 'Present';
@@ -32,6 +33,25 @@ function openAddModal() {
 
     updateRankOptions();
     toggleDeploymentFields();
+}
+
+function downloadPersonnelTemplate() {
+    const headers = [
+        'name', 'rank', 'genl_no', 'personnel_type', 'district',
+        'gender', 'previous_station', 'status', 'date_of_birth',
+        'caste', 'education', 'date_of_promotion', 'present_working',
+        'phone_number', 'punishments', 'is_on_deployment',
+        'deployment_unit', 'date_of_deployment', 'present_district'
+    ];
+    const sampleRow = [
+        'John Doe', 'Police Constable (Civil)', '12345', 'CIVIL', 'ERSTWHILE',
+        'Male', 'Vijayawada', 'Present', '',
+        '', '', '', '',
+        '', '', 'false',
+        '', '', ''
+    ];
+    const csvContent = headers.join(',') + '\n' + sampleRow.join(',');
+    downloadFile(csvContent, 'personnel_template.csv', 'text/csv;charset=utf-8');
 }
 
 function closeModal() {
@@ -64,6 +84,7 @@ async function savePersonnel() {
     const genlNo = document.getElementById('genlNo').value.trim();
     const personnelType = document.getElementById('personnelType').value;
     const district = document.getElementById('district').value;
+    const presentDistrict = document.getElementById('presentDistrict').value || null;
     const gender = document.getElementById('gender').value || null;
     const previousStation = document.getElementById('previousStation').value.trim();
     const status = document.getElementById('status').value;
@@ -89,6 +110,7 @@ async function savePersonnel() {
         genl_no: genlNo,
         personnel_type: personnelType,
         district,
+        present_district: presentDistrict,
         gender,
         previous_station: previousStation || null,
         status,
@@ -138,6 +160,7 @@ async function editPersonnel(id) {
         document.getElementById('genlNo').value = personnel.genl_no;
         document.getElementById('personnelType').value = personnel.personnel_type;
         document.getElementById('district').value = personnel.district;
+        document.getElementById('presentDistrict').value = personnel.present_district || '';
         document.getElementById('gender').value = personnel.gender || '';
         document.getElementById('previousStation').value = personnel.previous_station || '';
         document.getElementById('status').value = personnel.status;
