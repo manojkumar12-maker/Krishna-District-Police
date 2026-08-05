@@ -157,7 +157,10 @@ function renderPOModule() {
                 <button class="po-nav-btn ${poCurrentTab==='allocation' ? 'active' : ''}" onclick="switchPOTab('allocation')">Allocation</button>
                 <button class="po-nav-btn ${poCurrentTab==='orders' ? 'active' : ''}" onclick="switchPOTab('orders')">Final Orders</button>
             </div>
-            <div class="po-stage-indicator">Current Stage: <strong>${stageLabel}</strong></div>
+            <div class="po-stage-indicator" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                <span>Current Stage: <strong>${stageLabel}</strong></span>
+                ${isAdmin ? `<button class="btn btn-danger btn-sm" onclick="resetPOModule()">Clear All PO Data</button>` : ''}
+            </div>
             <div id="poTabContent" class="po-tab-content"></div>
         `;
 
