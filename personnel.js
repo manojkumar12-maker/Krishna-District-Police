@@ -36,22 +36,28 @@ function openAddModal() {
 }
 
 function downloadPersonnelTemplate() {
-    const headers = [
-        'name', 'rank', 'genl_no', 'personnel_type', 'district',
-        'gender', 'previous_station', 'status', 'date_of_birth',
-        'caste', 'education', 'date_of_promotion', 'present_working',
-        'phone_number', 'punishments', 'is_on_deployment',
-        'deployment_unit', 'date_of_deployment', 'present_district'
-    ];
-    const sampleRow = [
-        'John Doe', 'Police Constable (Civil)', '12345', 'CIVIL', 'ERSTWHILE',
-        'Male', 'Vijayawada', 'Present', '',
-        '', '', '', '',
-        '', '', 'false',
-        '', '', ''
-    ];
-    const csvContent = headers.join(',') + '\n' + sampleRow.join(',');
-    downloadFile(csvContent, 'personnel_template.csv', 'text/csv;charset=utf-8');
+    try {
+        const headers = [
+            'name', 'rank', 'genl_no', 'personnel_type', 'district',
+            'gender', 'previous_station', 'status', 'date_of_birth',
+            'caste', 'education', 'date_of_promotion', 'present_working',
+            'phone_number', 'punishments', 'is_on_deployment',
+            'deployment_unit', 'date_of_deployment', 'present_district'
+        ];
+        const sampleRow = [
+            'John Doe', 'Police Constable (Civil)', '12345', 'CIVIL', 'ERSTWHILE',
+            'Male', 'Vijayawada', 'Present', '',
+            '', '', '', '',
+            '', '', 'false',
+            '', '', '', ''
+        ];
+        const csvContent = '\uFEFF' + headers.join(',') + '\n' + sampleRow.join(',');
+        downloadFile(csvContent, 'personnel_template.csv', 'text/csv;charset=utf-8');
+        showToast('Template downloaded!', 'success');
+    } catch (e) {
+        console.error('Template download error:', e);
+        showToast('Failed to download template: ' + e.message, 'error');
+    }
 }
 
 function closeModal() {
