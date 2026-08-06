@@ -58,24 +58,24 @@ function exportAllPDF() {
                 <tbody>
                     ${allPersonnel.map((p, i) => `<tr>
                         <td>${i+1}</td>
-                        <td>${p.name}</td>
-                        <td>${p.rank}</td>
-                        <td>${p.genl_no}</td>
-                        <td>${p.personnel_type}</td>
-                        <td>${p.district}</td>
-                        <td>${p.present_district || '-'}</td>
-                        <td>${p.gender || '-'}</td>
-                        <td>${p.status}</td>
-                        <td>${p.date_of_birth || '-'}</td>
-                        <td>${p.caste || '-'}</td>
-                        <td>${p.education || '-'}</td>
-                        <td>${p.date_of_promotion || '-'}</td>
-                        <td>${p.present_working || '-'}</td>
-                        <td>${p.phone_number || '-'}</td>
-                        <td>${p.punishments || '-'}</td>
+                        <td>${escapeHtml(p.name)}</td>
+                        <td>${escapeHtml(p.rank)}</td>
+                        <td>${escapeHtml(p.genl_no)}</td>
+                        <td>${escapeHtml(p.personnel_type)}</td>
+                        <td>${escapeHtml(p.district)}</td>
+                        <td>${escapeHtml(p.present_district) || '-'}</td>
+                        <td>${escapeHtml(p.gender) || '-'}</td>
+                        <td>${escapeHtml(p.status)}</td>
+                        <td>${escapeHtml(p.date_of_birth) || '-'}</td>
+                        <td>${escapeHtml(p.caste) || '-'}</td>
+                        <td>${escapeHtml(p.education) || '-'}</td>
+                        <td>${escapeHtml(p.date_of_promotion) || '-'}</td>
+                        <td>${escapeHtml(p.present_working) || '-'}</td>
+                        <td>${escapeHtml(p.phone_number) || '-'}</td>
+                        <td>${escapeHtml(p.punishments) || '-'}</td>
                         <td>${p.is_on_deployment ? 'Yes' : 'No'}</td>
-                        <td>${p.deployment_unit || '-'}</td>
-                        <td>${p.date_of_deployment || '-'}</td>
+                        <td>${escapeHtml(p.deployment_unit) || '-'}</td>
+                        <td>${escapeHtml(p.date_of_deployment) || '-'}</td>
                     </tr>`).join('')}
                 </tbody>
             </table>
@@ -167,21 +167,21 @@ function exportKNPDF() {
                 <tbody>
                     ${data.map((p, i) => `<tr>
                         <td>${i+1}</td>
-                        <td>${p.name}</td>
-                        <td>${p.rank}</td>
-                        <td>${p.genl_no}</td>
-                        <td>${p.present_district || '-'}</td>
-                        <td>${p.gender || '-'}</td>
-                        <td>${p.present_working || '-'}</td>
-                        <td>${p.status}</td>
-                        <td>${p.date_of_birth || '-'}</td>
-                        <td>${p.caste || '-'}</td>
-                        <td>${p.education || '-'}</td>
-                        <td>${p.date_of_promotion || '-'}</td>
-                        <td>${p.phone_number || '-'}</td>
-                        <td>${p.punishments || '-'}</td>
+                        <td>${escapeHtml(p.name)}</td>
+                        <td>${escapeHtml(p.rank)}</td>
+                        <td>${escapeHtml(p.genl_no)}</td>
+                        <td>${escapeHtml(p.present_district) || '-'}</td>
+                        <td>${escapeHtml(p.gender) || '-'}</td>
+                        <td>${escapeHtml(p.present_working) || '-'}</td>
+                        <td>${escapeHtml(p.status)}</td>
+                        <td>${escapeHtml(p.date_of_birth) || '-'}</td>
+                        <td>${escapeHtml(p.caste) || '-'}</td>
+                        <td>${escapeHtml(p.education) || '-'}</td>
+                        <td>${escapeHtml(p.date_of_promotion) || '-'}</td>
+                        <td>${escapeHtml(p.phone_number) || '-'}</td>
+                        <td>${escapeHtml(p.punishments) || '-'}</td>
                         <td>${p.is_on_deployment ? 'Yes' : 'No'}</td>
-                        <td>${p.deployment_unit || '-'}</td>
+                        <td>${escapeHtml(p.deployment_unit) || '-'}</td>
                     </tr>`).join('')}
                 </tbody>
             </table>
@@ -273,21 +273,21 @@ function exportEWPDF() {
                 <tbody>
                     ${data.map((p, i) => `<tr>
                         <td>${i+1}</td>
-                        <td>${p.name}</td>
-                        <td>${p.rank}</td>
-                        <td>${p.genl_no}</td>
-                        <td>${p.present_district || '-'}</td>
-                        <td>${p.gender || '-'}</td>
-                        <td>${p.present_working || '-'}</td>
-                        <td>${p.status}</td>
-                        <td>${p.date_of_birth || '-'}</td>
-                        <td>${p.caste || '-'}</td>
-                        <td>${p.education || '-'}</td>
-                        <td>${p.date_of_promotion || '-'}</td>
-                        <td>${p.phone_number || '-'}</td>
-                        <td>${p.punishments || '-'}</td>
+                        <td>${escapeHtml(p.name)}</td>
+                        <td>${escapeHtml(p.rank)}</td>
+                        <td>${escapeHtml(p.genl_no)}</td>
+                        <td>${escapeHtml(p.present_district) || '-'}</td>
+                        <td>${escapeHtml(p.gender) || '-'}</td>
+                        <td>${escapeHtml(p.present_working) || '-'}</td>
+                        <td>${escapeHtml(p.status)}</td>
+                        <td>${escapeHtml(p.date_of_birth) || '-'}</td>
+                        <td>${escapeHtml(p.caste) || '-'}</td>
+                        <td>${escapeHtml(p.education) || '-'}</td>
+                        <td>${escapeHtml(p.date_of_promotion) || '-'}</td>
+                        <td>${escapeHtml(p.phone_number) || '-'}</td>
+                        <td>${escapeHtml(p.punishments) || '-'}</td>
                         <td>${p.is_on_deployment ? 'Yes' : 'No'}</td>
-                        <td>${p.deployment_unit || '-'}</td>
+                        <td>${escapeHtml(p.deployment_unit) || '-'}</td>
                     </tr>`).join('')}
                 </tbody>
             </table>

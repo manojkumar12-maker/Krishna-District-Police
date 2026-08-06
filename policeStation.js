@@ -271,11 +271,11 @@ function renderPSPersonnel(personnel) {
             }
             return `<tr>
                 <td>${i+1}</td>
-                <td>${p.name}</td>
-                <td>${p.rank}</td>
-                <td>${p.genl_no}</td>
-                <td>${p.present_working || '-'}</td>
-                <td style="color:${p.status === 'Present' ? 'green' : 'red'}">${p.status}</td>
+                <td>${escapeHtml(p.name)}</td>
+                <td>${escapeHtml(p.rank)}</td>
+                <td>${escapeHtml(p.genl_no)}</td>
+                <td>${escapeHtml(p.present_working) || '-'}</td>
+                <td style="color:${p.status === 'Present' ? 'green' : 'red'}">${escapeHtml(p.status)}</td>
                 <td>${actionCell}</td>
             </tr>`;
         }).join('');

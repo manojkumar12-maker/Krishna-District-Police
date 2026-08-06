@@ -56,13 +56,13 @@ async function applySearchFilter() {
                 return `
                 <tr>
                     <td>${i + 1}</td>
-                    <td>${p.name}</td>
-                    <td>${p.rank}</td>
-                    <td>${p.genl_no}</td>
-                    <td>${p.personnel_type}</td>
+                    <td>${escapeHtml(p.name)}</td>
+                    <td>${escapeHtml(p.rank)}</td>
+                    <td>${escapeHtml(p.genl_no)}</td>
+                    <td>${escapeHtml(p.personnel_type)}</td>
                     <td>${p.district === 'ERSTWHILE' ? 'Erstwhile' : p.district === 'NEW' ? 'Krishna New' : 'Deputation'}</td>
-                    <td>${p.present_working || '-'}</td>
-                    <td style="color:${p.status === 'Present' ? 'green' : 'red'}">${p.status}</td>
+                    <td>${escapeHtml(p.present_working) || '-'}</td>
+                    <td style="color:${p.status === 'Present' ? 'green' : 'red'}">${escapeHtml(p.status)}</td>
                     <td><button class="action-btn btn-primary" onclick="showPersonnelDetail('${p.id}')">Details</button> ${actions}</td>
                 </tr>`;
             }).join('');
@@ -150,25 +150,25 @@ async function loadAuditLogs() {
 
                 let details = '';
                 if (log.action === 'UPDATE' && log.changes) {
-                    details = Object.entries(log.changes).map(([k, v]) => `${k}: "${v.from}" → "${v.to}"`).join('<br>');
+                    details = Object.entries(log.changes).map(([k, v]) => `${escapeHtml(k)}: "${escapeHtml(v.from)}" → "${escapeHtml(v.to)}"`).join('<br>');
                 } else if (log.action === 'CREATE' && log.changes) {
-                    details = Object.entries(log.changes).filter(([k]) => !['_id', '__v'].includes(k)).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join('<br>');
+                    details = Object.entries(log.changes).filter(([k]) => !['_id', '__v'].includes(k)).map(([k, v]) => `${escapeHtml(k)}: ${escapeHtml(JSON.stringify(v))}`).join('<br>');
                 } else if (log.action === 'DELETE' && log.changes) {
-                    details = 'Deleted: ' + (log.changes.name || '') + ' (' + (log.changes.genl_no || '') + ')';
+                    details = 'Deleted: ' + escapeHtml(log.changes.name || '') + ' (' + escapeHtml(log.changes.genl_no || '') + ')';
                 } else if (log.action === 'IMPORT' && log.changes) {
                     details = `Imported: ${log.changes.importedCount || 0} records` + (log.changes.errorCount ? `, ${log.changes.errorCount} errors` : '');
                 } else if (log.action === 'CLEAR_ALL') {
                     details = 'Cleared all personnel records';
                 } else {
-                    details = JSON.stringify(log.changes || {}).substring(0, 200);
+                    details = escapeHtml(JSON.stringify(log.changes || {}).substring(0, 200));
                 }
 
                 return `
                 <tr>
                     <td style="white-space:nowrap;font-size:12px;">${dt}</td>
                     <td style="color:${actionClass};font-weight:bold;">${log.action}</td>
-                    <td>${log.performedBy}</td>
-                    <td>${log.targetType} #${log.targetId}</td>
+                    <td>${escapeHtml(log.performedBy)}</td>
+                    <td>${escapeHtml(log.targetType)} #${escapeHtml(log.targetId)}</td>
                     <td style="font-size:12px;">${details}</td>
                 </tr>`;
             }).join('');

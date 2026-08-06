@@ -10,7 +10,7 @@ app.use('*', cors({
         if (!origin) return origin;
         if (origin.endsWith('.github.io') && origin.startsWith('https://')) return origin;
         if (origin.startsWith('http://localhost:')) return origin;
-        return origin;
+        return null;
     },
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
@@ -240,11 +240,18 @@ app.get('/api/personnel', authRequired(), async (c) => {
         }
         sql += ' ORDER BY created_at DESC';
 
+        // Pagination
+        const page = Math.max(1, parseInt(q.page) || 1);
+        const limit = Math.min(500, Math.max(1, parseInt(q.limit) || 100));
+        const offset = (page - 1) * limit;
+        sql += ` LIMIT ?${params.length + 1} OFFSET ?${params.length + 2}`;
+        params.push(limit, offset);
+
         const stmt = db(c).prepare(sql).bind(...params);
         const { results } = await stmt.all();
         const data = (results || []).map(transformRow);
 
-        return c.json({ success: true, data, count: data.length });
+        return c.json({ success: true, data, count: data.length, page, limit });
     } catch (e) {
         return c.json({ error: e.message }, 500);
     }
@@ -678,7 +685,7 @@ app.get('/api/audit-logs', authRequired(), adminRequired(), async (c) => {
             conditions.push(`performedBy LIKE ?${pi}`); params.push(`%${q.performedBy}%`); pi++;
         }
 
-        const limit = parseInt(q.limit) || 500;
+        const limit = Math.min(5000, Math.max(1, parseInt(q.limit) || 500));
         let sql = 'SELECT * FROM auditlogs';
         if (conditions.length > 0) sql += ' WHERE ' + conditions.join(' AND ');
         sql += ' ORDER BY timestamp DESC LIMIT ?' + pi;

@@ -45,7 +45,7 @@ function showPage(pageId) {
         updateDepConsolidated();
     }
     if (pageId === 'searchFilter') {
-        if (!document.getElementById('filterRank').children.length > 1) {
+        if (document.getElementById('filterRank').children.length <= 1) {
             populateFilterRanks();
         }
         applySearchFilter();
@@ -145,11 +145,11 @@ function showSubData(pageKey, type, el) {
             return `
             <tr>
                 <td>${i+1}</td>
-                <td>${p.name}</td>
-                <td>${p.rank}</td>
-                <td>${p.genl_no}</td>
-                <td>${p.present_working || '-'}</td>
-                <td style="color:${p.status === 'Present' ? 'green' : 'red'}">${p.status}</td>
+                <td>${escapeHtml(p.name)}</td>
+                <td>${escapeHtml(p.rank)}</td>
+                <td>${escapeHtml(p.genl_no)}</td>
+                <td>${escapeHtml(p.present_working) || '-'}</td>
+                <td style="color:${p.status === 'Present' ? 'green' : 'red'}">${escapeHtml(p.status)}</td>
                 <td>
                     ${actionCell}
                 </td>

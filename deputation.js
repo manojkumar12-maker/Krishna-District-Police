@@ -357,12 +357,12 @@ function renderDepPersonnel(data) {
             return `
             <tr>
                 <td>${i+1}</td>
-                <td>${p.name}</td>
-                <td>${p.rank}</td>
-                <td>${p.genl_no}</td>
-                <td>${p.personnel_type}</td>
-                <td>${p.district}</td>
-                <td style="color:${p.status === 'Present' ? 'green' : 'red'}">${p.status}</td>
+                <td>${escapeHtml(p.name)}</td>
+                <td>${escapeHtml(p.rank)}</td>
+                <td>${escapeHtml(p.genl_no)}</td>
+                <td>${escapeHtml(p.personnel_type)}</td>
+                <td>${escapeHtml(p.district)}</td>
+                <td style="color:${p.status === 'Present' ? 'green' : 'red'}">${escapeHtml(p.status)}</td>
                 <td>${actionCell}</td>
             </tr>
         `;

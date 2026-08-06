@@ -350,8 +350,8 @@ function showPersonnelDetail(id) {
 
     const rowsHtml = fields.map(f => `
         <div class="form-group" style="margin-bottom:8px;">
-            <label style="font-size:12px;color:#666;margin-bottom:2px;">${f.label}</label>
-            <div style="font-size:14px;font-weight:500;word-break:break-word;">${f.value}</div>
+            <label style="font-size:12px;color:#666;margin-bottom:2px;">${escapeHtml(f.label)}</label>
+            <div style="font-size:14px;font-weight:500;word-break:break-word;">${escapeHtml(f.value)}</div>
         </div>
     `).join('');
 

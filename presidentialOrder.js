@@ -293,23 +293,23 @@ function renderPOUnitDetail() {
             if (p.heart) medicals.push('Heart');
             return `<tr>
                 <td>${i+1}</td>
-                <td>${p.seniority_type || '-'}</td>
-                <td style="font-size:10px;">${p.proceedings_no || '-'}${p.proceedings_date ? ' / ' + procDate : ''}</td>
+                <td>${escapeHtml(p.seniority_type) || '-'}</td>
+                <td style="font-size:10px;">${escapeHtml(p.proceedings_no) || '-'}${p.proceedings_date ? ' / ' + procDate : ''}</td>
                 <td>${p.seniority_no || '-'}</td>
-                <td>${p.name}</td>
-                <td>${p.gender || '-'}</td>
-                <td>${p.cfms_id || '-'}</td>
-                <td>${p.mobile || '-'}</td>
+                <td>${escapeHtml(p.name)}</td>
+                <td>${escapeHtml(p.gender) || '-'}</td>
+                <td>${escapeHtml(p.cfms_id) || '-'}</td>
+                <td>${escapeHtml(p.mobile) || '-'}</td>
                 <td>${dob}</td>
                 <td>${doj}</td>
-                <td>${p.sc_st_group || '-'}</td>
-                <td>${p.pwbd_percent || '-'}</td>
+                <td>${escapeHtml(p.sc_st_group) || '-'}</td>
+                <td>${escapeHtml(p.pwbd_percent) || '-'}</td>
                 <td>${p.widow === 'Yes' ? '✓' : '-'}</td>
                 <td>${p.disabled_children === 'Yes' ? '✓' : '-'}</td>
                 <td>${medicals.length > 0 ? medicals.join(', ') : '-'}</td>
-                <td>${p.rank}</td>
-                <td>${p.genl_no || '-'}</td>
-                <td style="font-size:10px;">${cid}</td>
+                <td>${escapeHtml(p.rank)}</td>
+                <td>${escapeHtml(p.genl_no) || '-'}</td>
+                <td style="font-size:10px;">${escapeHtml(cid)}</td>
                 ${isAdmin ? `<td>
                     <button class="action-btn btn-primary" onclick="editPOUnitPersonnel(${p._idx})">Edit</button>
                     <button class="action-btn btn-danger" onclick="deletePOUnitPersonnel(${p._idx})">Del</button>
@@ -1080,7 +1080,7 @@ function syncAllPersonnelToPO() {
         seniority_no: i + 1,
         gender: p.gender || '',
         date_of_birth: p.date_of_birth || '',
-        date_of_joining: p.date_of_promotion || '',
+        date_of_joining: p.date_of_joining_present || p.date_of_appointment || p.date_of_promotion || '',
         cfms_id: '',
         mobile: p.phone_number || '',
         caste: p.caste || '',
@@ -1294,18 +1294,18 @@ function filterPOSeniority() {
 
         return `<tr>
             <td>${p.seniority_no}</td>
-            <td>${p.name}</td>
-            <td>${p.gender}</td>
-            <td>${p.cfms_id || '-'}</td>
-            <td>${p.mobile || '-'}</td>
+            <td>${escapeHtml(p.name)}</td>
+            <td>${escapeHtml(p.gender)}</td>
+            <td>${escapeHtml(p.cfms_id) || '-'}</td>
+            <td>${escapeHtml(p.mobile) || '-'}</td>
             <td>${dob}</td>
             <td>${doj}</td>
-            <td>${p.rank}</td>
-            <td>${p.personnel_type}</td>
+            <td>${escapeHtml(p.rank)}</td>
+            <td>${escapeHtml(p.personnel_type)}</td>
             <td>${p.district === 'ERSTWHILE' ? 'Erstwhile' : 'Krishna New'}</td>
-            <td>${scstLabel}</td>
-            <td>${p.present_working || '-'}</td>
-            <td style="color:${p.status==='Present'?'green':'red'}">${p.status}</td>
+            <td>${escapeHtml(scstLabel)}</td>
+            <td>${escapeHtml(p.present_working) || '-'}</td>
+            <td style="color:${p.status==='Present'?'green':'red'}">${escapeHtml(p.status)}</td>
             ${objectionCol}
             <td>
                 ${isAdmin ? `<button class="action-btn btn-primary" onclick="editPOExtended('${p.id}')">Edit</button>` : ''}

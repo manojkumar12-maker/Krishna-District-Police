@@ -70,12 +70,10 @@ CREATE TABLE IF NOT EXISTS deputationstrengths (
     UNIQUE(unit_name, rank)
 );
 
--- Migration: add present_district column (for existing databases)
-ALTER TABLE personnel ADD COLUMN present_district TEXT DEFAULT '';
-
--- Migration: add new personnel fields (for existing databases)
-ALTER TABLE personnel ADD COLUMN native_place TEXT DEFAULT '';
-ALTER TABLE personnel ADD COLUMN date_of_appointment TEXT DEFAULT '';
-ALTER TABLE personnel ADD COLUMN date_of_joining_present TEXT DEFAULT '';
-ALTER TABLE personnel ADD COLUMN attachments TEXT DEFAULT '';
-ALTER TABLE personnel ADD COLUMN previous_deputations TEXT DEFAULT '';
+-- Note: For existing databases that predate schema updates, run these migrations separately:
+-- ALTER TABLE personnel ADD COLUMN present_district TEXT DEFAULT '';
+-- ALTER TABLE personnel ADD COLUMN native_place TEXT DEFAULT '';
+-- ALTER TABLE personnel ADD COLUMN date_of_appointment TEXT DEFAULT '';
+-- ALTER TABLE personnel ADD COLUMN date_of_joining_present TEXT DEFAULT '';
+-- ALTER TABLE personnel ADD COLUMN attachments TEXT DEFAULT '';
+-- ALTER TABLE personnel ADD COLUMN previous_deputations TEXT DEFAULT '';
