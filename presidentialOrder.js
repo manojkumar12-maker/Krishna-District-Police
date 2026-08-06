@@ -552,11 +552,20 @@ function importPOUnitData(input, rank) {
     const reader = new FileReader();
     reader.onload = function(e) {
         try {
-            const text = e.target.result;
-            const lines = text.trim().split('\n');
+            let csvText = e.target.result;
+            
+            // If xlsx, convert to CSV using SheetJS
+            if (file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
+                const data = new Uint8Array(csvText.split('').map(c => c.charCodeAt(0)));
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                csvText = XLSX.utils.sheet_to_csv(firstSheet);
+            }
+            
+            const lines = splitCSVLines(csvText);
             if (lines.length < 2) { showToast('Empty file', 'error'); input.value = ''; return; }
 
-            const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase().replace(/\s+/g, '_'));
+            const headers = parseCSVLine(lines[0]).map(h => h.trim().replace(/^"|"$/g, '').toLowerCase().replace(/\s+/g, '_').replace(/\./g, ''));
             const dataRows = lines.slice(1);
 
             let imported = 0;
@@ -573,34 +582,47 @@ function importPOUnitData(input, rank) {
                     const name = row.name;
                     if (!name) { errors++; return; }
 
-                    const scst = ['SC_1','SC_2','SC_3','ST'].includes(row.sc_st) ? row.sc_st : '';
-                    const srType = ['Final','Provisional','Tentative'].includes(row.type_of_seniority) ? row.type_of_seniority : 'Provisional';
+                    // Normalize values
+                    const gender = normalizePOGender(row.gender);
+                    const scst = normalizePOSCST(row.sc_st || row.scst || row.sc_st_group);
+                    const srType = normalizePOSeniorityType(row.type_of_seniority || row.seniority_type);
+                    const dob = normalizePODate(row.dob || row.date_of_birth);
+                    const doj = normalizePODate(row.doj || row.date_of_joining);
+                    const procDate = normalizePODate(row.proceedings_date);
+                    const isWidow = normalizePOBoolean(row.widow);
+                    const isMcc = normalizePOBoolean(row.mcc || row.disabled_children);
+                    const isCancer = normalizePOBoolean(row.cancer);
+                    const isNeuro = normalizePOBoolean(row.neuro_surgery || row.neuro || row.neurosurgery);
+                    const isKidney = normalizePOBoolean(row.kidney_trans || row.kidney);
+                    const isLiver = normalizePOBoolean(row.liver_trans || row.liver);
+                    const isHeart = normalizePOBoolean(row.open_heart || row.heart);
+                    const cadreId = normalizePOCadre(row.cadre || row.allocated_cadre_id);
 
                     const entry = {
                         rank: row.rank || rank,
                         personnel_type: (row.rank || rank).includes('(AR)') ? 'AR' : 'CIVIL',
                         name: name,
                         genl_no: row.genl_no || '',
-                        seniority_no: parseInt(row.seniority_no) || (poUnitPersonnel.length + 1 + imported),
-                        gender: row.gender || '',
-                        date_of_birth: row.dob || '',
-                        date_of_joining: row.doj || '',
-                        cfms_id: row.cfms_id || '',
-                        mobile: row.mobile || '',
+                        seniority_no: parseInt(row.seniority_no || row.sl_no || row.sr_no) || (poUnitPersonnel.length + 1 + imported),
+                        gender: gender,
+                        date_of_birth: dob,
+                        date_of_joining: doj,
+                        cfms_id: row.cfms_id || row.cfms || '',
+                        mobile: row.mobile || row.phone || row.phone_number || '',
                         caste: row.caste || '',
                         sc_st_group: scst,
-                        pwbd_percent: row.pwbd || row.pwbd_percent || '',
-                        widow: row.widow === 'Yes' ? 'Yes' : '',
-                        disabled_children: row.mcc === 'Yes' ? 'Yes' : '',
-                        cancer: row.cancer === 'Yes',
-                        neurosurgery: row.neuro_surgery === 'Yes' || row.neuro === 'Yes',
-                        kidney: row.kidney_trans === 'Yes' || row.kidney === 'Yes',
-                        liver: row.liver_trans === 'Yes' || row.liver === 'Yes',
-                        heart: row.open_heart === 'Yes' || row.heart === 'Yes',
+                        pwbd_percent: row.pwbd || row.pwbd_percent || row.disability || '',
+                        widow: isWidow ? 'Yes' : '',
+                        disabled_children: isMcc ? 'Yes' : '',
+                        cancer: isCancer,
+                        neurosurgery: isNeuro,
+                        kidney: isKidney,
+                        liver: isLiver,
+                        heart: isHeart,
                         seniority_type: srType,
-                        proceedings_no: row.proceedings_no || '',
-                        proceedings_date: row.proceedings_date || '',
-                        allocated_cadre_id: row.cadre || '',
+                        proceedings_no: row.proceedings_no || row.proceed_no || '',
+                        proceedings_date: procDate,
+                        allocated_cadre_id: cadreId,
                         _idx: startIdx + imported
                     };
                     poUnitPersonnel.push(entry);
@@ -622,18 +644,149 @@ function importPOUnitData(input, rank) {
     reader.readAsText(file);
 }
 
+function splitCSVLines(text) {
+    const lines = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const next = text[i + 1];
+        if (char === '"') {
+            if (inQuotes && next === '"') {
+                current += '"';
+                i++;
+            } else {
+                inQuotes = !inQuotes;
+            }
+        } else if (char === '\n' || char === '\r') {
+            if (inQuotes) {
+                current += char;
+            } else {
+                if (current || lines.length === 0) {
+                    lines.push(current);
+                    current = '';
+                }
+                if (char === '\r' && next === '\n') i++;
+            }
+        } else {
+            current += char;
+        }
+    }
+    if (current || lines.length === 0) lines.push(current);
+    return lines.filter(l => l.trim() !== '');
+}
+
 function parseCSVLine(line) {
-    const result = [];
+    const values = [];
     let current = '';
     let inQuotes = false;
     for (let i = 0; i < line.length; i++) {
-        const ch = line[i];
-        if (ch === '"') { inQuotes = !inQuotes; }
-        else if (ch === ',' && !inQuotes) { result.push(current); current = ''; }
-        else { current += ch; }
+        const char = line[i];
+        const next = line[i + 1];
+        if (char === '"') {
+            if (inQuotes && next === '"') {
+                current += '"';
+                i++;
+            } else {
+                inQuotes = !inQuotes;
+            }
+        } else if (char === ',') {
+            if (inQuotes) {
+                current += ',';
+            } else {
+                values.push(current.trim());
+                current = '';
+            }
+        } else {
+            current += char;
+        }
     }
-    result.push(current);
-    return result;
+    values.push(current.trim());
+    return values.map(v => v.replace(/^"|"$/g, ''));
+}
+
+function normalizePODate(val) {
+    if (!val || val === '') return '';
+    // Excel serial date (number)
+    const num = Number(val);
+    if (!isNaN(num) && num > 30000 && num < 100000) {
+        const epoch = new Date(1899, 11, 30);
+        const date = new Date(epoch.getTime() + num * 24 * 60 * 60 * 1000);
+        if (!isNaN(date.getTime())) {
+            return formatPODate(date);
+        }
+    }
+    // String date parsing
+    const str = String(val).trim();
+    // YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    // DD-MM-YYYY or DD/MM/YYYY
+    const dm = str.match(/^(\d{1,2})[\-\/](\d{1,2})[\-\/](\d{4})$/);
+    if (dm) {
+        const d = parseInt(dm[1], 10);
+        const m = parseInt(dm[2], 10);
+        const y = parseInt(dm[3], 10);
+        if (m <= 12 && d <= 31) {
+            return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
+    }
+    // Try native Date parse
+    const d = new Date(str);
+    if (!isNaN(d.getTime()) && str.length > 5) {
+        return formatPODate(d);
+    }
+    return str;
+}
+
+function formatPODate(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+function normalizePOGender(val) {
+    const v = String(val).toLowerCase().trim();
+    if (v === 'male' || v === 'm' || v === 'boy' || v === 'man') return 'Male';
+    if (v === 'female' || v === 'f' || v === 'girl' || v === 'woman') return 'Female';
+    if (v === 'other' || v === 'transgender' || v === 'tg') return 'Other';
+    return val;
+}
+
+function normalizePOSCST(val) {
+    const v = String(val).toUpperCase().trim().replace(/\./g, '').replace(/\s/g, '');
+    if (v === 'SC1' || v === 'SC-1' || v === 'SC_1' || v === 'S-1' || v === 'S1' || v.includes('GROUP1') || v.includes('GRP1')) return 'SC_1';
+    if (v === 'SC2' || v === 'SC-2' || v === 'SC_2' || v === 'S-2' || v === 'S2' || v.includes('GROUP2') || v.includes('GRP2')) return 'SC_2';
+    if (v === 'SC3' || v === 'SC-3' || v === 'SC_3' || v === 'S-3' || v === 'S3' || v.includes('GROUP3') || v.includes('GRP3')) return 'SC_3';
+    if (v === 'ST' || v === 'S-T' || v === 'SCHEDULEDTRIBE') return 'ST';
+    if (v === 'SC' && !v.includes('1') && !v.includes('2') && !v.includes('3')) return '';
+    return '';
+}
+
+function normalizePOSeniorityType(val) {
+    const v = String(val).toLowerCase().trim();
+    if (v === 'final' || v === 'f') return 'Final';
+    if (v === 'tentative' || v === 't') return 'Tentative';
+    return 'Provisional';
+}
+
+function normalizePOBoolean(val) {
+    const v = String(val).toLowerCase().trim();
+    if (v === 'true' || v === 'yes' || v === '1' || v === 'y' || v === 'checked') return true;
+    if (v === 'false' || v === 'no' || v === '0' || v === 'n' || v === '' || v === 'unchecked') return false;
+    return Boolean(val);
+}
+
+function normalizePOCadre(val) {
+    if (!val) return '';
+    const v = String(val).trim();
+    // If it's already a valid cadre ID
+    if (poCadres.find(c => c.id === v)) return v;
+    // Try matching by name
+    const lower = v.toLowerCase();
+    const match = poCadres.find(c => c.name.toLowerCase() === lower || c.name.toLowerCase().includes(lower));
+    if (match) return match.id;
+    return v;
 }
 
 // ==================== OVERVIEW TAB ====================
