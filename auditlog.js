@@ -103,7 +103,7 @@ async function handleExcelUpload(input) {
         }
 
         // Send as CSV file to backend
-        const csvBlob = new Blob([csvText], { type: 'text/csv' });
+        const csvBlob = new Blob([csvText], { type: 'text/csv;charset=utf-8' });
         const csvFile = new File([csvBlob], file.name.replace(/\.xlsx?$/, '.csv'), { type: 'text/csv' });
 
         const result = await importPersonnelExcel(csvFile);

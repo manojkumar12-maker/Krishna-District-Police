@@ -436,15 +436,179 @@ app.post('/api/personnel/import', authRequired(), adminRequired(), async (c) => 
 });
 
 function parseCSV(text) {
-    const lines = text.trim().split('\n');
+    const lines = splitCSVLines(text);
     if (lines.length < 2) return [];
-    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase().replace(/ /g, '_'));
+    const headers = parseCSVLine(lines[0]).map(h => h.trim().replace(/^"|"$/g, '').toLowerCase().replace(/ /g, '_').replace(/\./g, ''));
     return lines.slice(1).map(line => {
-        const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+        const values = parseCSVLine(line);
         const obj = {};
         headers.forEach((h, i) => { obj[h] = values[i] || null; });
         return normalizeRow(obj);
     });
+}
+
+function splitCSVLines(text) {
+    const lines = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const next = text[i + 1];
+        if (char === '"') {
+            if (inQuotes && next === '"') {
+                current += '"';
+                i++;
+            } else {
+                inQuotes = !inQuotes;
+            }
+        } else if (char === '\n' || char === '\r') {
+            if (inQuotes) {
+                current += char;
+            } else {
+                if (current || lines.length === 0) {
+                    lines.push(current);
+                    current = '';
+                }
+                if (char === '\r' && next === '\n') i++;
+            }
+        } else {
+            current += char;
+        }
+    }
+    if (current || lines.length === 0) lines.push(current);
+    return lines.filter(l => l.trim() !== '');
+}
+
+function parseCSVLine(line) {
+    const values = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const next = line[i + 1];
+        if (char === '"') {
+            if (inQuotes && next === '"') {
+                current += '"';
+                i++;
+            } else {
+                inQuotes = !inQuotes;
+            }
+        } else if (char === ',') {
+            if (inQuotes) {
+                current += ',';
+            } else {
+                values.push(current.trim());
+                current = '';
+            }
+        } else {
+            current += char;
+        }
+    }
+    values.push(current.trim());
+    return values.map(v => v.replace(/^"|"$/g, ''));
+}
+
+function normalizeDate(val) {
+    if (!val || val === '') return '';
+    // Excel serial date (number)
+    const num = Number(val);
+    if (!isNaN(num) && num > 30000 && num < 100000) {
+        const epoch = new Date(1899, 11, 30);
+        const date = new Date(epoch.getTime() + num * 24 * 60 * 60 * 1000);
+        if (!isNaN(date.getTime())) {
+            return formatDate(date);
+        }
+    }
+    // String date parsing
+    const str = String(val).trim();
+    // YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    // DD-MM-YYYY or DD/MM/YYYY
+    const dm = str.match(/^(\d{1,2})[\-\/](\d{1,2})[\-\/](\d{4})$/);
+    if (dm) {
+        const d = parseInt(dm[1], 10);
+        const m = parseInt(dm[2], 10);
+        const y = parseInt(dm[3], 10);
+        if (m <= 12 && d <= 31) {
+            return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
+    }
+    // MM-DD-YYYY or MM/DD/YYYY
+    const md = str.match(/^(\d{1,2})[\-\/](\d{1,2})[\-\/](\d{4})$/);
+    if (md) {
+        const m = parseInt(md[1], 10);
+        const d = parseInt(md[2], 10);
+        const y = parseInt(md[3], 10);
+        if (m <= 12 && d <= 31) {
+            return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
+    }
+    // Try native Date parse
+    const d = new Date(str);
+    if (!isNaN(d.getTime()) && str.length > 5) {
+        return formatDate(d);
+    }
+    return str;
+}
+
+function formatDate(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+function normalizeDistrict(val) {
+    const v = String(val).toLowerCase().trim();
+    if (v.includes('erstwhile') || v.includes('old') || v === 'erstwhile') return 'ERSTWHILE';
+    if (v.includes('new') || v === 'new') return 'NEW';
+    if (v.includes('deputation') || v === 'deputation' || v === 'dep') return 'DEPUTATION';
+    if (v === 'krishna' || v === 'ktr') return 'NEW';
+    return val.toUpperCase();
+}
+
+function normalizeType(val) {
+    const v = String(val).toLowerCase().trim();
+    if (v === 'civil' || v === 'civ') return 'CIVIL';
+    if (v === 'ar' || v === 'a.r' || v === 'a.r.' || v === 'armed reserve') return 'AR';
+    return val.toUpperCase();
+}
+
+function normalizeGender(val) {
+    const v = String(val).toLowerCase().trim();
+    if (v === 'male' || v === 'm' || v === 'boy' || v === 'man') return 'Male';
+    if (v === 'female' || v === 'f' || v === 'girl' || v === 'woman') return 'Female';
+    if (v === 'other' || v === 'transgender' || v === 'tg') return 'Other';
+    return val;
+}
+
+function normalizeStatus(val) {
+    const v = String(val).toLowerCase().trim();
+    if (v === 'present' || v === 'active' || v === 'working' || v === 'yes' || v === '1' || v === 'true') return 'Present';
+    if (v === 'deserter' || v === 'absconding' || v === 'absent' || v === 'no' || v === '0' || v === 'false') return 'Deserter';
+    if (v === 'suspended') return 'Suspended';
+    if (v === 'retired') return 'Retired';
+    if (v === 'expired') return 'Expired';
+    if (v === 'transfer') return 'Transfer';
+    if (v === 'study leave') return 'Study Leave';
+    if (v === 'maternity leave') return 'Maternity Leave';
+    if (v === 'medical leave') return 'Medical Leave';
+    return val;
+}
+
+function normalizePresentDistrict(val) {
+    const v = String(val).toLowerCase().trim();
+    if (v === 'krishna' || v === 'kri' || v === 'vja' || v === 'vijayawada') return 'KRISHNA';
+    if (v === 'ntr' || v === 'n.t.r' || v === 'n t r') return 'NTR';
+    if (v === 'eluru' || v === 'elu' || v === 'west godavari') return 'ELURU';
+    return val.toUpperCase();
+}
+
+function normalizeBoolean(val) {
+    const v = String(val).toLowerCase().trim();
+    if (v === 'true' || v === 'yes' || v === '1' || v === 'y') return true;
+    if (v === 'false' || v === 'no' || v === '0' || v === 'n' || v === '') return false;
+    return Boolean(val);
 }
 
 function normalizeRow(row) {
@@ -472,7 +636,21 @@ function normalizeRow(row) {
             if (row[alias] !== undefined && row[alias] !== null && row[alias] !== '') {
                 let val = row[alias];
                 if (field === 'is_on_deployment') {
-                    val = String(val).toLowerCase() === 'true' || String(val).toLowerCase() === 'yes';
+                    val = normalizeBoolean(val);
+                } else if (field === 'date_of_birth' || field === 'date_of_promotion' || field === 'date_of_deployment' || field === 'date_of_appointment' || field === 'date_of_joining_present') {
+                    val = normalizeDate(val);
+                } else if (field === 'district') {
+                    val = normalizeDistrict(val);
+                } else if (field === 'personnel_type') {
+                    val = normalizeType(val);
+                } else if (field === 'gender') {
+                    val = normalizeGender(val);
+                } else if (field === 'status') {
+                    val = normalizeStatus(val);
+                } else if (field === 'present_district') {
+                    val = normalizePresentDistrict(val);
+                } else {
+                    val = String(val).trim();
                 }
                 doc[field] = val;
                 break;
