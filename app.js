@@ -26,6 +26,23 @@ document.addEventListener('DOMContentLoaded', function() {
     // Attach event listeners
     document.getElementById('loginBtn').addEventListener('click', handleAuth);
 
+    // Calculated fields for personnel modal
+    const dobInput = document.getElementById('dateOfBirth');
+    const retirementInput = document.getElementById('dateOfRetirement');
+    if (dobInput && retirementInput) {
+        dobInput.addEventListener('change', function() {
+            retirementInput.value = calculateRetirementDate(this.value) || '';
+        });
+    }
+
+    const joiningInput = document.getElementById('dateOfJoiningPresent');
+    const fiveYearsInput = document.getElementById('fiveYearsCompleted');
+    if (joiningInput && fiveYearsInput) {
+        joiningInput.addEventListener('change', function() {
+            fiveYearsInput.value = calculateFiveYearsCompleted(this.value) || '';
+        });
+    }
+
     // Check if user is already logged in
     checkAuth();
 });

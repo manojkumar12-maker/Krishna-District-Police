@@ -1,5 +1,27 @@
 // Personnel Management Module
 
+function calculateRetirementDate(dateOfBirth) {
+    if (!dateOfBirth) return null;
+    const dob = new Date(dateOfBirth);
+    if (isNaN(dob.getTime())) return null;
+    // Add 62 years
+    const retirementYear = dob.getFullYear() + 62;
+    const retirementMonth = dob.getMonth();
+    // Last day of that month
+    const lastDay = new Date(retirementYear, retirementMonth + 1, 0).getDate();
+    return `${lastDay.toString().padStart(2, '0')}-${(retirementMonth + 1).toString().padStart(2, '0')}-${retirementYear}`;
+}
+
+function calculateFiveYearsCompleted(dateOfJoiningPresent) {
+    if (!dateOfJoiningPresent) return null;
+    const joining = new Date(dateOfJoiningPresent);
+    if (isNaN(joining.getTime())) return null;
+    const now = new Date();
+    const diffMs = now - joining;
+    const diffYears = diffMs / (1000 * 60 * 60 * 24 * 365.25);
+    return diffYears >= 5 ? 'Yes' : 'No';
+}
+
 function openAddModal() {
     if (userRole !== 'ADMIN') {
         showToast('Only administrators can add personnel', 'error');
@@ -24,7 +46,14 @@ function openAddModal() {
     document.getElementById('caste').value = '';
     document.getElementById('education').value = '';
     document.getElementById('dateOfPromotion').value = '';
+    document.getElementById('nativePlace').value = '';
+    document.getElementById('dateOfAppointment').value = '';
+    document.getElementById('dateOfRetirement').value = '';
     document.getElementById('presentWorking').value = '';
+    document.getElementById('dateOfJoiningPresent').value = '';
+    document.getElementById('fiveYearsCompleted').value = '';
+    document.getElementById('attachments').value = '';
+    document.getElementById('previousDeputations').value = '';
     document.getElementById('isOnDeputation').value = 'false';
     document.getElementById('deploymentUnit').value = '';
     document.getElementById('dateOfDeployment').value = '';
@@ -42,7 +71,9 @@ function downloadPersonnelTemplate() {
             'gender', 'previous_station', 'status', 'date_of_birth',
             'caste', 'education', 'date_of_promotion', 'present_working',
             'phone_number', 'punishments', 'is_on_deployment',
-            'deployment_unit', 'date_of_deployment'
+            'deployment_unit', 'date_of_deployment',
+            'native_place', 'date_of_appointment', 'date_of_joining_present',
+            'attachments', 'previous_deputations'
         ];
         const districts = [
             { code: 'ERSTWHILE', label: 'Erstwhile Krishna District' },
@@ -61,6 +92,8 @@ function downloadPersonnelTemplate() {
                     idx % 2 === 0 ? 'Male' : 'Female', '', 'Present', '',
                     '', '', '', '',
                     '', '', 'false',
+                    '', '',
+                    '', '', '',
                     '', ''
                 ].join(',') + '\n';
                 rowNum++;
@@ -71,6 +104,8 @@ function downloadPersonnelTemplate() {
                     idx % 2 === 0 ? 'Male' : 'Female', '', 'Present', '',
                     '', '', '', '',
                     '', '', 'false',
+                    '', '',
+                    '', '', '',
                     '', ''
                 ].join(',') + '\n';
                 rowNum++;
@@ -123,7 +158,12 @@ async function savePersonnel() {
     const caste = document.getElementById('caste').value.trim() || null;
     const education = document.getElementById('education').value.trim() || null;
     const dateOfPromotion = document.getElementById('dateOfPromotion').value || null;
+    const nativePlace = document.getElementById('nativePlace').value.trim() || null;
+    const dateOfAppointment = document.getElementById('dateOfAppointment').value || null;
     const presentWorking = document.getElementById('presentWorking').value.trim() || null;
+    const dateOfJoiningPresent = document.getElementById('dateOfJoiningPresent').value || null;
+    const attachments = document.getElementById('attachments').value.trim() || null;
+    const previousDeputations = document.getElementById('previousDeputations').value.trim() || null;
     const isOnDeployment = document.getElementById('isOnDeputation').value === 'true';
     const deploymentUnit = document.getElementById('deploymentUnit').value || null;
     const dateOfDeployment = document.getElementById('dateOfDeployment').value || null;
@@ -149,7 +189,12 @@ async function savePersonnel() {
         caste,
         education,
         date_of_promotion: dateOfPromotion,
+        native_place: nativePlace,
+        date_of_appointment: dateOfAppointment,
         present_working: presentWorking,
+        date_of_joining_present: dateOfJoiningPresent,
+        attachments: attachments,
+        previous_deputations: previousDeputations,
         is_on_deployment: isOnDeployment,
         deployment_unit: deploymentUnit,
         date_of_deployment: dateOfDeployment,
@@ -199,7 +244,12 @@ async function editPersonnel(id) {
         document.getElementById('caste').value = personnel.caste || '';
         document.getElementById('education').value = personnel.education || '';
         document.getElementById('dateOfPromotion').value = personnel.date_of_promotion || '';
+        document.getElementById('nativePlace').value = personnel.native_place || '';
+        document.getElementById('dateOfAppointment').value = personnel.date_of_appointment || '';
         document.getElementById('presentWorking').value = personnel.present_working || '';
+        document.getElementById('dateOfJoiningPresent').value = personnel.date_of_joining_present || '';
+        document.getElementById('attachments').value = personnel.attachments || '';
+        document.getElementById('previousDeputations').value = personnel.previous_deputations || '';
         document.getElementById('isOnDeputation').value = personnel.is_on_deployment ? 'true' : 'false';
         document.getElementById('deploymentUnit').value = personnel.deployment_unit || '';
         document.getElementById('dateOfDeployment').value = personnel.date_of_deployment || '';
@@ -256,7 +306,14 @@ function showPersonnelDetail(id) {
         { label: 'Caste', value: p.caste || '-' },
         { label: 'Education', value: p.education || '-' },
         { label: 'Date of Promotion', value: p.date_of_promotion || '-' },
+        { label: 'Native Place', value: p.native_place || '-' },
+        { label: 'Date of Appointment', value: p.date_of_appointment || '-' },
+        { label: 'Date of Retirement', value: calculateRetirementDate(p.date_of_birth) || '-' },
         { label: 'Present Working', value: p.present_working || '-' },
+        { label: 'Date of Joining of Present Working', value: p.date_of_joining_present || '-' },
+        { label: '5 Years Completed', value: calculateFiveYearsCompleted(p.date_of_joining_present) || '-' },
+        { label: 'Attachments', value: p.attachments || '-' },
+        { label: 'Previous Deputations', value: p.previous_deputations || '-' },
         { label: 'Previous Station', value: p.previous_station || '-' },
         { label: 'Phone Number', value: p.phone_number || '-' },
         { label: 'On Deputation', value: p.is_on_deployment ? 'Yes' : 'No' },

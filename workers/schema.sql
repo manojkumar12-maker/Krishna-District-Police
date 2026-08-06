@@ -30,6 +30,11 @@ CREATE TABLE IF NOT EXISTS personnel (
     deployment_unit TEXT DEFAULT '',
     date_of_deployment TEXT DEFAULT '',
     present_district TEXT DEFAULT '',
+    native_place TEXT DEFAULT '',
+    date_of_appointment TEXT DEFAULT '',
+    date_of_joining_present TEXT DEFAULT '',
+    attachments TEXT DEFAULT '',
+    previous_deputations TEXT DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -67,3 +72,10 @@ CREATE TABLE IF NOT EXISTS deputationstrengths (
 
 -- Migration: add present_district column (for existing databases)
 ALTER TABLE personnel ADD COLUMN present_district TEXT DEFAULT '';
+
+-- Migration: add new personnel fields (for existing databases)
+ALTER TABLE personnel ADD COLUMN native_place TEXT DEFAULT '';
+ALTER TABLE personnel ADD COLUMN date_of_appointment TEXT DEFAULT '';
+ALTER TABLE personnel ADD COLUMN date_of_joining_present TEXT DEFAULT '';
+ALTER TABLE personnel ADD COLUMN attachments TEXT DEFAULT '';
+ALTER TABLE personnel ADD COLUMN previous_deputations TEXT DEFAULT '';
