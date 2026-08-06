@@ -87,7 +87,7 @@ Each file depends on the previous. `presidentialOrder.js` overrides `dashboard.j
 - **Always bump `PO_DATA_VERSION` when changing data schema**
 
 ### Tabs (rendered in `#poMainContent` inside `#presidentialOrder` page)
-1. **Unit Data** (`renderPOUnitData`) - 16 district cadre ranks, per-cadre strength, personnel with Format-I(A) columns
+1. **Unit Data** (`renderPOUnitData`) - 19 district cadre ranks, per-cadre strength, personnel with Format-I(A) columns
 2. **Overview** (`renderPOOverview`) - Dashboard with workflow stepper
 3. **Cadres & Strength** (`renderPOCadres`) - Define/manage cadres
 4. **Seniority List** (`renderPOSeniority`) - DSL → Objections → FSL workflow
@@ -104,12 +104,12 @@ Each file depends on the previous. `presidentialOrder.js` overrides `dashboard.j
 ```
 All are `level: 'DISTRICT'`. Only district-level cadres exist (no zonal/multi-zonal).
 
-### PO Unit Ranks (16 ranks)
+### PO Unit Ranks (19 ranks)
 ```
 Assistant Sub-Inspector of Police, Head Constable (Civil), Police Constable (Civil),
-Head Constable (AR), Police Constable (AR), Senior Assistant, Junior Assistant,
-Typists, Record Assistant, Office Sub-Ordinates, Sweepers, Scavengers,
-Dhobi, Barbers, Cobbler, Waterman
+Head Constable (AR), Police Constable (AR), Administrative Officer, Asst. Administrative Officer,
+Office Supdt., Senior Assistant, Junior Assistant, Typists, Record Assistant,
+Office Sub-Ordinates, Sweepers, Scavengers, Dhobi, Barbers, Cobbler, Waterman
 ```
 
 ### Personnel Record Structure (Format-I(A) compliant)

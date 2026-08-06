@@ -42,6 +42,9 @@ const PO_UNIT_RANKS = [
     'Police Constable (Civil)',
     'Head Constable (AR)',
     'Police Constable (AR)',
+    'Administrative Officer',
+    'Asst. Administrative Officer',
+    'Office Supdt.',
     'Senior Assistant',
     'Junior Assistant',
     'Typists',
@@ -57,7 +60,7 @@ const PO_UNIT_RANKS = [
 
 const PO_STAGES = ['init', 'cadre_defined', 'dsl_published', 'objection_period', 'fsl_published', 'options_open', 'allocation_done'];
 
-const PO_DATA_VERSION = 7;
+const PO_DATA_VERSION = 8;
 
 function loadPOData() {
     try {
