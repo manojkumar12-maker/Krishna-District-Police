@@ -8,6 +8,10 @@ const rankMap = {
     'NEW_AR': ['ARPC','ARWPC','ARHC','ARWHC','ARSI','WARSI','RSI','WRSI','RI','WRI','ARDSP','ADDL.SP.AR'],
     'ERSTWHILE_CIVIL': ['PC','WPC','HC','WHC','ASI','WASI','SI','WSI','CI','WCI','DSP','ADDL.SP'],
     'ERSTWHILE_AR': ['ARPC','ARWPC','ARHC','ARWHC','ARSI','WARSI','RSI','WRSI','RI','WRI','ARDSP','ADDL.SP.AR'],
+    'ERSTWHILE_MINISTERIAL': ['Administrative Officer','Asst. Administrative Officer','Office Supdt.','Senior Assistant','Junior Assistant','Record Assistant','Office Sub-Ordinates'],
+    'ERSTWHILE_CLASS_IV': ['Sweepers','Scavengers','Dhobi','Barbers','Cobbler','Waterman'],
+    'NEW_MINISTERIAL': ['Administrative Officer','Asst. Administrative Officer','Office Supdt.','Senior Assistant','Junior Assistant','Record Assistant','Office Sub-Ordinates'],
+    'NEW_CLASS_IV': ['Sweepers','Scavengers','Dhobi','Barbers','Cobbler','Waterman'],
     'DEP_CIVIL': ['PC','WPC','HC','WHC','ASI','WASI'],
     'DEP_AR': ['ARPC','ARWPC','ARHC','ARWHC']
 };
@@ -16,7 +20,11 @@ const displayRanksMap = {
     'NEW_CIVIL': ['PC & WPC','HC & WHC','ASI & WASI','SI & WSI','CI & WCI','DSP','ADDL.SP'],
     'NEW_AR': ['ARPC & ARWPC','ARHC & ARWHC','ARSI & WARSI','RSI & WRSI','RI & WRI','ARDSP','ADDL.SP.AR'],
     'ERSTWHILE_CIVIL': ['PC & WPC','HC & WHC','ASI & WASI','SI & WSI','CI & WCI','DSP','ADDL.SP'],
-    'ERSTWHILE_AR': ['ARPC & ARWPC','ARHC & ARWHC','ARSI & WARSI','RSI & WRSI','RI & WRI','ARDSP','ADDL.SP.AR']
+    'ERSTWHILE_AR': ['ARPC & ARWPC','ARHC & ARWHC','ARSI & WARSI','RSI & WRSI','RI & WRI','ARDSP','ADDL.SP.AR'],
+    'ERSTWHILE_MINISTERIAL': ['Administrative Officer','Asst. Administrative Officer','Office Supdt.','Senior Assistant','Junior Assistant','Record Assistant','Office Sub-Ordinates'],
+    'ERSTWHILE_CLASS_IV': ['Sweepers','Scavengers','Dhobi','Barbers','Cobbler','Waterman'],
+    'NEW_MINISTERIAL': ['Administrative Officer','Asst. Administrative Officer','Office Supdt.','Senior Assistant','Junior Assistant','Record Assistant','Office Sub-Ordinates'],
+    'NEW_CLASS_IV': ['Sweepers','Scavengers','Dhobi','Barbers','Cobbler','Waterman']
 };
 
 const rankGroups = {
@@ -25,7 +33,20 @@ const rankGroups = {
     'ADDL.SP': ['ADDL.SP'], 'ARPC & ARWPC': ['ARPC', 'ARWPC'],
     'ARHC & ARWHC': ['ARHC', 'ARWHC'], 'ARSI & WARSI': ['ARSI', 'WARSI'],
     'RSI & WRSI': ['RSI', 'WRSI'], 'RI & WRI': ['RI', 'WRI'],
-    'ARDSP': ['ARDSP'], 'ADDL.SP.AR': ['ADDL.SP.AR']
+    'ARDSP': ['ARDSP'], 'ADDL.SP.AR': ['ADDL.SP.AR'],
+    'Administrative Officer': ['Administrative Officer'],
+    'Asst. Administrative Officer': ['Asst. Administrative Officer'],
+    'Office Supdt.': ['Office Supdt.'],
+    'Senior Assistant': ['Senior Assistant'],
+    'Junior Assistant': ['Junior Assistant'],
+    'Record Assistant': ['Record Assistant'],
+    'Office Sub-Ordinates': ['Office Sub-Ordinates'],
+    'Sweepers': ['Sweepers'],
+    'Scavengers': ['Scavengers'],
+    'Dhobi': ['Dhobi'],
+    'Barbers': ['Barbers'],
+    'Cobbler': ['Cobbler'],
+    'Waterman': ['Waterman']
 };
 
 const depRanks = ['PC', 'HC', 'ASI', 'ARPC', 'ARHC'];

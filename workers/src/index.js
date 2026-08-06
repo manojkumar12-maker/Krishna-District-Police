@@ -571,6 +571,8 @@ function normalizeType(val) {
     const v = String(val).toLowerCase().trim();
     if (v === 'civil' || v === 'civ') return 'CIVIL';
     if (v === 'ar' || v === 'a.r' || v === 'a.r.' || v === 'armed reserve') return 'AR';
+    if (v === 'ministerial' || v === 'ministerial staff' || v === 'min' || v === 'ministerial_staff' || v === 'office staff') return 'MINISTERIAL';
+    if (v === 'class_iv' || v === 'class-iv' || v === 'class iv' || v === 'class4' || v === 'class_4' || v === 'class-4' || v === 'fourth class' || v === 'iv class') return 'CLASS_IV';
     return val.toUpperCase();
 }
 

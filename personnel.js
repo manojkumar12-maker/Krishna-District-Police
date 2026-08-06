@@ -81,10 +81,12 @@ function downloadPersonnelTemplate() {
         ];
         let csvContent = '\uFEFF' + headers.join(',') + '\n';
 
-        // Generate mock rows for all CIVIL and AR ranks in both districts
+        // Generate mock rows for all personnel types in both districts
         districts.forEach(d => {
             const civRanks = rankMap[d.code + '_CIVIL'] || [];
             const arRanks = rankMap[d.code + '_AR'] || [];
+            const ministerialRanks = rankMap[d.code + '_MINISTERIAL'] || [];
+            const classIvRanks = rankMap[d.code + '_CLASS_IV'] || [];
             let rowNum = 1;
             civRanks.forEach((r, idx) => {
                 csvContent += [
@@ -101,6 +103,30 @@ function downloadPersonnelTemplate() {
             arRanks.forEach((r, idx) => {
                 csvContent += [
                     `Sample ${r} AR ${d.label}`, r, `${2000 + rowNum}`, 'AR', d.code, 'KRISHNA',
+                    idx % 2 === 0 ? 'Male' : 'Female', '', 'Present', '',
+                    '', '', '', '',
+                    '', '', 'false',
+                    '', '',
+                    '', '', '',
+                    '', ''
+                ].join(',') + '\n';
+                rowNum++;
+            });
+            ministerialRanks.forEach((r, idx) => {
+                csvContent += [
+                    `Sample ${r} Ministerial ${d.label}`, r, `${3000 + rowNum}`, 'MINISTERIAL', d.code, 'KRISHNA',
+                    idx % 2 === 0 ? 'Male' : 'Female', '', 'Present', '',
+                    '', '', '', '',
+                    '', '', 'false',
+                    '', '',
+                    '', '', '',
+                    '', ''
+                ].join(',') + '\n';
+                rowNum++;
+            });
+            classIvRanks.forEach((r, idx) => {
+                csvContent += [
+                    `Sample ${r} Class-IV ${d.label}`, r, `${4000 + rowNum}`, 'CLASS_IV', d.code, 'KRISHNA',
                     idx % 2 === 0 ? 'Male' : 'Female', '', 'Present', '',
                     '', '', '', '',
                     '', '', 'false',

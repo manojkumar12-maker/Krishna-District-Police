@@ -69,8 +69,12 @@ function updateData() {
     document.getElementById('deputationCount').textContent = depCount;
     document.getElementById('erstwhileCivilCount').textContent = allPersonnel.filter(p => p.district === 'ERSTWHILE' && p.personnel_type === 'CIVIL' && !p.is_on_deployment).length;
     document.getElementById('erstwhileArCount').textContent = allPersonnel.filter(p => p.district === 'ERSTWHILE' && p.personnel_type === 'AR' && !p.is_on_deployment).length;
+    document.getElementById('erstwhileMinisterialCount').textContent = allPersonnel.filter(p => p.district === 'ERSTWHILE' && p.personnel_type === 'MINISTERIAL' && !p.is_on_deployment).length;
+    document.getElementById('erstwhileClassIvCount').textContent = allPersonnel.filter(p => p.district === 'ERSTWHILE' && p.personnel_type === 'CLASS_IV' && !p.is_on_deployment).length;
     document.getElementById('krishnaNewCivilCount').textContent = allPersonnel.filter(p => isNewKrishnaDistrict(p) && p.personnel_type === 'CIVIL' && !p.is_on_deployment).length;
     document.getElementById('krishnaNewArCount').textContent = allPersonnel.filter(p => isNewKrishnaDistrict(p) && p.personnel_type === 'AR' && !p.is_on_deployment).length;
+    document.getElementById('krishnaNewMinisterialCount').textContent = allPersonnel.filter(p => isNewKrishnaDistrict(p) && p.personnel_type === 'MINISTERIAL' && !p.is_on_deployment).length;
+    document.getElementById('krishnaNewClassIvCount').textContent = allPersonnel.filter(p => isNewKrishnaDistrict(p) && p.personnel_type === 'CLASS_IV' && !p.is_on_deployment).length;
     document.getElementById('dataCount').textContent = allPersonnel.length + ' records';
 
     if (knCurrentRank && document.getElementById('knStrengthSection')?.classList.contains('visible')) {

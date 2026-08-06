@@ -177,6 +177,14 @@
                         AR Strength
                         <div class="sub-count" id="erstwhileArCount">0</div>
                     </div>
+                    <div class="sub-tile" onclick="showEWRanks('MINISTERIAL',this)">
+                        Ministerial Staff
+                        <div class="sub-count" id="erstwhileMinisterialCount">0</div>
+                    </div>
+                    <div class="sub-tile" onclick="showEWRanks('CLASS_IV',this)">
+                        Class-IV Employees
+                        <div class="sub-count" id="erstwhileClassIvCount">0</div>
+                    </div>
                 </div>
                 <div class="detail-section" id="ewRankSection">
                     <div class="rank-tiles" id="ewRankTiles"></div>
@@ -234,6 +242,14 @@
                     <div class="sub-tile" onclick="showKNRanks('AR',this)">
                         AR Strength
                         <div class="sub-count" id="krishnaNewArCount">0</div>
+                    </div>
+                    <div class="sub-tile" onclick="showKNRanks('MINISTERIAL',this)">
+                        Ministerial Staff
+                        <div class="sub-count" id="krishnaNewMinisterialCount">0</div>
+                    </div>
+                    <div class="sub-tile" onclick="showKNRanks('CLASS_IV',this)">
+                        Class-IV Employees
+                        <div class="sub-count" id="krishnaNewClassIvCount">0</div>
                     </div>
                 </div>
                 <div class="detail-section" id="knRankSection">
@@ -394,7 +410,7 @@
                     <div class="filter-row">
                         <select id="filterRank" onchange="applySearchFilter()"><option value="">All Ranks</option></select>
                         <select id="filterDistrict" onchange="applySearchFilter()"><option value="">All Districts</option><option value="ERSTWHILE">Erstwhile Krishna</option><option value="NEW">Krishna Dist. (New)</option></select>
-                        <select id="filterType" onchange="applySearchFilter()"><option value="">All Types</option><option value="CIVIL">Civil</option><option value="AR">AR</option></select>
+                        <select id="filterType" onchange="applySearchFilter()"><option value="">All Types</option><option value="CIVIL">Civil</option><option value="AR">AR</option><option value="MINISTERIAL">Ministerial Staff</option><option value="CLASS_IV">Class-IV Employees</option></select>
                         <select id="filterStatus" onchange="applySearchFilter()"><option value="">All Status</option><option value="Present">Present</option><option value="Deserter">Deserter</option></select>
                         <select id="filterGender" onchange="applySearchFilter()"><option value="">All Genders</option><option value="Male">Male</option><option value="Female">Female</option></select>
                         <select id="filterDeployment" onchange="applySearchFilter()"><option value="">Deployment</option><option value="false">Not on Deputation</option><option value="true">On Deputation</option></select>
@@ -443,7 +459,7 @@
                     <div class="form-group"><label>Name *</label><input type="text" id="name" required></div>
                     <div class="form-group"><label>Rank *</label><select id="rank" required><option value="">Select</option></select></div>
                     <div class="form-group"><label>Genl.No. *</label><input type="text" id="genlNo" required></div>
-                    <div class="form-group"><label>Type *</label><select id="personnelType" onchange="updateRankOptions()"><option value="CIVIL">Civil</option><option value="AR">AR</option></select></div>
+                    <div class="form-group"><label>Type *</label><select id="personnelType" onchange="updateRankOptions()"><option value="CIVIL">Civil</option><option value="AR">AR</option><option value="MINISTERIAL">Ministerial Staff</option><option value="CLASS_IV">Class-IV Employees</option></select></div>
                     <div class="form-group"><label>District *</label><select id="district" onchange="updateRankOptions()"><option value="ERSTWHILE">Erstwhile Krishna District</option><option value="NEW">Krishna District (New)</option><option value="DEPUTATION">Deputation</option></select></div>
                     <div class="form-group"><label>Present District</label><select id="presentDistrict"><option value="">Select</option><option value="KRISHNA">KRISHNA</option><option value="NTR">NTR</option><option value="ELURU">ELURU</option></select></div>
                     <div class="form-group"><label>Gender</label><select id="gender"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
