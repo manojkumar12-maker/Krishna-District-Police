@@ -251,7 +251,14 @@ app.get('/api/personnel', authRequired(), async (c) => {
         const { results } = await stmt.all();
         const data = (results || []).map(transformRow);
 
-        return c.json({ success: true, data, count: data.length, page, limit });
+        let total = data.length;
+        if (conditions.length > 0) {
+            const countStmt = db(c).prepare('SELECT COUNT(*) as total FROM personnel WHERE ' + conditions.join(' AND ')).bind(...(params.slice(0, params.length - 2)));
+            const countRow = await countStmt.first();
+            total = countRow?.total ?? data.length;
+        }
+
+        return c.json({ success: true, data, count: total, page, limit });
     } catch (e) {
         return c.json({ error: e.message }, 500);
     }

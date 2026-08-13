@@ -47,12 +47,25 @@ async function loginUser(email, password) {
 
 // Personnel API
 async function getAllPersonnel(filters = {}) {
-    const params = new URLSearchParams();
+    const baseParams = new URLSearchParams();
     for (const [key, value] of Object.entries(filters)) {
-        if (value) params.append(key, value);
+        if (value) baseParams.append(key, value);
     }
-    const query = params.toString();
-    return apiRequest('/personnel' + (query ? '?' + query : ''));
+
+    const pageSize = 500;
+    const all = [];
+    let page = 1;
+    while (true) {
+        const params = new URLSearchParams(baseParams.toString());
+        params.append('limit', pageSize);
+        params.append('page', page);
+        const result = await apiRequest('/personnel?' + params.toString());
+        const data = result.data || [];
+        all.push(...data);
+        if (data.length < pageSize) break;
+        page++;
+    }
+    return { data: all, count: all.length };
 }
 
 async function getPersonnelById(id) {
