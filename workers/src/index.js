@@ -69,6 +69,44 @@ async function auditLog(db, action, performedBy, targetId, targetType, changes =
     }
 }
 
+// ── Schema migrations ────────────────────────────────────────────
+// New tables are created by schema.sql (CREATE TABLE IF NOT EXISTS), but SQLite
+// does not add columns to tables that already exist. These additive migrations
+// run on every deploy (idempotent) so existing databases stay in sync with the
+// columns referenced in this Worker.
+const SCHEMA_COLUMNS = {
+    personnel: [
+        { name: 'present_district', ddl: "TEXT DEFAULT ''" },
+        { name: 'native_place', ddl: "TEXT DEFAULT ''" },
+        { name: 'date_of_appointment', ddl: "TEXT DEFAULT ''" },
+        { name: 'date_of_joining_present', ddl: "TEXT DEFAULT ''" },
+        { name: 'attachments', ddl: "TEXT DEFAULT ''" },
+        { name: 'previous_deputations', ddl: "TEXT DEFAULT ''" },
+    ],
+};
+
+async function migrateSchema(db) {
+    try {
+        for (const [table, columns] of Object.entries(SCHEMA_COLUMNS)) {
+            const tableInfo = await db.prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?1"
+            ).bind(table).first();
+            if (!tableInfo) continue; // table not created yet; schema.sql handles new tables
+
+            const info = await db.prepare(`PRAGMA table_info(${table})`).all();
+            const existing = new Set((info.results || []).map(r => r.name));
+            for (const col of columns) {
+                if (!existing.has(col.name)) {
+                    await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col.name} ${col.ddl}`).run();
+                    console.log(`Migrated: added ${table}.${col.name}`);
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Migration error:', e.message);
+    }
+}
+
 // ── First-run admin seeding ──────────────────────────────────────
 async function seedAdminOnce(db, env) {
     try {
@@ -793,9 +831,23 @@ app.post('/api/deputation-strength', authRequired(), adminRequired(), async (c) 
 });
 
 // ── Export ───────────────────────────────────────────────────────
+let dbReadyPromise = null;
+function ensureDbReady(db, env) {
+    if (!dbReadyPromise) {
+        dbReadyPromise = (async () => {
+            await migrateSchema(db);
+            await seedAdminOnce(db, env);
+        })().catch((e) => {
+            console.error('DB init error:', e.message);
+            dbReadyPromise = null; // allow retry on next request
+        });
+    }
+    return dbReadyPromise;
+}
+
 export default {
     async fetch(request, env, ctx) {
-        ctx.waitUntil(seedAdminOnce(env.DB, env));
+        await ensureDbReady(env.DB, env);
         return app.fetch(request, env, ctx);
     },
 };

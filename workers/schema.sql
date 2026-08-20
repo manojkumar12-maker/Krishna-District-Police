@@ -70,7 +70,10 @@ CREATE TABLE IF NOT EXISTS deputationstrengths (
     UNIQUE(unit_name, rank)
 );
 
--- Note: For existing databases that predate schema updates, run these migrations separately:
+-- Note: For existing databases that predate these columns, no manual migration is
+-- required. The Worker runs idempotent schema migrations on startup (see
+-- SCHEMA_COLUMNS / migrateSchema in src/index.js) and adds any missing columns
+-- automatically. The equivalent manual statements are:
 -- ALTER TABLE personnel ADD COLUMN present_district TEXT DEFAULT '';
 -- ALTER TABLE personnel ADD COLUMN native_place TEXT DEFAULT '';
 -- ALTER TABLE personnel ADD COLUMN date_of_appointment TEXT DEFAULT '';
