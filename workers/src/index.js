@@ -237,6 +237,18 @@ const VALID_DISTRICTS = new Set(['ERSTWHILE', 'NEW', 'DEPUTATION']);
 const VALID_TYPES = new Set(['CIVIL', 'AR', 'MINISTERIAL', 'CLASS_IV']);
 const VALID_STATUS = new Set(['Present', 'Deserter', 'Suspended', 'Retired', 'Expired', 'Transfer', 'Study Leave', 'Maternity Leave', 'Medical Leave']);
 
+// The station sanctioned-strength editor renders one input per *rank group*
+// label from displayRanksMap (config.js), e.g. "PC & WPC". Those combined
+// labels are the legitimate values for this endpoint, so they are validated
+// separately from individual personnel ranks.
+const VALID_STATION_RANKS = new Set([
+    'PC & WPC', 'HC & WHC', 'ASI & WASI', 'SI & WSI', 'CI & WCI', 'DSP', 'ADDL.SP',
+    'ARPC & ARWPC', 'ARHC & ARWHC', 'ARSI & WARSI', 'RSI & WRSI', 'RI & WRI', 'ARDSP', 'ADDL.SP.AR',
+    'Administrative Officer', 'Asst. Administrative Officer', 'Office Supdt.', 'Senior Assistant',
+    'Junior Assistant', 'Typists', 'Record Assistant', 'Office Sub-Ordinates',
+    'Sweepers', 'Scavengers', 'Dhobi', 'Barbers', 'Cobbler', 'Waterman'
+]);
+
 function buildPersonnelQuery(q) {
     const conditions = [];
     const params = [];
@@ -962,7 +974,7 @@ app.post('/api/station-sanctioned', authRequired(), adminRequired(), async (c) =
         if (!sub_division || !rank) {
             return c.json({ error: 'Sub-division and rank are required' }, 400);
         }
-        if (!VALID_RANKS.has(rank)) {
+        if (!VALID_STATION_RANKS.has(rank)) {
             return c.json({ error: 'Invalid rank' }, 400);
         }
 

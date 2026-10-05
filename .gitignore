@@ -13,3 +13,4 @@ personnel.xlsx
 *.xlsx
 *.xls
 nul
+.smoke/

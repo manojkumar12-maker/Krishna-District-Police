@@ -310,7 +310,11 @@ function filterPSPersonnel() {
 
 // ==================== STATION SANCTIONS MANAGEMENT ====================
 
-function showStationSanctionsPage() {
+// Phase 6: the editor reads the server-authoritative in-memory cache, so it
+// must be refreshed before rendering. Without this, entering the page directly
+// (or after a reload) shows zeros even when D1 holds values.
+async function showStationSanctionsPage() {
+    await loadStationSanctionedData();
     showPage('stationSanctions');
     showSSLocationList();
 }
