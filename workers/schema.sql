@@ -36,8 +36,18 @@ CREATE TABLE IF NOT EXISTS personnel (
     attachments TEXT DEFAULT '',
     previous_deputations TEXT DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    deleted_at TEXT DEFAULT NULL,
+    deleted_by TEXT DEFAULT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_personnel_rank ON personnel(rank);
+CREATE INDEX IF NOT EXISTS idx_personnel_district ON personnel(district);
+CREATE INDEX IF NOT EXISTS idx_personnel_type ON personnel(personnel_type);
+CREATE INDEX IF NOT EXISTS idx_personnel_status ON personnel(status);
+CREATE INDEX IF NOT EXISTS idx_personnel_deployment ON personnel(is_on_deployment);
+CREATE INDEX IF NOT EXISTS idx_personnel_genl_no ON personnel(genl_no);
+CREATE INDEX IF NOT EXISTS idx_personnel_deleted ON personnel(deleted_at);
 
 CREATE TABLE IF NOT EXISTS auditlogs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,6 +78,18 @@ CREATE TABLE IF NOT EXISTS deputationstrengths (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(unit_name, rank)
+);
+
+CREATE TABLE IF NOT EXISTS stationsanctionedstrengths (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sub_division TEXT NOT NULL,
+    circle TEXT DEFAULT '',
+    station TEXT DEFAULT '',
+    rank TEXT NOT NULL,
+    sanctioned_count INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(sub_division, circle, station, rank)
 );
 
 -- Note: For existing databases that predate these columns, no manual migration is

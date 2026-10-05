@@ -11,15 +11,21 @@ let ssCurrentSubDiv = '';
 let ssCurrentCircle = '';
 let ssCurrentStation = '';
 
-function loadStationSanctionedData() {
+// Phase 6: sanctioned strength is server-authoritative (D1), loaded via API.
+// localStorage is no longer used as the source of truth.
+async function loadStationSanctionedData() {
     try {
-        const stored = localStorage.getItem('station_sanctioned_data');
-        if (stored) stationSanctionedData = JSON.parse(stored);
-    } catch(e) { console.error('Error loading station sanctioned data:', e); }
-}
-
-function saveStationSanctionedData() {
-    localStorage.setItem('station_sanctioned_data', JSON.stringify(stationSanctionedData));
+        const result = await getStationSanctionedStrength();
+        stationSanctionedData = {};
+        if (result && result.data) {
+            result.data.forEach(s => {
+                stationSanctionedData[getStationSancKey(s.sub_division, s.circle, s.station, s.rank)] = s.sanctioned_count;
+            });
+        }
+    } catch (e) {
+        console.error('Error loading station sanctioned data:', e);
+        showToast('Failed to load station sanctioned strength', 'error');
+    }
 }
 
 function getStationSancKey(subDiv, circle, station, rank) {
@@ -38,12 +44,15 @@ function escapeQuotes(str) {
     return str.replace(/'/g, "\\'");
 }
 
-function showPSPage() {
+async function showPSPage() {
     showPage('policeStation');
     psCurrentSubDivision = '';
     psCurrentCircle = '';
     psCurrentStation = '';
     psViewRankGroup = '';
+
+    await loadStationSanctionedData();
+    await checkStationMigration();
 
     const subDivNames = Object.keys(psHierarchy);
     document.getElementById('psSubDivisionTiles').innerHTML = subDivNames.map(sd =>
@@ -371,13 +380,30 @@ function selectSSLocation(subDiv, circle, station, label) {
     document.getElementById('ssRankEditor').classList.add('visible');
 }
 
-function saveStationSanctions() {
-    const inputs = document.querySelectorAll('.ss-sanc-input');
-    inputs.forEach(inp => {
-        setStationSanctioned(ssCurrentSubDiv, ssCurrentCircle, ssCurrentStation, inp.dataset.rank, inp.value);
-    });
-    saveStationSanctionedData();
-    showToast('Station sanctioned strengths saved', 'success');
+async function saveStationSanctions() {
+    const inputs = Array.from(document.querySelectorAll('.ss-sanc-input'));
+    if (inputs.length === 0) {
+        showToast('No sanctioned strength values to save', 'error');
+        return;
+    }
+    if (userRole !== 'ADMIN') {
+        showToast('Admin access required to modify sanctioned strength', 'error');
+        return;
+    }
+
+    try {
+        for (const inp of inputs) {
+            const rank = inp.dataset.rank;
+            const value = parseInt(inp.value) || 0;
+            setStationSanctioned(ssCurrentSubDiv, ssCurrentCircle, ssCurrentStation, rank, value);
+            await updateStationSanctionedStrength(ssCurrentSubDiv, ssCurrentCircle, ssCurrentStation, rank, value);
+        }
+        showToast('Station sanctioned strengths saved', 'success');
+    } catch (e) {
+        console.error('Error saving station sanctioned strength:', e);
+        showToast('Failed to save station sanctioned strengths', 'error');
+        return;
+    }
 
     // Refresh Police Station Data strength abstract if visible
     if (document.getElementById('policeStation').classList.contains('active')) {
@@ -385,5 +411,77 @@ function saveStationSanctions() {
     }
 }
 
-// Initialize station sanctioned data on module load
-loadStationSanctionedData();
+// ── One-time station sanctioned strength migration from localStorage ──
+async function checkStationMigration() {
+    if (userRole !== 'ADMIN') return;
+    if (localStorage.getItem('station_migration_complete')) return;
+    const oldData = localStorage.getItem('station_sanctioned_data');
+    if (!oldData) {
+        localStorage.setItem('station_migration_complete', 'true');
+        return;
+    }
+
+    let parsed;
+    try { parsed = JSON.parse(oldData); } catch { localStorage.setItem('station_migration_complete', 'true'); return; }
+
+    const keys = Object.keys(parsed);
+    if (keys.length === 0) {
+        localStorage.setItem('station_migration_complete', 'true');
+        return;
+    }
+
+    const currentData = await getStationSanctionedStrength();
+    const currentMap = {};
+    if (currentData.data) {
+        currentData.data.forEach(s => {
+            const key = getStationSancKey(s.sub_division, s.circle, s.station, s.rank);
+            currentMap[key] = s.sanctioned_count;
+        });
+    }
+
+    const newEntries = [];
+    const changedEntries = [];
+    for (const key of keys) {
+        const val = parseInt(parsed[key]) || 0;
+        const parts = key.split('|');
+        const subDiv = parts[0] || '';
+        const circle = parts[1] || '';
+        const station = parts[2] || '';
+        const rank = parts[3] || '';
+        if (!subDiv || !rank) continue;
+
+        if (!(key in currentMap)) {
+            newEntries.push({ sub_division: subDiv, circle, station, rank, sanctioned_count: val });
+        } else if (currentMap[key] !== val) {
+            changedEntries.push({ sub_division: subDiv, circle, station, rank, sanctioned_count: val, old_value: currentMap[key] });
+        }
+    }
+
+    if (newEntries.length === 0 && changedEntries.length === 0) {
+        localStorage.setItem('station_migration_complete', 'true');
+        return;
+    }
+
+    const proceed = confirm(
+        `Station Sanctioned Data Migration\n\n` +
+        `New entries: ${newEntries.length}\n` +
+        `Changed entries: ${changedEntries.length}\n\n` +
+        `Do you want to migrate this data to the server?\n` +
+        `(Existing server values will be overwritten for changed entries)`
+    );
+
+    if (!proceed) {
+        const skip = confirm('Skip migration? (You can migrate later by clearing station_migration_complete flag)');
+        if (skip) localStorage.setItem('station_migration_complete', 'true');
+        return;
+    }
+
+    const allEntries = [...newEntries, ...changedEntries];
+    for (const entry of allEntries) {
+        await updateStationSanctionedStrength(entry.sub_division, entry.circle, entry.station, entry.rank, entry.sanctioned_count);
+    }
+
+    await loadStationSanctionedData();
+    localStorage.setItem('station_migration_complete', 'true');
+    showToast(`Station data migrated: ${allEntries.length} entries saved`, 'success');
+}

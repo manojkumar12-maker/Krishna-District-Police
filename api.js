@@ -122,6 +122,18 @@ async function updateDeputationStrength(unitName, rank, count) {
     });
 }
 
+// Station Sanctioned Strength API (Phase 6 — server-side persistence)
+async function getStationSanctionedStrength() {
+    return apiRequest('/station-sanctioned');
+}
+
+async function updateStationSanctionedStrength(subDivision, circle, station, rank, count) {
+    return apiRequest('/station-sanctioned', {
+        method: 'POST',
+        body: { sub_division: subDivision, circle, station, rank, sanctioned_count: count }
+    });
+}
+
 // Excel Import
 async function importPersonnelExcel(file) {
     const formData = new FormData();

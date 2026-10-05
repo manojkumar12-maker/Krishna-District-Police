@@ -8,7 +8,7 @@ const app = new Hono();
 app.use('*', cors({
     origin: (origin) => {
         if (!origin) return origin;
-        if (origin.endsWith('.github.io') && origin.startsWith('https://')) return origin;
+        if (origin === 'https://manojkumar12-maker.github.io') return origin;
         if (origin.startsWith('http://localhost:')) return origin;
         return null;
     },
@@ -82,6 +82,8 @@ const SCHEMA_COLUMNS = {
         { name: 'date_of_joining_present', ddl: "TEXT DEFAULT ''" },
         { name: 'attachments', ddl: "TEXT DEFAULT ''" },
         { name: 'previous_deputations', ddl: "TEXT DEFAULT ''" },
+        { name: 'deleted_at', ddl: "TEXT DEFAULT NULL" },
+        { name: 'deleted_by', ddl: "TEXT DEFAULT NULL" },
     ],
 };
 
@@ -192,7 +194,8 @@ app.post('/api/auth/login', async (c) => {
             user: { id: user.id, email: user.email, role: user.role },
         });
     } catch (e) {
-        return c.json({ error: e.message }, 500);
+        console.error('Login error:', e.message);
+        return c.json({ error: 'Authentication failed' }, 500);
     }
 });
 
@@ -219,11 +222,20 @@ app.post('/api/auth/register', authRequired(), adminRequired(), async (c) => {
             user: { id: result.meta.last_row_id, email, role: assignedRole },
         }, 201);
     } catch (e) {
-        return c.json({ error: e.message }, 500);
+        console.error('Register error:', e.message);
+        return c.json({ error: 'Registration failed' }, 500);
     }
 });
 
 // ── Personnel routes ─────────────────────────────────────────────
+
+// Authoritative enumerated field values (Phase 2). Must stay in sync with
+// rankMap keys in config.js. Server-side enforcement so a direct API call
+// cannot bypass frontend validation.
+const VALID_RANKS = new Set(['PC','WPC','HC','WHC','ASI','WASI','SI','WSI','CI','WCI','DSP','ADDL.SP','ARPC','ARWPC','ARHC','ARWHC','ARSI','WARSI','RSI','WRSI','RI','WRI','ARDSP','ADDL.SP.AR','Administrative Officer','Asst. Administrative Officer','Office Supdt.','Senior Assistant','Junior Assistant','Typists','Record Assistant','Office Sub-Ordinates','Sweepers','Scavengers','Dhobi','Barbers','Cobbler','Waterman']);
+const VALID_DISTRICTS = new Set(['ERSTWHILE', 'NEW', 'DEPUTATION']);
+const VALID_TYPES = new Set(['CIVIL', 'AR', 'MINISTERIAL', 'CLASS_IV']);
+const VALID_STATUS = new Set(['Present', 'Deserter', 'Suspended', 'Retired', 'Expired', 'Transfer', 'Study Leave', 'Maternity Leave', 'Medical Leave']);
 
 function buildPersonnelQuery(q) {
     const conditions = [];
@@ -272,9 +284,9 @@ app.get('/api/personnel', authRequired(), async (c) => {
         const q = c.req.query();
         const { conditions, params } = buildPersonnelQuery(q);
 
-        let sql = 'SELECT * FROM personnel';
+        let sql = 'SELECT * FROM personnel WHERE deleted_at IS NULL';
         if (conditions.length > 0) {
-            sql += ' WHERE ' + conditions.join(' AND ');
+            sql += ' AND ' + conditions.join(' AND ');
         }
         sql += ' ORDER BY created_at DESC';
 
@@ -291,24 +303,26 @@ app.get('/api/personnel', authRequired(), async (c) => {
 
         let total = data.length;
         if (conditions.length > 0) {
-            const countStmt = db(c).prepare('SELECT COUNT(*) as total FROM personnel WHERE ' + conditions.join(' AND ')).bind(...(params.slice(0, params.length - 2)));
+            const countStmt = db(c).prepare('SELECT COUNT(*) as total FROM personnel WHERE deleted_at IS NULL AND ' + conditions.join(' AND ')).bind(...(params.slice(0, params.length - 2)));
             const countRow = await countStmt.first();
             total = countRow?.total ?? data.length;
         }
 
         return c.json({ success: true, data, count: total, page, limit });
     } catch (e) {
-        return c.json({ error: e.message }, 500);
+        console.error('Personnel list error:', e.message);
+        return c.json({ error: 'Failed to retrieve personnel' }, 500);
     }
 });
 
 app.get('/api/personnel/:id', authRequired(), async (c) => {
     try {
-        const row = await db(c).prepare('SELECT * FROM personnel WHERE id = ?1').bind(c.req.param('id')).first();
+        const row = await db(c).prepare('SELECT * FROM personnel WHERE id = ?1 AND deleted_at IS NULL').bind(c.req.param('id')).first();
         if (!row) return c.json({ error: 'Personnel not found' }, 404);
         return c.json({ success: true, data: transformRow(row) });
     } catch (e) {
-        return c.json({ error: e.message }, 500);
+        console.error('Personnel get error:', e.message);
+        return c.json({ error: 'Failed to retrieve personnel' }, 500);
     }
 });
 
@@ -317,6 +331,23 @@ app.post('/api/personnel', authRequired(), adminRequired(), async (c) => {
         const body = await c.req.json();
         if (!body.name || !body.rank || !body.genl_no || !body.personnel_type || !body.district) {
             return c.json({ error: 'Missing required fields' }, 400);
+        }
+        if (!VALID_RANKS.has(body.rank)) {
+            return c.json({ error: 'Invalid rank' }, 400);
+        }
+        if (!VALID_DISTRICTS.has(body.district)) {
+            return c.json({ error: 'Invalid district' }, 400);
+        }
+        if (!VALID_TYPES.has(body.personnel_type)) {
+            return c.json({ error: 'Invalid personnel type' }, 400);
+        }
+        if (body.status && !VALID_STATUS.has(body.status)) {
+            return c.json({ error: 'Invalid status' }, 400);
+        }
+
+        const dupe = await db(c).prepare('SELECT id FROM personnel WHERE genl_no = ?1 AND deleted_at IS NULL').bind(body.genl_no).first();
+        if (dupe) {
+            return c.json({ error: 'A personnel record with this genl_no already exists' }, 400);
         }
 
         const cols = ['name','rank','genl_no','personnel_type','district','gender','previous_station',
@@ -336,7 +367,8 @@ app.post('/api/personnel', authRequired(), adminRequired(), async (c) => {
         const created = await db(c).prepare('SELECT * FROM personnel WHERE id = ?1').bind(newId).first();
         return c.json({ success: true, data: transformRow(created), message: 'Personnel created' }, 201);
     } catch (e) {
-        return c.json({ error: e.message }, 500);
+        console.error('Personnel create error:', e.message);
+        return c.json({ error: 'Failed to create personnel' }, 500);
     }
 });
 
@@ -345,8 +377,21 @@ app.put('/api/personnel/:id', authRequired(), adminRequired(), async (c) => {
         const body = await c.req.json();
         const id = c.req.param('id');
 
-        const old = await db(c).prepare('SELECT * FROM personnel WHERE id = ?1').bind(id).first();
+        const old = await db(c).prepare('SELECT * FROM personnel WHERE id = ?1 AND deleted_at IS NULL').bind(id).first();
         if (!old) return c.json({ error: 'Personnel not found' }, 404);
+
+        if (body.rank && !VALID_RANKS.has(body.rank)) {
+            return c.json({ error: 'Invalid rank' }, 400);
+        }
+        if (body.district && !VALID_DISTRICTS.has(body.district)) {
+            return c.json({ error: 'Invalid district' }, 400);
+        }
+        if (body.personnel_type && !VALID_TYPES.has(body.personnel_type)) {
+            return c.json({ error: 'Invalid personnel type' }, 400);
+        }
+        if (body.status && !VALID_STATUS.has(body.status)) {
+            return c.json({ error: 'Invalid status' }, 400);
+        }
 
         const now = new Date().toISOString();
         const sets = [];
@@ -376,7 +421,10 @@ app.put('/api/personnel/:id', authRequired(), adminRequired(), async (c) => {
 
         if (sets.length > 1) {
             vals.push(id);
-            await db(c).prepare(`UPDATE personnel SET ${sets.join(', ')} WHERE id = ?${pi}`).bind(...vals).run();
+            const result = await db(c).prepare(`UPDATE personnel SET ${sets.join(', ')} WHERE id = ?${pi} AND updated_at = ?${pi + 1}`).bind(...vals, old.updated_at).run();
+            if (result.meta.changes === 0) {
+                return c.json({ error: 'Record has been modified by another user. Please refresh and try again.' }, 409);
+            }
         }
 
         if (Object.keys(changedFields).length > 0) {
@@ -385,34 +433,55 @@ app.put('/api/personnel/:id', authRequired(), adminRequired(), async (c) => {
 
         return c.json({ success: true, message: 'Personnel updated' });
     } catch (e) {
-        return c.json({ error: e.message }, 500);
+        console.error('Personnel update error:', e.message);
+        return c.json({ error: 'Failed to update personnel' }, 500);
     }
 });
 
 app.delete('/api/personnel/:id', authRequired(), adminRequired(), async (c) => {
     try {
         const id = c.req.param('id');
-        const old = await db(c).prepare('SELECT * FROM personnel WHERE id = ?1').bind(id).first();
+        const old = await db(c).prepare('SELECT * FROM personnel WHERE id = ?1 AND deleted_at IS NULL').bind(id).first();
         if (!old) return c.json({ error: 'Personnel not found' }, 404);
 
-        await db(c).prepare('DELETE FROM personnel WHERE id = ?1').bind(id).run();
+        const now = new Date().toISOString();
+        await db(c).prepare('UPDATE personnel SET deleted_at = ?1, deleted_by = ?2 WHERE id = ?3').bind(now, c.get('user').email, id).run();
         await auditLog(c.env.DB, 'DELETE', c.get('user').email, id, 'Personnel', {
             name: old.name, rank: old.rank, genl_no: old.genl_no,
         });
 
         return c.json({ success: true, message: 'Personnel deleted' });
     } catch (e) {
-        return c.json({ error: e.message }, 500);
+        console.error('Personnel delete error:', e.message);
+        return c.json({ error: 'Failed to delete personnel' }, 500);
     }
 });
 
 app.delete('/api/personnel', authRequired(), adminRequired(), async (c) => {
     try {
+        const now = new Date().toISOString();
         await auditLog(c.env.DB, 'CLEAR_ALL', c.get('user').email, 'ALL', 'Personnel', {});
-        await db(c).prepare('DELETE FROM personnel').run();
+        await db(c).prepare('UPDATE personnel SET deleted_at = ?1, deleted_by = ?2 WHERE deleted_at IS NULL').bind(now, c.get('user').email).run();
         return c.json({ success: true, message: 'All personnel data cleared' });
     } catch (e) {
-        return c.json({ error: e.message }, 500);
+        console.error('Clear all error:', e.message);
+        return c.json({ error: 'Failed to clear personnel data' }, 500);
+    }
+});
+
+app.post('/api/personnel/:id/restore', authRequired(), adminRequired(), async (c) => {
+    try {
+        const id = c.req.param('id');
+        const row = await db(c).prepare('SELECT * FROM personnel WHERE id = ?1 AND deleted_at IS NOT NULL').bind(id).first();
+        if (!row) return c.json({ error: 'Deleted personnel not found' }, 404);
+
+        await db(c).prepare('UPDATE personnel SET deleted_at = NULL, deleted_by = NULL WHERE id = ?1').bind(id).run();
+        await auditLog(c.env.DB, 'RESTORE', c.get('user').email, id, 'Personnel', { name: row.name, rank: row.rank, genl_no: row.genl_no });
+
+        return c.json({ success: true, message: 'Personnel restored' });
+    } catch (e) {
+        console.error('Restore error:', e.message);
+        return c.json({ error: 'Failed to restore personnel' }, 500);
     }
 });
 
@@ -426,6 +495,7 @@ app.post('/api/personnel/import', authRequired(), adminRequired(), async (c) => 
 
         let buffer;
         if (file instanceof File) {
+            if (file.size > 10 * 1024 * 1024) return c.json({ error: 'File too large. Maximum 10MB allowed.' }, 400);
             buffer = await file.arrayBuffer();
         } else {
             buffer = new Uint8Array(Object.values(file)).buffer;
@@ -451,6 +521,7 @@ app.post('/api/personnel/import', authRequired(), adminRequired(), async (c) => 
             'native_place','date_of_appointment','date_of_joining_present','attachments','previous_deputations',
             'created_at','updated_at'];
 
+        const validRows = [];
         for (let i = 0; i < rows.length; i++) {
             const row = rows[i];
             if (!row.name && !row.genl_no) {
@@ -459,18 +530,55 @@ app.post('/api/personnel/import', authRequired(), adminRequired(), async (c) => 
             }
             try {
                 const doc = normalizeRow(row);
+
+                if (doc.rank && !VALID_RANKS.has(doc.rank)) {
+                    errors.push({ row: i + 2, error: `Invalid rank "${doc.rank}"` });
+                    continue;
+                }
+                if (doc.district && !VALID_DISTRICTS.has(doc.district)) {
+                    errors.push({ row: i + 2, error: `Invalid district "${doc.district}"` });
+                    continue;
+                }
+                if (doc.personnel_type && !VALID_TYPES.has(doc.personnel_type)) {
+                    errors.push({ row: i + 2, error: `Invalid personnel type "${doc.personnel_type}"` });
+                    continue;
+                }
+                if (doc.status && !VALID_STATUS.has(doc.status)) {
+                    errors.push({ row: i + 2, error: `Invalid status "${doc.status}"` });
+                    continue;
+                }
+
+                if (doc.genl_no) {
+                    const existing = await db(c).prepare('SELECT id FROM personnel WHERE genl_no = ?1 AND deleted_at IS NULL').bind(doc.genl_no).first();
+                    if (existing) {
+                        errors.push({ row: i + 2, error: `Duplicate genl_no "${doc.genl_no}" already exists` });
+                        continue;
+                    }
+                }
+
+                validRows.push({ doc, rowIndex: i + 2 });
+            } catch (err) {
+                errors.push({ row: i + 2, error: err.message });
+            }
+        }
+
+        if (validRows.length > 0) {
+            const statements = validRows.map(({ doc }) => {
                 const values = cols.map(f => {
                     if (f === 'is_on_deployment') return (doc[f] ? 1 : 0);
                     if (f === 'created_at' || f === 'updated_at') return now;
                     return doc[f] || '';
                 });
-                const placeholders = cols.map((_, j) => `?${j+1}`);
-                const result = await db(c).prepare(
-                    `INSERT INTO personnel (${cols.join(',')}) VALUES (${placeholders.join(',')})`
-                ).bind(...values).run();
-                imported.push({ ...doc, id: result.meta.last_row_id });
+                return db(c).prepare(
+                    `INSERT INTO personnel (${cols.join(',')}) VALUES (${cols.map((_, j) => `?${j+1}`).join(',')})`
+                ).bind(...values);
+            });
+
+            try {
+                await db(c).batch(statements);
+                validRows.forEach(({ doc }) => imported.push(doc));
             } catch (err) {
-                errors.push({ row: i + 2, error: err.message });
+                errors.push({ row: 0, error: `Batch import failed: ${err.message}` });
             }
         }
 
@@ -483,7 +591,8 @@ app.post('/api/personnel/import', authRequired(), adminRequired(), async (c) => 
             message: `Imported ${imported.length} records` + (errors.length ? `, ${errors.length} errors` : ''),
         });
     } catch (e) {
-        return c.json({ error: e.message }, 500);
+        console.error('Import error:', e.message);
+        return c.json({ error: 'Import failed' }, 500);
     }
 });
 
@@ -740,7 +849,8 @@ app.get('/api/audit-logs', authRequired(), adminRequired(), async (c) => {
 
         return c.json({ success: true, data: (results || []).map(r => ({ ...r, changes: JSON.parse(r.changes || '{}') })), count: results?.length || 0 });
     } catch (e) {
-        return c.json({ error: e.message }, 500);
+        console.error('Audit log error:', e.message);
+        return c.json({ error: 'Failed to retrieve audit logs' }, 500);
     }
 });
 
@@ -751,7 +861,8 @@ app.get('/api/sanctioned-strength', authRequired(), async (c) => {
         const { results } = await db(c).prepare('SELECT * FROM sanctionedstrengths').all();
         return c.json({ success: true, data: results || [] });
     } catch (e) {
-        return c.json({ error: e.message }, 500);
+        console.error('Sanctioned strength get error:', e.message);
+        return c.json({ error: 'Failed to retrieve sanctioned strength' }, 500);
     }
 });
 
@@ -783,7 +894,8 @@ app.post('/api/sanctioned-strength', authRequired(), adminRequired(), async (c) 
 
         return c.json({ success: true, message: 'Sanctioned strength updated' });
     } catch (e) {
-        return c.json({ error: e.message }, 500);
+        console.error('Sanctioned strength update error:', e.message);
+        return c.json({ error: 'Failed to update sanctioned strength' }, 500);
     }
 });
 
@@ -794,7 +906,8 @@ app.get('/api/deputation-strength', authRequired(), async (c) => {
         const { results } = await db(c).prepare('SELECT * FROM deputationstrengths').all();
         return c.json({ success: true, data: results || [] });
     } catch (e) {
-        return c.json({ error: e.message }, 500);
+        console.error('Deputation strength get error:', e.message);
+        return c.json({ error: 'Failed to retrieve deputation strength' }, 500);
     }
 });
 
@@ -826,7 +939,56 @@ app.post('/api/deputation-strength', authRequired(), adminRequired(), async (c) 
 
         return c.json({ success: true, message: 'Deputation strength updated' });
     } catch (e) {
-        return c.json({ error: e.message }, 500);
+        console.error('Deputation strength update error:', e.message);
+        return c.json({ error: 'Failed to update deputation strength' }, 500);
+    }
+});
+
+// ── Station sanctioned strength ──────────────────────────────────
+
+app.get('/api/station-sanctioned', authRequired(), async (c) => {
+    try {
+        const { results } = await db(c).prepare('SELECT * FROM stationsanctionedstrengths').all();
+        return c.json({ success: true, data: results || [] });
+    } catch (e) {
+        console.error('Station sanctioned get error:', e.message);
+        return c.json({ error: 'Failed to retrieve station sanctioned strength' }, 500);
+    }
+});
+
+app.post('/api/station-sanctioned', authRequired(), adminRequired(), async (c) => {
+    try {
+        const { sub_division, circle, station, rank, sanctioned_count } = await c.req.json();
+        if (!sub_division || !rank) {
+            return c.json({ error: 'Sub-division and rank are required' }, 400);
+        }
+        if (!VALID_RANKS.has(rank)) {
+            return c.json({ error: 'Invalid rank' }, 400);
+        }
+
+        const count = parseInt(sanctioned_count) || 0;
+        const now = new Date().toISOString();
+
+        const existing = await db(c).prepare(
+            'SELECT id FROM stationsanctionedstrengths WHERE sub_division = ?1 AND circle = ?2 AND station = ?3 AND rank = ?4'
+        ).bind(sub_division, circle || '', station || '', rank).first();
+
+        if (existing) {
+            await db(c).prepare(
+                'UPDATE stationsanctionedstrengths SET sanctioned_count = ?1, updated_at = ?2 WHERE id = ?3'
+            ).bind(count, now, existing.id).run();
+        } else {
+            await db(c).prepare(
+                'INSERT INTO stationsanctionedstrengths (sub_division, circle, station, rank, sanctioned_count, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)'
+            ).bind(sub_division, circle || '', station || '', rank, count, now, now).run();
+        }
+
+        await auditLog(c.env.DB, 'UPDATE_STATION_SANCTIONED', c.get('user').email, `${sub_division}_${circle}_${station}_${rank}`, 'StationSanctionedStrength', { sub_division, circle, station, rank, sanctioned_count: count });
+
+        return c.json({ success: true, message: 'Station sanctioned strength updated' });
+    } catch (e) {
+        console.error('Station sanctioned update error:', e.message);
+        return c.json({ error: 'Failed to update station sanctioned strength' }, 500);
     }
 });
 
