@@ -161,10 +161,38 @@ init → cadre_defined → dsl_published → objection_period → fsl_published 
 ## Deployment
 
 ### Backend (Cloudflare Worker)
+
+**Deploy order matters.** `migrateSchema()` in `src/index.js` only issues
+`ALTER TABLE ... ADD COLUMN` for tables that already exist. It does **not**
+create new tables or indexes. A Worker deploy alone will therefore leave
+`stationsanctionedstrengths` and the `idx_personnel_*` indexes missing, and
+any endpoint that queries them will fail at runtime.
+
 ```bash
 cd workers
-wrangler deploy
+
+# 1. BACKUP production D1 first (read-only export; contains credential hashes)
+mkdir -p ../.backups
+npx wrangler d1 export krishna-police-db --remote \
+  --output "../.backups/prod-$(date +%Y%m%d-%H%M%S).sql"
+
+# 2. Deploy Worker (adds missing columns on first request)
+npx wrangler deploy
+
+# 3. Apply schema.sql — REQUIRED for new tables and indexes.
+#    All statements are IF NOT EXISTS, so this is idempotent and will not
+#    alter existing rows.
+npx wrangler d1 execute krishna-police-db --remote --file=./schema.sql
+
+# 4. Verify
+npx wrangler d1 execute krishna-police-db --remote \
+  --command "SELECT name FROM sqlite_master WHERE type='table';"
+npx wrangler d1 execute krishna-police-db --remote \
+  --command "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='personnel';"
 ```
+
+Deploy the Worker **before** the frontend. The frontend calls
+`/api/station-sanctioned`, which 404s until the Worker is deployed.
 
 ### Frontend (GitHub Pages)
 ```bash
@@ -182,6 +210,23 @@ const API_BASE_URL = 'https://krishna-police-api.manoj-spoffice-kri.workers.dev/
 - `JWT_SECRET` - Random string for JWT signing
 - `ADMIN_EMAIL` - Default admin login
 - `ADMIN_PASSWORD` - Default admin password
+
+### Outstanding security risk: login rate limiting
+
+**There is currently NO rate limiting on `/api/auth/login`.**
+
+The account has no Cloudflare zone and the Worker is served from
+`*.workers.dev`, which is not zone-proxied. A zone-level WAF rate-limiting
+rule therefore **cannot** be applied to this endpoint.
+
+Do not assume the login route is protected against brute force.
+
+Options if this must be closed (none implemented):
+
+1. Attach a custom domain on a proxied zone, then add a WAF rate-limiting
+   rule (5 requests / IP / 15 min on `/api/auth/login`).
+2. Add a Durable Object counter keyed by IP.
+3. Put Cloudflare Turnstile in front of the login form.
 
 ---
 
