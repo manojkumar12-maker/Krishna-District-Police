@@ -136,7 +136,7 @@ Each file depends on the previous. `presidentialOrder.js` overrides `dashboard.j
 
 ### State (stored in `localStorage.po_state`)
 ```javascript
-{ poDataVersion: 7, poCadres, poCadreStrength, poExtended, poDSL, poFSL,
+{ poDataVersion: 8, poCadres, poCadreStrength, poExtended, poDSL, poFSL,
   poOptions, poAllocations, poUnitPersonnel, poStage, poObjections,
   poPreferentialCategories }
 ```
@@ -161,13 +161,15 @@ Each file depends on the previous. `presidentialOrder.js` overrides `dashboard.j
 ```
 All are `level: 'DISTRICT'`. Only district-level cadres exist (no zonal/multi-zonal).
 
-### PO Unit Ranks (16 ranks)
+### PO Unit Ranks (14 ranks)
 ```
 Assistant Sub-Inspector of Police, Head Constable (Civil), Police Constable (Civil),
-Head Constable (AR), Police Constable (AR), Senior Assistant, Junior Assistant,
+Head Constable (AR), Police Constable (AR), Junior Assistant,
 Typists, Record Assistant, Office Sub-Ordinates, Sweepers, Scavengers,
-Dhobi, Barbers, Cobbler, Waterman
+Dhobi, Barbers, Cobbler
 ```
+Defined once in `PO_UNIT_RANKS` (presidentialOrder.js:39). `Senior Assistant` and
+`Waterman` were removed on request; do not reintroduce them without confirmation.
 
 ### Personnel Record Structure (Format-I(A) compliant)
 ```javascript

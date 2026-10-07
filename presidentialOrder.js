@@ -42,7 +42,6 @@ const PO_UNIT_RANKS = [
     'Police Constable (Civil)',
     'Head Constable (AR)',
     'Police Constable (AR)',
-    'Senior Assistant',
     'Junior Assistant',
     'Typists',
     'Record Assistant',
@@ -51,13 +50,12 @@ const PO_UNIT_RANKS = [
     'Scavengers',
     'Dhobi',
     'Barbers',
-    'Cobbler',
-    'Waterman'
+    'Cobbler'
 ];
 
 const PO_STAGES = ['init', 'cadre_defined', 'dsl_published', 'objection_period', 'fsl_published', 'options_open', 'allocation_done'];
 
-const PO_DATA_VERSION = 7;
+const PO_DATA_VERSION = 8;
 
 function loadPOData() {
     try {
