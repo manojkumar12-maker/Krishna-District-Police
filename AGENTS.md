@@ -38,6 +38,63 @@ Express.js backend, replaced by Cloudflare Worker.
 
 ---
 
+## Design System (`styles.css`)
+
+`styles.css` is a token-driven design system. **Class names, element IDs and the
+`--primary` / `--secondary` / `--accent` custom property names are part of the
+app's contract** — they are referenced from inline styles across `index.html` and
+every JS module. Renaming any of them silently breaks styling.
+
+| Token group | Purpose |
+|-------------|---------|
+| `--brand-*` | Brand blue ramp (50–950) |
+| `--primary` / `--secondary` / `--accent` | Legacy aliases. **Never rename** — 15 inline styles use `var(--primary)` |
+| `--bg` / `--surface` / `--surface-2` / `--surface-3` | Neutral surface layers |
+| `--border` / `--border-strong` | Hairlines and control borders |
+| `--text` / `--text-muted` / `--text-subtle` | Text hierarchy |
+| `--success` / `--danger` / `--warn` / `--info` (+ `-soft`) | Semantic status |
+| `--r-xs` … `--r-full` | Radius scale (5 / 7 / 10 / 14 / 18 / 999) |
+| `--sh-xs` … `--sh-xl`, `--sh-brand` | Cool-tinted elevation |
+| `--ease`, `--t-fast` / `--t` / `--t-slow` | Motion |
+| `--ring` | Focus ring |
+
+### Tile tones
+
+`.district-tile` reads `--t1` / `--t2` and builds its own gradient, so tile
+colours live in CSS instead of inline styles. Add a tone class, never an inline
+`background`:
+
+```
+.tone-brand .tone-sky .tone-teal .tone-green
+.tone-amber .tone-violet .tone-red .tone-slate
+```
+
+### Visibility contract
+
+These start hidden and are revealed by JS via **inline** `style.display`.
+Do not "fix" them to be visible in CSS — the app would show before login.
+
+```css
+.page        { display: none }   .page.active        { display: block }
+.header      { display: none }   /* auth.js sets flex */
+.container   { display: none }   /* auth.js sets block */
+.modal-overlay, .loading-spinner, .login-error { display: none }
+.detail-section { display: none } .detail-section.visible { display: block }
+```
+
+### Verification
+
+`.smoke/ui-verify.cjs` serves the repo, mocks the API and asserts no JS errors,
+full class coverage, and that every drill-down still works:
+
+```bash
+node .smoke/ui-verify.cjs
+```
+
+It writes screenshots to `.smoke/shots/` and exits non-zero on regression.
+
+---
+
 ## Script Load Order (CRITICAL)
 ```
 config.js → api.js → auth.js → dashboard.js → personnel.js → deputation.js
