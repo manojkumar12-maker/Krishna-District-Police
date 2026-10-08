@@ -1,2067 +1,2083 @@
-// Presidential Order-2025 Module
-// Implementation of employee allocation per Presidential Order 2025 guidelines
+// ============================================================================
+// presidentialOrder.js  —  Presidential Order-2025 / G.O.Ms.No.129  UI
+// ----------------------------------------------------------------------------
+// Stage-based screens (para 28). One step is open at a time; every completed
+// step is locked and rendered read-only.
+//
+// Rendering only. All official-input mutations live in poCore.js and all
+// allocation / validation maths in poEngine.js.
+// ============================================================================
 
-const PO_ERSTWHILE = 'ERSTWHILE';
-const PO_NEW = 'NEW';
+const PO_STEP_CONTENT = 'poTabContent';
+let poCurrentStep = 0;
+let poFals = { view: 'cadre', query: '' };
 
-let poData = {};
-let poExtended = {};
-let poDSL = [];
-let poFSL = [];
-let poOptions = {};
-let poAllocations = [];
-let poUnitPersonnel = [];
-let poCadres = [];
-let poCadreStrength = {};
-let poStage = 'init';
-let poCurrentTab = 'unitdata';
-let poObjections = {};
-let poPreferentialCategories = [];
+// --- small UI helpers -------------------------------------------------------
 
-const PREF_CATEGORIES = [
-    { id: 'pwbd', label: 'PwBD (70%+ disability)', priority: 1 },
-    { id: 'disabled_children', label: 'Dependent mentally challenged children', priority: 2 },
-    { id: 'widow', label: 'Widows (unmarried)', priority: 3 },
-    { id: 'cancer', label: 'Cancer', priority: 4 },
-    { id: 'neurosurgery', label: 'Major Neurosurgery', priority: 5 },
-    { id: 'kidney', label: 'Kidney Transplantation', priority: 6 },
-    { id: 'liver', label: 'Liver Transplantation', priority: 7 },
-    { id: 'heart', label: 'Open Heart Surgery', priority: 8 }
-];
-
-const SC_ST_GROUPS = [
-    { id: 'SC_1', label: 'SC Group-I (1%)', percent: 1 },
-    { id: 'SC_2', label: 'SC Group-II (6.5%)', percent: 6.5 },
-    { id: 'SC_3', label: 'SC Group-III (7.5%)', percent: 7.5 },
-    { id: 'ST', label: 'ST (6%)', percent: 6 }
-];
-
-const PO_UNIT_RANKS = [
-    'Assistant Sub-Inspector of Police',
-    'Head Constable (Civil)',
-    'Police Constable (Civil)',
-    'Head Constable (AR)',
-    'Police Constable (AR)',
-    'Junior Assistant',
-    'Typists',
-    'Record Assistant',
-    'Office Sub-Ordinates',
-    'Sweepers',
-    'Scavengers',
-    'Dhobi',
-    'Barbers',
-    'Cobbler'
-];
-
-const PO_STAGES = ['init', 'cadre_defined', 'dsl_published', 'objection_period', 'fsl_published', 'options_open', 'allocation_done'];
-
-const PO_DATA_VERSION = 8;
-
-function loadPOData() {
-    try {
-        const stored = localStorage.getItem('po_state');
-        if (stored) {
-            const parsed = JSON.parse(stored);
-
-            if (parsed.poDataVersion !== PO_DATA_VERSION) {
-                localStorage.removeItem('po_state');
-                return;
-            }
-            poData = parsed.poData || {};
-            poExtended = parsed.poExtended || {};
-            poDSL = parsed.poDSL || [];
-            poFSL = parsed.poFSL || [];
-            poOptions = parsed.poOptions || {};
-            poAllocations = parsed.poAllocations || [];
-            poUnitPersonnel = parsed.poUnitPersonnel || [];
-            poCadres = parsed.poCadres || [];
-            poCadreStrength = parsed.poCadreStrength || {};
-            poStage = parsed.poStage || 'init';
-            poObjections = parsed.poObjections || {};
-            poPreferentialCategories = parsed.poPreferentialCategories || [];
-        }
-    } catch(e) {
-        console.error('Error loading PO data:', e);
-    }
+function poQs(s) {
+    const v = s === undefined || s === null ? '' : String(s);
+    return typeof escapeQuotes === 'function' ? escapeQuotes(v) : v.replace(/'/g, "\\'");
 }
 
-function savePOData() {
-    localStorage.setItem('po_state', JSON.stringify({
-        poDataVersion: PO_DATA_VERSION,
-        poData, poExtended, poDSL, poFSL, poOptions, poAllocations, poUnitPersonnel,
-        poCadres, poCadreStrength, poStage, poObjections, poPreferentialCategories
-    }));
+function poTd(v, style) {
+    const s = (v === undefined || v === null || String(v).trim() === '') ? '<span style="color:var(--text-subtle)">-</span>' : escapeHtml(v);
+    return style ? '<td style="' + style + '">' + s + '</td>' : '<td>' + s + '</td>';
 }
 
-function initPOModule() {
-    loadPOData();
+function poDash(v) { return (v === undefined || v === null || String(v).trim() === '') ? '-' : escapeHtml(v); }
 
-    if (poCadres.length === 0) {
-        defineDefaultCadres();
-    }
-
-    renderPOModule();
+function poSev(severity) {
+    const map = { ERROR: 'danger', BLOCKING: 'danger', WARNING: 'warn', PASS: 'success', INFO: 'info' };
+    return '<span class="po-badge po-badge-' + (map[severity] || 'info') + '">' + escapeHtml(severity) + '</span>';
 }
 
-function defineDefaultCadres() {
-    const allCivRanks = rankMap['ERSTWHILE_CIVIL'] || [];
-    const allARRanks = rankMap['ERSTWHILE_AR'] || [];
-
-    const districtCadres = [
-        { id: 'DC_KRISHNA', name: 'Krishna District (Residuary)', type: 'DISTRICT', level: 'DISTRICT' },
-        { id: 'DC_NTR', name: 'NTR District', type: 'DISTRICT', level: 'DISTRICT' },
-        { id: 'DC_ELURU', name: 'Eluru District', type: 'DISTRICT', level: 'DISTRICT' }
-    ];
-
-    poCadres = [...districtCadres];
-
-    poCadres.forEach(c => {
-        allCivRanks.forEach(r => {
-            poCadreStrength[c.id + '_CIVIL_' + r] = 0;
-        });
-        allARRanks.forEach(r => {
-            poCadreStrength[c.id + '_AR_' + r] = 0;
-        });
-    });
-
-    savePOData();
+function poCard(title, body, actions) {
+    return '<div class="card">' +
+        '<div class="po-card-head"><h3>' + title + '</h3>' + (actions ? '<div class="po-actions">' + actions + '</div>' : '') + '</div>' +
+        body + '</div>';
 }
 
-// --- Page-level entry point ---
+function poStats(items) {
+    return '<div class="po-stat-grid">' + items.map(i =>
+        '<div class="po-stat"><div class="po-stat-num">' + escapeHtml(i.value) + '</div><div class="po-stat-label">' + escapeHtml(i.label) + '</div></div>'
+    ).join('') + '</div>';
+}
+
+function poTable(headers, rows, cls) {
+    if (!rows.length) return '<div class="empty-state">Nothing to show yet.</div>';
+    return '<div class="po-table-wrap"><table class="' + (cls || '') + '"><thead><tr>' +
+        headers.map(h => '<th>' + escapeHtml(h) + '</th>').join('') +
+        '</tr></thead><tbody>' + rows.join('') + '</tbody></table></div>';
+}
+
+function poTally(list) {
+    if (!list || !list.length) return '<span style="color:var(--text-subtle)">-</span>';
+    return list.map(x => '<span class="po-chip">' + escapeHtml(x.key) + ' (' + x.count + ')</span>').join(' ');
+}
+
+function poValidationPanel(title, report) {
+    if (!report) return '';
+    const rows = []
+        .concat((report.errors || []).map(e => Object.assign({ severity: 'ERROR' }, e)))
+        .concat((report.blocking || []).map(e => Object.assign({ severity: 'BLOCKING' }, e)))
+        .concat((report.warnings || []).map(e => Object.assign({ severity: 'WARNING' }, e)))
+        .map(i => '<tr>' + poTd(i.severity, 'width:90px') + poTd(i.code, 'width:190px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px') +
+            poTd(i.employee_id, 'width:110px;font-size:11px') + poTd(i.message) + '</tr>');
+    const passed = report.passed || [];
+    const passedHtml = passed.length
+        ? '<details class="po-passed"><summary>' + passed.length + ' check(s) passed</summary><ul>' +
+          passed.slice(0, 80).map(p => '<li>' + escapeHtml(p) + '</li>').join('') + '</ul></details>'
+        : '';
+    return '<div class="po-validation">' +
+        '<div class="po-validation-head">' +
+            '<span class="po-badge po-badge-' + (report.valid ? 'success' : 'danger') + '">' + (report.valid ? 'PASS' : 'BLOCKING') + '</span>' +
+            '<span class="po-badge po-badge-warn">' + ((report.warnings || []).length) + ' warning(s)</span>' +
+            (report.errors ? '<span class="po-badge po-badge-danger">' + report.errors.length + ' error(s)</span>' : '') +
+        '</div>' +
+        (rows.length ? '<div class="po-table-wrap"><table><thead><tr><th>Severity</th><th>Code</th><th>Employee</th><th>Detail</th></tr></thead><tbody>' + rows.join('') + '</tbody></table></div>' : '') +
+        passedHtml +
+    '</div>';
+}
+
+
+// ============================================================================
+// Module shell
+// ============================================================================
+
 function showPOPage() {
-    loadPOData();
-    if (poCadres.length === 0) defineDefaultCadres();
+    poLoad();
     renderPOModule();
 }
 
 function renderPOModule() {
     const container = document.getElementById('poMainContent');
     if (!container) { console.error('poMainContent not found'); return; }
-
     try {
-        const isAdmin = userRole === 'ADMIN';
-        const stageLabel = { init:'Not Started', cadre_defined:'Cadres Defined', dsl_published:'DSL Published',
-            objection_period:'Objection Period', fsl_published:'FSL Published', options_open:'Options Open',
-            allocation_done:'Allocation Complete' }[poStage] || 'Unknown';
+        const d = poDashboard();
+        const stepIdx = poCurrentStepIndex();
+        poCurrentStep = stepIdx;
 
-        container.innerHTML = `
-            <div class="po-nav">
-                <button class="po-nav-btn ${poCurrentTab==='unitdata' ? 'active' : ''}" onclick="switchPOTab('unitdata')">Unit Data</button>
-                <button class="po-nav-btn ${poCurrentTab==='overview' ? 'active' : ''}" onclick="switchPOTab('overview')">Overview</button>
-                <button class="po-nav-btn ${poCurrentTab==='cadres' ? 'active' : ''}" onclick="switchPOTab('cadres')">Cadres & Strength</button>
-                <button class="po-nav-btn ${poCurrentTab==='seniority' ? 'active' : ''}" onclick="switchPOTab('seniority')">Seniority List</button>
-                <button class="po-nav-btn ${poCurrentTab==='options' ? 'active' : ''}" onclick="switchPOTab('options')">Option Forms</button>
-                <button class="po-nav-btn ${poCurrentTab==='prefcat' ? 'active' : ''}" onclick="switchPOTab('prefcat')">Pref. Categories</button>
-                <button class="po-nav-btn ${poCurrentTab==='allocation' ? 'active' : ''}" onclick="switchPOTab('allocation')">Allocation</button>
-                <button class="po-nav-btn ${poCurrentTab==='orders' ? 'active' : ''}" onclick="switchPOTab('orders')">Final Orders</button>
-            </div>
-            <div class="po-stage-indicator" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-                <span>Current Stage: <strong>${stageLabel}</strong></span>
-                ${isAdmin ? `<button class="btn btn-danger btn-sm" onclick="resetPOModule()">Clear All PO Data</button>` : ''}
-            </div>
-            <div id="poTabContent" class="po-tab-content"></div>
-        `;
+        const header =
+            '<div class="po-head">' +
+                '<div class="po-head-main">' +
+                    '<div class="po-head-title">Presidential Order-2025 &middot; District Level Implementation Committee</div>' +
+                    '<div class="po-head-sub">' +
+                        escapeHtml(POEngine.PO_GO_REFERENCE.order) + ', ' + escapeHtml(POEngine.PO_GO_REFERENCE.department) +
+                        ', dated ' + escapeHtml(POEngine.PO_GO_REFERENCE.date) + ' &middot; Scope: ' + escapeHtml(POEngine.PO_GO_REFERENCE.scope) +
+                    '</div>' +
+                    '<div class="po-note po-note-danger po-head-warn">' +
+                        '<strong>LOCAL DEVELOPMENT MODE &mdash; NOT AN AUTHORITATIVE OFFICIAL RECORD.</strong> ' +
+                        'PO exercise data is held in this browser only. It is not a shared DLC record, has no central backup ' +
+                        'and must not be treated as the statutory register. ' +
+                        escapeHtml(POEngine.PO_GO_REFERENCE.disclaimer) +
+                    '</div>' +
+                    '<div class="po-head-meta">' +
+                        '<span class="po-chip">Exercise: ' + poDash(poState.exercise.exercise_id || 'NOT CONFIGURED') + '</span>' +
+                        '<span class="po-chip">Department: ' + poDash(poState.exercise.department || '-') + '</span>' +
+                        '<span class="po-chip po-chip-strong">Stage: ' + escapeHtml(poStage()) + '</span>' +
+                        '<span class="po-chip">Engine ' + escapeHtml(POEngine.PO_ENGINE_VERSION) + '</span>' +
+                        '<span class="po-chip">FWS ' + escapeHtml(d.versions.fws) + '</span>' +
+                        '<span class="po-chip">DSL ' + escapeHtml(d.versions.dsl) + '</span>' +
+                        '<span class="po-chip">FSL ' + escapeHtml(d.versions.fsl) + '</span>' +
+                        '<span class="po-chip">Options ' + escapeHtml(d.versions.options) + '</span>' +
+                        '<span class="po-chip">FAL ' + escapeHtml(d.versions.fal) + '</span>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="po-actions">' +
+                    '<button class="btn btn-secondary btn-sm" onclick="poShowAudit()">Audit Trail (' + poState.audit.length + ')</button>' +
+                    '<button class="btn btn-secondary btn-sm" onclick="poShowDashboard()">DLC Dashboard</button>' +
+                    (poIsAdmin() ? '<button class="btn btn-danger btn-sm" onclick="poResetAll()">Reset Module</button>' : '') +
+                '</div>' +
+            '</div>' +
+            '<div class="po-rail">' + PO_STEPS.map((s, i) => {
+                const state = poStepState(i);
+                return '<button class="po-step ' + state + '" onclick="poGotoStep(' + i + ')">' +
+                    '<span class="po-step-n">' + s.n + '</span>' +
+                    '<span class="po-step-l">' + escapeHtml(s.label) + '</span>' +
+                    (state === 'LOCKED' && i > stepIdx ? '<span class="po-step-lock">locked</span>' : '') +
+                '</button>';
+            }).join('') + '</div>' +
+            '<div id="' + PO_STEP_CONTENT + '"></div>';
 
+        container.innerHTML = header;
         renderCurrentPOTab();
-    } catch(e) {
+    } catch (e) {
         console.error('renderPOModule error:', e);
-        container.innerHTML = `<div class="card"><h2>Error</h2><p style="color:red;">${e.message}</p><pre style="font-size:11px;">${e.stack || ''}</pre></div>`;
+        container.innerHTML = '<div class="card"><h2>Error</h2><p style="color:var(--danger);">' + escapeHtml(e.message) + '</p><pre style="font-size:11px;">' + escapeHtml(e.stack || '') + '</pre></div>';
     }
 }
 
-function switchPOTab(tab) {
-    poCurrentTab = tab;
-    const btns = document.querySelectorAll('.po-nav-btn');
-    btns.forEach(b => b.classList.remove('active'));
-    const activeBtn = document.querySelector(`.po-nav-btn[onclick="switchPOTab('${tab}')"]`);
-    if (activeBtn) activeBtn.classList.add('active');
-    renderCurrentPOTab();
+function poGotoStep(i) {
+    if (i > poCurrentStepIndex()) { showToast('That step is locked. Complete the current stage first.', 'error'); return; }
+    poCurrentStep = i;
+    renderPOModule();
+}
+
+function switchPOTab(stepKey) {
+    const i = PO_STEPS.findIndex(s => s.key === stepKey);
+    if (i >= 0) poGotoStep(i);
 }
 
 function renderCurrentPOTab() {
-    const content = document.getElementById('poTabContent');
+    const content = document.getElementById(PO_STEP_CONTENT);
     if (!content) return;
-    switch(poCurrentTab) {
-        case 'unitdata': renderPOUnitData(content); break;
-        case 'overview': renderPOOverview(content); break;
-        case 'cadres': renderPOCadres(content); break;
-        case 'seniority': renderPOSeniority(content); break;
-        case 'options': renderPOOptions(content); break;
-        case 'prefcat': renderPOPrefCat(content); break;
-        case 'allocation': renderPOAllocation(content); break;
-        case 'orders': renderPOOrders(content); break;
-    }
-}
-
-// ==================== UNIT DATA TAB ====================
-let poUnitSelectedRank = '';
-
-function renderPOUnitData(content) {
+    const i = Math.min(poCurrentStep, PO_STEPS.length - 1);
     try {
-        const isAdmin = userRole === 'ADMIN';
-
-        let tilesHtml = PO_UNIT_RANKS.map(r => {
-            const active = poUnitSelectedRank === r ? ' active' : '';
-            return `<div class="rank-tile${active}" onclick="selectPOUnitRank('${escapeQuotes(r)}', this)">${r}</div>`;
-        }).join('');
-
-        content.innerHTML = `
-            <div class="card">
-                <h2>Unit Data - District Cadre Ranks</h2>
-                <p style="color:#666;margin-bottom:15px;">Define sanctioned working strength per cadre and manage personnel for each rank.</p>
-                <div class="rank-tiles" style="grid-template-columns: repeat(4, 1fr);">${tilesHtml}</div>
-                <div id="poUnitDetail" class="detail-section"></div>
-            </div>
-        `;
-
-        if (poUnitSelectedRank) {
-            renderPOUnitDetail();
+        switch (PO_STEPS[i].key) {
+            case 'dlc': renderStepDlc(content); break;
+            case 'ranks': renderStepRanks(content); break;
+            case 'strength': renderStepStrength(content); break;
+            case 'dsl': renderStepDsl(content); break;
+            case 'fsl': renderStepFsl(content); break;
+            case 'options': renderStepOptions(content); break;
+            case 'allocation': renderStepAllocation(content); break;
+            case 'fal': renderStepFal(content); break;
+            case 'orders': renderStepOrders(content); break;
         }
-    } catch(e) {
-        console.error('renderPOUnitData error:', e);
-        content.innerHTML = `<div class="card"><h2>Error</h2><p style="color:red;">${e.message}</p></div>`;
+        poRenderAdvance(content);
+    } catch (e) {
+        console.error('renderCurrentPOTab error:', e);
+        content.innerHTML = '<div class="card"><h2>Error in step ' + PO_STEPS[i].n + '</h2><p style="color:var(--danger);">' + escapeHtml(e.message) + '</p><pre style="font-size:11px;">' + escapeHtml(e.stack || '') + '</pre></div>';
     }
 }
 
-function selectPOUnitRank(rank, el) {
-    poUnitSelectedRank = rank;
-    if (el && el.parentElement) {
-        el.parentElement.querySelectorAll('.rank-tile').forEach(t => t.classList.remove('active'));
-        el.classList.add('active');
-    }
-    renderPOUnitDetail();
+/** Locked-step banner + the single "advance the workflow" control. */
+function poRenderAdvance(content) {
+    const guard = poStageGuard();
+    const next = guard.next;
+    const locked = poStageIdx(poStage()) > poStageIdx(PO_STEPS[poCurrentStep].from) && poStage() !== 'EXERCISE_CLOSED';
+    const closed = poStage() === 'EXERCISE_CLOSED';
+
+    const blocks = [];
+    if (locked) blocks.push('<div class="po-note po-note-info">This step is complete and locked. It is shown for the record. ' +
+        'Any change now requires a revision workflow with a reason and an audit entry.</div>');
+    if (closed) blocks.push('<div class="po-note po-note-info">The exercise is closed. The whole record is retained read-only.</div>');
+
+    const guardHtml =
+        '<div class="card po-advance">' +
+            '<h3>Workflow control</h3>' +
+            blocks.join('') +
+            (guard.errors.length
+                ? '<div class="po-note po-note-danger"><strong>Cannot advance to ' + escapeHtml(next || '-') + ':</strong><ul>' +
+                  guard.errors.map(e => '<li>' + escapeHtml(e) + '</li>').join('') + '</ul></div>'
+                : '') +
+            (guard.warnings.length
+                ? '<div class="po-note po-note-warn"><strong>Advisories:</strong><ul>' +
+                  guard.warnings.map(e => '<li>' + escapeHtml(e) + '</li>').join('') + '</ul></div>'
+                : '') +
+            (next && !closed
+                ? '<div class="po-advance-row">' +
+                    '<div>Next stage: <strong>' + escapeHtml(next) + '</strong></div>' +
+                    '<button class="btn btn-primary" ' + (guard.ok ? '' : 'disabled') + ' onclick="poAdvanceStage()">' +
+                        (guard.ok ? 'Advance to ' + escapeHtml(next) : 'Blocked') + '</button>' +
+                  '</div>'
+                : '') +
+            (closed ? '<div class="po-advance-row"><div>Exercise closed at ' + escapeHtml(poState.exercise.modified_at || '') + '</div></div>' : '') +
+        '</div>';
+
+    const div = document.createElement('div');
+    div.innerHTML = guardHtml;
+    while (div.firstChild) content.appendChild(div.firstChild);
 }
 
-function renderPOUnitDetail() {
-    const section = document.getElementById('poUnitDetail');
-    if (!section || !poUnitSelectedRank) return;
-
-    const isAdmin = userRole === 'ADMIN';
-    const rank = poUnitSelectedRank;
-    const cadreIds = poCadres.map(c => c.id);
-    const cadreNames = poCadres.map(c => c.name);
-    const rankKey = rank.replace(/[^a-zA-Z0-9]/g, '_');
-
-    let sanctionedHtml = cadreIds.map((cid, i) => {
-        const val = poCadreStrength[cid + '_' + rankKey] || 0;
-        return `<div class="strength-item">
-            <div class="strength-label">${cadreNames[i]}</div>
-            ${isAdmin
-                ? `<input type="number" class="po-unit-strength-input" data-cadre="${cid}" data-rank="${rankKey}" value="${val}" min="0" onchange="saveUnitCadreStrength(this)" style="width:80px;padding:6px;text-align:center;font-size:16px;margin-top:5px;">`
-                : `<div class="strength-value">${val}</div>`
-            }
-        </div>`;
-    }).join('');
-
-    const personnel = poUnitPersonnel.filter(p => p.rank === rank);
-
-    let personnelHtml = '';
-    if (isAdmin) {
-        personnelHtml += `<div style="display:flex;gap:10px;margin-bottom:15px;flex-wrap:wrap;">
-            <button class="btn btn-primary" onclick="addPOUnitPersonnel('${escapeQuotes(rank)}')">+ Add Person</button>
-            <button class="btn btn-secondary" onclick="exportPOUnitCSV('${escapeQuotes(rank)}')">Export CSV</button>
-            <a class="btn btn-secondary" style="text-decoration:none;cursor:pointer;" onclick="downloadPOUnitTemplate('${escapeQuotes(rank)}')">Download Template</a>
-            <input type="file" id="poUnitFileInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="importPOUnitData(this, '${escapeQuotes(rank)}')">
-            <button class="btn btn-secondary" onclick="document.getElementById('poUnitFileInput').click()">Import CSV/Excel</button>
-        </div>`;
-    }
-
-    if (personnel.length === 0) {
-        personnelHtml += '<div class="empty-state">No personnel added for this rank.</div>';
-    } else {
-        personnelHtml += `<table style="font-size:11px;"><thead><tr>
-        <th>(1) Sr.No</th><th>(2) Type</th><th>(3) Proceed.No / Date</th>
-        <th>(4) Sr.No</th><th>(5) Name</th><th>(6) Gen</th>
-        <th>(7) CFMS ID</th><th>(8) Mobile</th><th>(9) DOB</th><th>(10) DOJ</th>
-        <th>(11) SC/ST</th><th>(12) PwBD%</th><th>(13) Widow</th>
-        <th>(14) MCC</th><th>(15) Medical</th><th>(16) Rank</th><th>(17) Genl.No</th>
-        <th>Cadre</th>${isAdmin ? '<th>Actions</th>' : ''}
-    </tr></thead><tbody>`;
-
-        personnelHtml += personnel.map((p, i) => {
-            const doj = p.date_of_joining ? new Date(p.date_of_joining).toLocaleDateString('en-IN') : '-';
-            const dob = p.date_of_birth ? new Date(p.date_of_birth).toLocaleDateString('en-IN') : '-';
-            const procDate = p.proceedings_date ? new Date(p.proceedings_date).toLocaleDateString('en-IN') : '-';
-            const cid = p.allocated_cadre_id ? (poCadres.find(c => c.id === p.allocated_cadre_id) || {}).name || p.allocated_cadre_id : '-';
-            const medicals = [];
-            if (p.cancer) medicals.push('Cancer');
-            if (p.neurosurgery) medicals.push('Neuro');
-            if (p.kidney) medicals.push('Kidney');
-            if (p.liver) medicals.push('Liver');
-            if (p.heart) medicals.push('Heart');
-            return `<tr>
-                <td>${i+1}</td>
-                <td>${escapeHtml(p.seniority_type) || '-'}</td>
-                <td style="font-size:10px;">${escapeHtml(p.proceedings_no) || '-'}${p.proceedings_date ? ' / ' + procDate : ''}</td>
-                <td>${p.seniority_no || '-'}</td>
-                <td>${escapeHtml(p.name)}</td>
-                <td>${escapeHtml(p.gender) || '-'}</td>
-                <td>${escapeHtml(p.cfms_id) || '-'}</td>
-                <td>${escapeHtml(p.mobile) || '-'}</td>
-                <td>${dob}</td>
-                <td>${doj}</td>
-                <td>${escapeHtml(p.sc_st_group) || '-'}</td>
-                <td>${escapeHtml(p.pwbd_percent) || '-'}</td>
-                <td>${p.widow === 'Yes' ? '✓' : '-'}</td>
-                <td>${p.disabled_children === 'Yes' ? '✓' : '-'}</td>
-                <td>${medicals.length > 0 ? medicals.join(', ') : '-'}</td>
-                <td>${escapeHtml(p.rank)}</td>
-                <td>${escapeHtml(p.genl_no) || '-'}</td>
-                <td style="font-size:10px;">${escapeHtml(cid)}</td>
-                ${isAdmin ? `<td>
-                    <button class="action-btn btn-primary" onclick="editPOUnitPersonnel(${p._idx})">Edit</button>
-                    <button class="action-btn btn-danger" onclick="deletePOUnitPersonnel(${p._idx})">Del</button>
-                </td>` : ''}
-            </tr>`;
-        }).join('');
-        personnelHtml += '</tbody></table>';
-    }
-
-    section.innerHTML = `
-        <div class="card" style="margin-top:15px;">
-            <h3>${rank} - Working Strength</h3>
-            <div class="strength-row" style="grid-template-columns: repeat(3, 1fr);">${sanctionedHtml}</div>
-        </div>
-        <div class="card" style="margin-top:15px;">
-            <h3>${rank} - Personnel (${personnel.length})</h3>
-            ${personnelHtml}
-        </div>
-    `;
-    section.classList.add('visible');
+function poAdvanceStage() {
+    const reason = prompt('Reason / remark for advancing the workflow stage (recorded in the audit trail):', '');
+    if (reason === null) return;
+    const r = poAdvance(reason || '');
+    if (!r.ok) { showToast('Stage not advanced: ' + (r.guard.errors[0] || 'guard failed'), 'error'); return; }
+    showToast('Workflow advanced: ' + r.from + ' -> ' + r.to, 'success');
+    poCurrentStep = poCurrentStepIndex();
+    renderPOModule();
 }
 
-function saveUnitCadreStrength(input) {
-    const cadreId = input.dataset.cadre;
-    const rankKey = input.dataset.rank;
-    const val = parseInt(input.value) || 0;
-    poCadreStrength[cadreId + '_' + rankKey] = val;
-    savePOData();
-    showToast('Working strength updated', 'success');
-}
 
-function addPOUnitPersonnel(rank) {
-    if (userRole !== 'ADMIN') return;
+// ============================================================================
+// STEP 1 - DLC Configuration (para 1)
+// ============================================================================
 
-    const cadreOpts = poCadres.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-    const scstOpts = SC_ST_GROUPS.map(g => `<option value="${g.id}">${g.label}</option>`).join('');
+function renderStepDlc(content) {
+    const ex = poState.exercise;
+    const editable = poIsAdmin() && poStage() === 'DRAFT';
+    const d = poDashboard();
 
-    const dialog = document.createElement('div');
-    dialog.className = 'modal-overlay';
-    dialog.style.display = 'flex';
-    dialog.innerHTML = `
-        <div class="modal" style="max-width:750px;">
-            <div class="modal-header">
-                <h3>Add Person - ${rank}</h3>
-                <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-grid">
-                    <div class="form-group"><label>Name *</label><input type="text" id="pounit_name"></div>
-                    <div class="form-group"><label>Genl. No. (17)</label><input type="text" id="pounit_genlno"></div>
-                    <div class="form-group"><label>Sl.No *</label><input type="number" id="pounit_srno" min="1" value="${poUnitPersonnel.filter(p => p.rank === rank).length + 1}"></div>
-                    <div class="form-group"><label>Gender (6)</label><select id="pounit_gender"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
-                    <div class="form-group"><label>Date of Birth (9)</label><input type="date" id="pounit_dob"></div>
-                    <div class="form-group"><label>Date of Joining (10)</label><input type="date" id="pounit_doj"></div>
-                    <div class="form-group"><label>CFMS ID (7)</label><input type="text" id="pounit_cfms"></div>
-                    <div class="form-group"><label>Mobile No. (8)</label><input type="text" id="pounit_mobile"></div>
-                    <div class="form-group"><label>Caste</label><input type="text" id="pounit_caste"></div>
-                    <div class="form-group"><label>SC/ST Group (11)</label><select id="pounit_scst"><option value="">None</option>${scstOpts}</select></div>
-                    <div class="form-group"><label>PwBD Disability % (12)</label><input type="text" id="pounit_pwbd" placeholder="e.g. 70%"></div>
-                    <div class="form-group"><label>Widow (13)</label><select id="pounit_widow"><option value="">No</option><option value="Yes">Yes</option></select></div>
-                    <div class="form-group"><label>MCC (14)</label><select id="pounit_mcc"><option value="">No</option><option value="Yes">Yes</option></select></div>
-                    <div class="form-group"><label>Medical Conditions (15)</label>
-                        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">
-                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_cancer"> Cancer</label>
-                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_neuro"> Neuro</label>
-                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_kidney"> Kidney</label>
-                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_liver"> Liver</label>
-                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_heart"> Heart</label>
-                        </div>
-                    </div>
-                    <div class="form-group"><label>Type of Seniority (2)</label><select id="pounit_srtype"><option value="">Provisional</option><option value="Final">Final</option><option value="Tentative">Tentative</option></select></div>
-                    <div class="form-group"><label>Proceed. Number (3a)</label><input type="text" id="pounit_procno"></div>
-                    <div class="form-group"><label>Proceed. Date (3b)</label><input type="date" id="pounit_procdate"></div>
-                    <div class="form-group"><label>Cadre</label><select id="pounit_cadre"><option value="">Unassigned</option>${cadreOpts}</select></div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-                <button class="btn btn-primary" onclick="savePOUnitPersonnel('${escapeQuotes(rank)}', -1)">Add</button>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(dialog);
-}
+    const composition = [
+        { role: 'Chairman', desc: 'District Collector of the erstwhile district', who: ex.chairman_name, desig: ex.chairman_designation },
+        { role: 'Co-Chairman', desc: 'District Collector(s) of newly formed district(s)', who: ex.co_chairman_name, desig: ex.co_chairman_designation },
+        { role: 'Member-Convener', desc: 'District-level Departmental Head, erstwhile district', who: ex.member_convener_name, desig: ex.member_convener_designation },
+        { role: 'Co-Convener', desc: 'District-level Departmental Head(s) of newly formed district(s)', who: ex.co_convener_name, desig: ex.co_convener_designation },
+        { role: 'Members', desc: 'District Revenue Officer(s)', who: ex.dro_name, desig: ex.dro_designation }
+    ];
 
-function editPOUnitPersonnel(idx) {
-    if (userRole !== 'ADMIN') return;
-    const p = poUnitPersonnel[idx];
-    if (!p) return;
-
-    const cadreOpts = poCadres.map(c => `<option value="${c.id}" ${p.allocated_cadre_id===c.id?'selected':''}>${c.name}</option>`).join('');
-    const scstOpts = SC_ST_GROUPS.map(g => `<option value="${g.id}" ${p.sc_st_group===g.id?'selected':''}>${g.label}</option>`).join('');
-    const genderOpts = ['Male','Female'].map(g => `<option value="${g}" ${p.gender===g?'selected':''}>${g}</option>`).join('');
-    const widowOpts = ['No','Yes'].map(v => `<option value="${v}" ${p.widow===v?'selected':''}>${v}</option>`).join('');
-    const mccOpts = ['No','Yes'].map(v => `<option value="${v}" ${p.disabled_children===v?'selected':''}>${v}</option>`).join('');
-    const srTypes = ['Provisional','Final','Tentative'].map(v => `<option value="${v}" ${p.seniority_type===v?'selected':''}>${v}</option>`).join('');
-
-    const dialog = document.createElement('div');
-    dialog.className = 'modal-overlay';
-    dialog.style.display = 'flex';
-    dialog.innerHTML = `
-        <div class="modal" style="max-width:750px;">
-            <div class="modal-header">
-                <h3>Edit Person - ${p.rank}</h3>
-                <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-grid">
-                    <div class="form-group"><label>Name *</label><input type="text" id="pounit_name" value="${p.name}"></div>
-                    <div class="form-group"><label>Genl. No. (17)</label><input type="text" id="pounit_genlno" value="${p.genl_no || ''}"></div>
-                    <div class="form-group"><label>Sl.No *</label><input type="number" id="pounit_srno" min="1" value="${p.seniority_no || ''}"></div>
-                    <div class="form-group"><label>Gender (6)</label><select id="pounit_gender"><option value="">Select</option>${genderOpts}</select></div>
-                    <div class="form-group"><label>Date of Birth (9)</label><input type="date" id="pounit_dob" value="${p.date_of_birth || ''}"></div>
-                    <div class="form-group"><label>Date of Joining (10)</label><input type="date" id="pounit_doj" value="${p.date_of_joining || ''}"></div>
-                    <div class="form-group"><label>CFMS ID (7)</label><input type="text" id="pounit_cfms" value="${p.cfms_id || ''}"></div>
-                    <div class="form-group"><label>Mobile No. (8)</label><input type="text" id="pounit_mobile" value="${p.mobile || ''}"></div>
-                    <div class="form-group"><label>Caste</label><input type="text" id="pounit_caste" value="${p.caste || ''}"></div>
-                    <div class="form-group"><label>SC/ST Group (11)</label><select id="pounit_scst"><option value="">None</option>${scstOpts}</select></div>
-                    <div class="form-group"><label>PwBD Disability % (12)</label><input type="text" id="pounit_pwbd" value="${p.pwbd_percent || ''}"></div>
-                    <div class="form-group"><label>Widow (13)</label><select id="pounit_widow"><option value="">No</option>${widowOpts}</select></div>
-                    <div class="form-group"><label>MCC (14)</label><select id="pounit_mcc"><option value="">No</option>${mccOpts}</select></div>
-                    <div class="form-group"><label>Medical Conditions (15)</label>
-                        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">
-                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_cancer" ${p.cancer?'checked':''}> Cancer</label>
-                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_neuro" ${p.neurosurgery?'checked':''}> Neuro</label>
-                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_kidney" ${p.kidney?'checked':''}> Kidney</label>
-                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_liver" ${p.liver?'checked':''}> Liver</label>
-                            <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="pounit_heart" ${p.heart?'checked':''}> Heart</label>
-                        </div>
-                    </div>
-                    <div class="form-group"><label>Type of Seniority (2)</label><select id="pounit_srtype"><option value="">Provisional</option>${srTypes}</select></div>
-                    <div class="form-group"><label>Proceed. Number (3a)</label><input type="text" id="pounit_procno" value="${p.proceedings_no || ''}"></div>
-                    <div class="form-group"><label>Proceed. Date (3b)</label><input type="date" id="pounit_procdate" value="${p.proceedings_date || ''}"></div>
-                    <div class="form-group"><label>Cadre</label><select id="pounit_cadre"><option value="">Unassigned</option>${cadreOpts}</select></div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-                <button class="btn btn-primary" onclick="savePOUnitPersonnel('${escapeQuotes(p.rank)}', ${idx})">Save</button>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(dialog);
-}
-
-function savePOUnitPersonnel(rank, editIdx) {
-    if (userRole !== 'ADMIN') return;
-    const name = document.getElementById('pounit_name').value.trim();
-    if (!name) { showToast('Name is required', 'error'); return; }
-
-    const entry = {
-        rank: rank,
-        personnel_type: rank.includes('(AR)') ? 'AR' : 'CIVIL',
-        name: name,
-        genl_no: document.getElementById('pounit_genlno').value.trim(),
-        seniority_no: parseInt(document.getElementById('pounit_srno').value) || 0,
-        gender: document.getElementById('pounit_gender').value,
-        date_of_birth: document.getElementById('pounit_dob').value,
-        date_of_joining: document.getElementById('pounit_doj').value,
-        cfms_id: document.getElementById('pounit_cfms').value.trim(),
-        mobile: document.getElementById('pounit_mobile').value.trim(),
-        caste: document.getElementById('pounit_caste').value.trim(),
-        sc_st_group: document.getElementById('pounit_scst').value,
-        pwbd_percent: document.getElementById('pounit_pwbd').value.trim(),
-        widow: document.getElementById('pounit_widow').value,
-        disabled_children: document.getElementById('pounit_mcc').value,
-        cancer: document.getElementById('pounit_cancer').checked,
-        neurosurgery: document.getElementById('pounit_neuro').checked,
-        kidney: document.getElementById('pounit_kidney').checked,
-        liver: document.getElementById('pounit_liver').checked,
-        heart: document.getElementById('pounit_heart').checked,
-        seniority_type: document.getElementById('pounit_srtype').value,
-        proceedings_no: document.getElementById('pounit_procno').value.trim(),
-        proceedings_date: document.getElementById('pounit_procdate').value,
-        allocated_cadre_id: document.getElementById('pounit_cadre').value
+    const field = (label, id, val, opts) => {
+        const o = opts || {};
+        if (!editable) return '<div class="form-group"><label>' + escapeHtml(label) + '</label><div class="po-readonly">' + poDash(val) + '</div></div>';
+        if (o.type === 'textarea') {
+            return '<div class="form-group"><label>' + escapeHtml(label) + '</label><textarea id="' + id + '" rows="2">' + escapeHtml(val) + '</textarea></div>';
+        }
+        return '<div class="form-group"><label>' + escapeHtml(label) + '</label><input type="' + (o.type || 'text') + '" id="' + id + '" value="' + escapeHtml(val) + '"' + (o.readonly ? ' readonly' : '') + '></div>';
     };
 
-    if (editIdx >= 0) {
-        poUnitPersonnel[editIdx] = entry;
-    } else {
-        entry._idx = poUnitPersonnel.length;
-        poUnitPersonnel.push(entry);
+    content.innerHTML =
+        poCard('Step 1 &middot; DLC exercise configuration',
+            '<p class="po-hint">Official input. Nothing on this screen is generated by the system.</p>' +
+            '<div class="form-grid">' +
+                field('Exercise ID *', 'poExId', ex.exercise_id) +
+                field('Department *', 'poExDept', ex.department) +
+                field('Erstwhile District *', 'poExErst', ex.erstwhile_district) +
+                field('Current / New District(s)', 'poExNew', ex.new_districts) +
+                field('Cadre scope', 'poExScope', ex.cadre_scope, { readonly: true }) +
+                field('Exercise status', 'poExStatus', ex.status, { readonly: true }) +
+                field('Created date', 'poExCreated', (ex.created_at || '').slice(0, 10), { readonly: true }) +
+                field('Last modified', 'poExModified', (ex.modified_at || '').slice(0, 10), { readonly: true }) +
+            '</div>' +
+            '<div class="po-note po-note-info">For district-level processing the cadre scope is fixed to <strong>' +
+            escapeHtml(POEngine.PO_GO_REFERENCE.scope) + '</strong>. Zonal and multi-zonal allocation are not handled by this module and are never mixed in.</div>' +
+            (editable ? '<div class="po-actions"><button class="btn btn-primary" onclick="poSaveExerciseFromForm()">Save DLC configuration</button></div>' : ''),
+            '') +
+        poCard('DLC composition as prescribed by ' + escapeHtml(POEngine.PO_GO_REFERENCE.order),
+            poTable(['Role', 'Prescribed holder', 'Name', 'Designation'],
+                composition.map(c => '<tr><td><strong>' + escapeHtml(c.role) + '</strong></td><td>' + escapeHtml(c.desc) + '</td>' + poTd(c.who) + poTd(c.desig) + '</tr>')) +
+            (editable
+                ? '<div class="form-grid">' +
+                    '<div class="form-group"><label>Chairman - name</label><input id="poExChName" value="' + escapeHtml(ex.chairman_name) + '"></div>' +
+                    '<div class="form-group"><label>Chairman - designation</label><input id="poExChDesig" value="' + escapeHtml(ex.chairman_designation) + '"></div>' +
+                    '<div class="form-group"><label>Co-Chairman - name</label><input id="poExCoName" value="' + escapeHtml(ex.co_chairman_name) + '"></div>' +
+                    '<div class="form-group"><label>Co-Chairman - designation</label><input id="poExCoDesig" value="' + escapeHtml(ex.co_chairman_designation) + '"></div>' +
+                    '<div class="form-group"><label>Member-Convener - name</label><input id="poExMcName" value="' + escapeHtml(ex.member_convener_name) + '"></div>' +
+                    '<div class="form-group"><label>Member-Convener - designation</label><input id="poExMcDesig" value="' + escapeHtml(ex.member_convener_designation) + '"></div>' +
+                    '<div class="form-group"><label>Co-Convener - name</label><input id="poExCvName" value="' + escapeHtml(ex.co_convener_name) + '"></div>' +
+                    '<div class="form-group"><label>Co-Convener - designation</label><input id="poExCvDesig" value="' + escapeHtml(ex.co_convener_designation) + '"></div>' +
+                    '<div class="form-group"><label>DRO - name</label><input id="poExDroName" value="' + escapeHtml(ex.dro_name) + '"></div>' +
+                    '<div class="form-group"><label>DRO - designation</label><input id="poExDroDesig" value="' + escapeHtml(ex.dro_designation) + '"></div>' +
+                  '</div>' +
+                  '<div class="form-group"><label>Other DLC members</label><textarea id="poExOther" rows="2">' + escapeHtml(ex.other_members) + '</textarea></div>' +
+                  '<div class="po-actions"><button class="btn btn-primary" onclick="poSaveMembersFromForm()">Save composition</button></div>'
+                : (ex.other_members ? '<div class="po-readonly-block"><strong>Other members</strong><br>' + escapeHtml(ex.other_members) + '</div>' : '')),
+            '') +
+        poCard('Exercise status summary', poStats([
+            { value: d.cadres.total, label: 'Cadres' },
+            { value: d.cadres.fws, label: 'Total FWS' },
+            { value: poState.categories.length, label: 'Rank categories' },
+            { value: d.personnel.fsl_total, label: 'FSL records' },
+            { value: d.personnel.preferential_cases, label: 'Preferential' },
+            { value: d.personnel.no_option, label: 'No option' }
+        ]), '');
+}
+
+function poSaveExerciseFromForm() {
+    const g = id => (document.getElementById(id) || {}).value || '';
+    poState.exercise.exercise_id = g('poExId');
+    poState.exercise.department = g('poExDept');
+    poState.exercise.erstwhile_district = g('poExErst');
+    poState.exercise.new_districts = g('poExNew');
+    poState.exercise.cadre_scope = 'District and Contiguous District Cadre';
+    if (poSaveExercise()) { showToast('DLC configuration saved', 'success'); renderPOModule(); }
+}
+
+function poSaveMembersFromForm() {
+    const g = id => (document.getElementById(id) || {}).value || '';
+    const ex = poState.exercise;
+    ex.chairman_name = g('poExChName'); ex.chairman_designation = g('poExChDesig');
+    ex.co_chairman_name = g('poExCoName'); ex.co_chairman_designation = g('poExCoDesig');
+    ex.member_convener_name = g('poExMcName'); ex.member_convener_designation = g('poExMcDesig');
+    ex.co_convener_name = g('poExCvName'); ex.co_convener_designation = g('poExCvDesig');
+    ex.dro_name = g('poExDroName'); ex.dro_designation = g('poExDroDesig');
+    ex.other_members = g('poExOther');
+    if (poSaveExercise()) { showToast('DLC composition saved', 'success'); renderPOModule(); }
+}
+
+
+// ============================================================================
+// STEP 2 - Post category / rank master + cadre configuration (para 2 & 3)
+// ============================================================================
+
+function renderStepRanks(content) {
+    const editable = poIsAdmin() && poStageIdx(poStage()) <= poStageIdx('CADRE_CONFIGURED');
+    const ctx = poCtx();
+
+    const catRows = poState.categories.map(c => {
+        const configured = poState.strengths.filter(s => s.category_id === c.id).length;
+        return '<tr>' +
+            poTd(c.id, 'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px') + poTd(c.code) + poTd(c.name) +
+            poTd(c.department) + poTd(c.erstwhile_cadre) +
+            '<td>' + configured + '</td>' +
+            '<td><span class="po-badge po-badge-' + (c.status === 'ACTIVE' ? 'success' : 'info') + '">' + escapeHtml(c.status) + '</span></td>' +
+            '<td>' + (editable
+                ? '<button class="action-btn btn-primary" onclick="poEditCategory(\'' + poQs(c.id) + '\')">Edit</button> ' +
+                  '<button class="action-btn btn-danger" onclick="poDeleteCategory(\'' + poQs(c.id) + '\')">Del</button>'
+                : '<span style="color:var(--text-subtle)">locked</span>') + '</td>' +
+        '</tr>';
+    });
+
+    const cadreRows = poState.cadres.map(c => {
+        const fws = poState.strengths.filter(s => s.cadre_id === c.id).reduce((n, s) => n + (parseInt(s.fws) || 0), 0);
+        const type = POEngine.PO_CADRE_TYPES.find(t => t.id === c.cadre_type);
+        return '<tr>' +
+            poTd(c.id, 'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px') + poTd(c.name) +
+            poTd(type ? type.label : c.cadre_type) + poTd(c.level) + poTd(String(fws)) +
+            '<td><span class="po-badge po-badge-' + (c.status === 'ACTIVE' ? 'success' : 'info') + '">' + escapeHtml(c.status) + '</span></td>' +
+            '<td>' + (editable
+                ? '<button class="action-btn btn-primary" onclick="poEditCadre(\'' + poQs(c.id) + '\')">Edit</button> ' +
+                  '<button class="action-btn btn-danger" onclick="poDeleteCadre(\'' + poQs(c.id) + '\')">Del</button>'
+                : '<span style="color:var(--text-subtle)">locked</span>') + '</td>' +
+        '</tr>';
+    });
+
+    content.innerHTML =
+        poCard('Step 2a &middot; Post category / rank master',
+            '<p class="po-hint">Ranks are configuration, not law. Load them from the departmental rank master or define them here. ' +
+            'The allocation engine never mixes two categories.</p>' +
+            (editable
+                ? '<div class="po-actions" style="margin-bottom:12px;">' +
+                    '<button class="btn btn-primary" onclick="poEditCategory(\'\')">+ Add category</button>' +
+                    '<button class="btn btn-secondary" onclick="poLoadRankMaster()">Load from departmental rank master</button>' +
+                  '</div>'
+                : '') +
+            poTable(['Category ID', 'Code', 'Category name', 'Department', 'Erstwhile cadre', 'Cadres configured', 'Status', ''], catRows), '') +
+
+        poCard('Step 2b &middot; Cadre configuration',
+            '<p class="po-hint">Cadres are not hard-coded. The three district cadres are seeded for convenience and can be renamed, retyped or added.</p>' +
+            (editable
+                ? '<div class="po-actions" style="margin-bottom:12px;"><button class="btn btn-primary" onclick="poEditCadre(\'\')">+ Add cadre</button></div>'
+                : '') +
+            poTable(['Cadre ID', 'Cadre name', 'Cadre type', 'Level', 'Total FWS', 'Status', ''], cadreRows), '') +
+
+        poCard('Scope declaration',
+            '<div class="po-readonly-block"><strong>' + escapeHtml(POEngine.PO_GO_REFERENCE.scope) + '</strong><br>' +
+            'Cadre types in use: ' + poState.cadres.map(c => escapeHtml((POEngine.PO_CADRE_TYPES.find(t => t.id === c.cadre_type) || {}).label || c.cadre_type)).join(' &middot; ') +
+            '<br>Zonal / multi-zonal allocation is out of scope for this module and is never combined with district allocation.</div>', '') +
+
+        renderPolicyPanel();
+}
+
+/**
+ * PART 10 / 11 / 14 — the allocation policy.
+ *
+ * Nothing on this panel is a GO requirement. The GO permits compulsory allotment
+ * to any available clear post within working strength and specifies the SC/ST
+ * percentages on a working-strength basis; it does NOT prescribe the tie-breaker,
+ * the prefer-existing switch, or the rounding convention. All three are DLC
+ * decisions, labelled as such, and are frozen before ALLOCATION_RUNNING.
+ */
+function renderPolicyPanel() {
+    const pol = poState.policy || {};
+    const frozen = poPolicyFrozen();
+    const canEdit = poIsAdmin() && !frozen && poStageIdx(poStage()) < poStageIdx('ALLOCATION_RUNNING');
+
+    const sel = (field, options, current, label, notice) => {
+        const opts = options.map(o => '<option value="' + escapeHtml(o.id) + '"' +
+            (o.id === current ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>').join('');
+        return '<div class="form-group"><label>' + escapeHtml(label) + '</label>' +
+            (canEdit
+                ? '<select onchange="poSetPolicyFromUi(\'' + field + '\',this.value)">' + opts + '</select>'
+                : '<div class="po-readonly">' + escapeHtml((options.find(o => o.id === current) || {}).label || current) + '</div>') +
+            '<div class="po-policy-notice">' + escapeHtml(notice) + '</div></div>';
+    };
+
+    return poCard('Allocation policy &mdash; DLC configuration (not a GO requirement)',
+        '<div class="po-note po-note-warn">' +
+            (frozen
+                ? '<strong>FROZEN.</strong> Frozen at ' + escapeHtml(String(pol.frozen_at || '').slice(0, 19).replace('T', ' ')) +
+                  ' by ' + escapeHtml(pol.frozen_by || '') + '. It cannot be changed: the allocation run snapshot records it.'
+                : 'These are <strong>DLC policy decisions</strong>, not provisions of the order. They must be settled and frozen before ALLOCATION_RUNNING.') +
+        '</div>' +
+        '<div class="form-grid">' +
+            sel('compulsory_allocation_policy', POEngine.PO_COMPULSORY_POLICIES, pol.compulsory_allocation_policy,
+                'Compulsory allotment tie-breaker', POEngine.PO_POLICY_NOTICE_COMPULSORY) +
+            '<div class="form-group"><label>Prefer existing local cadre during compulsory allocation</label>' +
+                (canEdit
+                    ? '<select onchange="poSetPolicyFromUi(\'prefer_existing_on_compulsory\',this.value)">' +
+                      ['YES', 'NO'].map(v => '<option value="' + v + '"' + ((pol.prefer_existing_on_compulsory ? 'YES' : 'NO') === v ? ' selected' : '') + '>' + v + '</option>').join('') +
+                      '</select>'
+                    : '<div class="po-readonly">' + (pol.prefer_existing_on_compulsory ? 'YES' : 'NO') + '</div>') +
+                '<div class="po-policy-notice">DLC policy decision, not a GO requirement.</div></div>' +
+            sel('scst_rounding_policy', POEngine.PO_ROUNDING_POLICIES, pol.scst_rounding_policy,
+                'SC/ST rounding policy', POEngine.PO_POLICY_NOTICE_ROUNDING) +
+            '<div class="form-group"><label>SC/ST basis</label>' +
+                '<div class="po-readonly">' + escapeHtml(POEngine.PO_SEG_BASIS.replace(/_/g, ' ')) + '</div>' +
+                '<div class="po-policy-notice">GO REQUIREMENT. The order refers to proportionate distribution based on working strength. ' +
+                'This is not a user choice.</div></div>' +
+            '<div class="form-group"><label>SC/ST adjustment</label>' +
+                (canEdit
+                    ? '<select onchange="poSetPolicyFromUi(\'scst_adjustment\',this.value)">' +
+                      ['YES', 'NO'].map(v => '<option value="' + v + '"' + ((pol.scst_adjustment !== false ? 'YES' : 'NO') === v ? ' selected' : '') + '>' + v + '</option>').join('') +
+                      '</select>'
+                    : '<div class="po-readonly">' + (pol.scst_adjustment !== false ? 'YES' : 'NO') + '</div>') +
+                '<div class="po-policy-notice">SYSTEM IMPLEMENTATION RULE. Adjustment substitutes the last allotted general-category employee with the relevant SC/ST employee.</div></div>' +
+        '</div>' +
+        '<div class="po-legend">' +
+            '<div><span class="po-tag po-tag-go">GO REQUIREMENT</span> prescribed by G.O.Ms.No.129</div>' +
+            '<div><span class="po-tag po-tag-sys">SYSTEM IMPLEMENTATION RULE</span> deterministic software rule, labelled for DLC confirmation</div>' +
+            '<div><span class="po-tag po-tag-dlc">DLC CONFIGURATION / POLICY DECISION</span> set by the Committee, not by the order</div>' +
+        '</div>' +
+        (canEdit
+            ? '<div class="po-actions"><button class="btn btn-primary" onclick="poFreezePolicyFlow()">FREEZE POLICY before allocation</button></div>'
+            : ''), '');
+}
+
+function poSetPolicyFromUi(field, value) {
+    const v = (field === 'prefer_existing_on_compulsory' || field === 'scst_adjustment') ? (value === 'YES') : value;
+    if (poSetPolicy(field, v)) { showToast('Allocation policy updated', 'success'); renderPOModule(); }
+}
+
+function poFreezePolicyFlow() {
+    if (!confirm('Freeze the allocation policy for this exercise?\n\nIt cannot be changed once allocation begins.')) return;
+    if (poFreezePolicy()) { showToast('Allocation policy frozen', 'success'); renderPOModule(); }
+}
+
+function poEditCategory(id) {
+    if (!poIsAdmin()) { showToast('Admin only', 'error'); return; }
+    const c = id ? poState.categories.find(x => x.id === id) : null;
+    const dlg = document.createElement('div');
+    dlg.className = 'modal-overlay';
+    dlg.style.display = 'flex';
+    dlg.innerHTML =
+        '<div class="modal" style="max-width:620px;">' +
+            '<div class="modal-header"><h3>' + (c ? 'Edit' : 'Add') + ' post category</h3>' +
+            '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button></div>' +
+            '<div class="modal-body"><div class="form-grid">' +
+                '<div class="form-group"><label>Category ID *</label><input id="poCatId" value="' + escapeHtml(c ? c.id : '') + '"></div>' +
+                '<div class="form-group"><label>Code</label><input id="poCatCode" value="' + escapeHtml(c ? c.code : '') + '"></div>' +
+                '<div class="form-group"><label>Category name *</label><input id="poCatName" value="' + escapeHtml(c ? c.name : '') + '"></div>' +
+                '<div class="form-group"><label>Department</label><input id="poCatDept" value="' + escapeHtml(c ? c.department : poState.exercise.department) + '"></div>' +
+                '<div class="form-group"><label>Existing / erstwhile cadre</label><input id="poCatErst" value="' + escapeHtml(c ? c.erstwhile_cadre : '') + '"></div>' +
+                '<div class="form-group"><label>Status</label><input id="poCatStatus" value="' + escapeHtml(c ? c.status : 'ACTIVE') + '"></div>' +
+            '</div></div>' +
+            '<div class="modal-footer"><button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">Cancel</button>' +
+            '<button class="btn btn-primary" onclick="poSaveCategoryForm()">Save</button></div>' +
+        '</div>';
+    document.body.appendChild(dlg);
+}
+
+function poSaveCategoryForm() {
+    const g = id => (document.getElementById(id) || {}).value || '';
+    const id = g('poCatId').trim();
+    const name = g('poCatName').trim();
+    if (!id || !name) { showToast('Category ID and name are required', 'error'); return; }
+    const okSave = poSaveCategory(id, g('poCatCode').trim() || name, name, g('poCatDept').trim(), g('poCatErst').trim());
+    if (!okSave) return;
+    const cat = poState.categories.find(c => c.id === id);
+    if (cat) cat.status = g('poCatStatus').trim() || 'ACTIVE';
+    poSave();
+    document.querySelector('.modal-overlay').remove();
+    showToast('Category saved', 'success');
+    renderPOModule();
+}
+
+function poDeleteCategory(id) {
+    if (!confirm('Delete category ' + id + '?')) return;
+    if (poRemoveCategory(id)) { showToast('Category removed', 'success'); renderPOModule(); }
+}
+
+function poLoadRankMaster() {
+    const n = poSuggestCategoriesFromRankMaster();
+    showToast(n ? n + ' categories loaded from the rank master' : 'No new categories to add', n ? 'success' : 'error');
+    renderPOModule();
+}
+
+function poEditCadre(id) {
+    if (!poIsAdmin()) { showToast('Admin only', 'error'); return; }
+    const c = id ? poState.cadres.find(x => x.id === id) : null;
+    const typeOpts = POEngine.PO_CADRE_TYPES.map(t =>
+        '<option value="' + t.id + '"' + (c && c.cadre_type === t.id ? ' selected' : '') + '>' + escapeHtml(t.label) + '</option>').join('');
+    const dlg = document.createElement('div');
+    dlg.className = 'modal-overlay';
+    dlg.style.display = 'flex';
+    dlg.innerHTML =
+        '<div class="modal" style="max-width:560px;">' +
+            '<div class="modal-header"><h3>' + (c ? 'Edit' : 'Add') + ' local cadre</h3>' +
+            '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button></div>' +
+            '<div class="modal-body"><div class="form-grid">' +
+                '<div class="form-group"><label>Cadre ID *</label><input id="poCadId" value="' + escapeHtml(c ? c.id : '') + '"></div>' +
+                '<div class="form-group"><label>Cadre name *</label><input id="poCadName" value="' + escapeHtml(c ? c.name : '') + '"></div>' +
+                '<div class="form-group"><label>Cadre type *</label><select id="poCadType">' + typeOpts + '</select></div>' +
+                '<div class="form-group"><label>Level</label><input id="poCadLevel" value="DISTRICT" readonly></div>' +
+            '</div></div>' +
+            '<div class="modal-footer"><button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">Cancel</button>' +
+            '<button class="btn btn-primary" onclick="poSaveCadreForm()">Save</button></div>' +
+        '</div>';
+    document.body.appendChild(dlg);
+}
+
+function poSaveCadreForm() {
+    const g = id => (document.getElementById(id) || {}).value || '';
+    if (!poSaveCadre(g('poCadId').trim(), g('poCadName').trim(), g('poCadType'))) return;
+    document.querySelector('.modal-overlay').remove();
+    showToast('Cadre saved', 'success');
+    renderPOModule();
+}
+
+function poDeleteCadre(id) {
+    if (!confirm('Delete cadre ' + id + '?')) return;
+    if (poRemoveCadre(id)) { showToast('Cadre removed', 'success'); renderPOModule(); }
+}
+
+
+// ============================================================================
+// STEP 3 - Cadre + working strength definition and validation (para 3 & 4)
+// ============================================================================
+
+function renderStepStrength(content) {
+    const editable = poIsAdmin() && poStageIdx(poStage()) <= poStageIdx('WORKING_STRENGTH_FINALIZED');
+    const report = POEngine.validateWorkingStrength({ ctx: poCtx() });
+    const ctx = poCtx();
+
+    const blocks = poState.categories.map(cat => {
+        const rows = poState.strengths.filter(s => s.category_id === cat.id);
+        const sumFws = rows.reduce((n, s) => n + (parseInt(s.fws) || 0), 0);
+        const approved = (poState.approved.find(a => a.category_id === cat.id) || {}).approved_working_strength;
+        const ok = approved !== undefined && Number(approved) === sumFws;
+
+        const trs = rows.map(s => {
+            const name = (ctx.cadreById[s.cadre_id] || {}).name || s.cadre_id;
+            const fws = parseInt(s.fws) || 0;
+            const cstr = parseInt(s.cadre_strength) || 0;
+            return '<tr>' + poTd(name) +
+                (editable
+                    ? '<td><input type="number" min="0" class="po-strength-input" value="' + cstr + '" onchange="poSetStrengthField(\'' + poQs(cat.id) + '\',\'' + poQs(s.cadre_id) + '\',\'cadre_strength\',this.value)"></td>' +
+                      '<td><input type="number" min="0" class="po-strength-input" value="' + fws + '" onchange="poSetStrengthField(\'' + poQs(cat.id) + '\',\'' + poQs(s.cadre_id) + '\',\'fws\',this.value)"></td>'
+                    : poTd(String(cstr)) + poTd(String(fws))) +
+                poTd(String(fws - 0), 'color:var(--text-muted)') +
+            '</tr>';
+        });
+
+        return '<div class="po-block">' +
+            '<div class="po-block-head"><h4>' + escapeHtml(cat.code ? cat.code + ' - ' + cat.name : cat.name) + '</h4>' +
+            '<span class="po-badge po-badge-' + (ok ? 'success' : 'danger') + '">' + (ok ? 'RECONCILED' : 'NOT RECONCILED') + '</span></div>' +
+            '<div class="po-table-wrap"><table><thead><tr><th>Local cadre</th><th>Cadre strength</th><th>Final Working Strength (FWS)</th><th>Posts available</th></tr></thead><tbody>' +
+            (trs.join('') || '<tr><td colspan="4">No cadre configured for this category.</td></tr>') +
+            '</tbody><tfoot><tr><th>Total FWS</th><th colspan="2">' + sumFws + '</th>' +
+            '<th>' + (editable
+                ? '<input type="number" min="0" class="po-strength-input" style="width:90px" value="' + (approved === undefined ? 0 : approved) +
+                  '" onchange="poSetApprovedFromForm(\'' + poQs(cat.id) + '\',this.value)">'
+                : (approved === undefined ? '-' : approved)) + '</th></tr></tfoot></table></div>' +
+            '<div class="po-hint">Last column of the footer is the <strong>approved working strength for the exercise</strong>. Total FWS must equal it exactly.</div>' +
+        '</div>';
+    });
+
+    content.innerHTML =
+        poCard('Step 3 &middot; Cadre strength, Final Working Strength and reconciliation',
+            '<p class="po-hint">FWS is official data. The system never changes it silently and never allocates beyond it.</p>' +
+            blocks.join(''), '') +
+        poCard('Working strength validation', poValidationPanel('Working strength', {
+            valid: report.valid,
+            errors: report.errors,
+            warnings: report.warnings,
+            passed: report.rows.filter(r => r.reconciled).map(r => r.category + ': FWS ' + r.total_fws + ' = approved ' + r.approved_working_strength)
+        }), '');
+}
+
+function poSetStrengthField(categoryId, cadreId, field, value) {
+    poSetStrength(categoryId, cadreId, field, value);
+    renderPOModule();
+}
+
+function poSetApprovedFromForm(categoryId, value) {
+    poSetApprovedStrength(categoryId, value);
+    renderPOModule();
+}
+
+
+// ============================================================================
+// STEP 4 - DSL (para 5, 6, 7)
+// ============================================================================
+
+function poDslEditable() { return poIsAdmin() && poStageIdx(poStage()) <= poStageIdx('DSL_UPLOADED'); }
+
+function renderStepDsl(content) {
+    const editable = poDslEditable();
+    const ctx = poCtx();
+    const report = poState.dslValidation;
+    const issues = {};
+    if (report) {
+        report.errors.concat(report.warnings).forEach(i => {
+            if (i.employee_id) {
+                issues[i.employee_id] = issues[i.employee_id] || [];
+                issues[i.employee_id].push(i.severity + ':' + i.code);
+            }
+        });
     }
 
-    // Re-index
-    poUnitPersonnel.forEach((p, i) => { p._idx = i; });
-
-    savePOData();
-    document.querySelector('.modal-overlay').remove();
-    renderPOUnitDetail();
-    showToast('Person saved', 'success');
-}
-
-function deletePOUnitPersonnel(idx) {
-    if (userRole !== 'ADMIN') return;
-    if (!confirm('Delete this person?')) return;
-    poUnitPersonnel.splice(idx, 1);
-    poUnitPersonnel.forEach((p, i) => { p._idx = i; });
-    savePOData();
-    renderPOUnitDetail();
-    showToast('Person deleted', 'success');
-}
-
-function exportPOUnitCSV(rank) {
-    const personnel = poUnitPersonnel.filter(p => p.rank === rank);
-    if (personnel.length === 0) { showToast('No data to export', 'error'); return; }
-    let csv = `Rank: ${rank}\nSl.No,Type of Seniority,Proceedings No,Proceedings Date,Seniority No,Name,Gender,CFMS ID,Mobile,DOB,DOJ,SC/ST,PwBD%,Widow,MCC,Cancer,Neuro,Kidney,Liver,Heart,Genl.No,Cadre\n`;
-    personnel.forEach((p, i) => {
-        csv += `${i+1},"${p.seniority_type||'Provisional'}","${p.proceedings_no||''}","${p.proceedings_date||''}",${p.seniority_no||i+1},"${p.name}","${p.gender||''}","${p.cfms_id||''}","${p.mobile||''}","${p.date_of_birth||''}","${p.date_of_joining||''}","${p.sc_st_group||''}","${p.pwbd_percent||''}","${p.widow||''}","${p.disabled_children||''}","${p.cancer?'Yes':'No'}","${p.neurosurgery?'Yes':'No'}","${p.kidney?'Yes':'No'}","${p.liver?'Yes':'No'}","${p.heart?'Yes':'No'}","${p.genl_no||''}","${p.allocated_cadre_id||''}"\n`;
+    const rows = poState.dsl.map(r => {
+        const pref = POEngine.poPreferredClaim(r);
+        const pending = poPendingClaims(r);
+        const flag = issues[r.employee_id];
+        return '<tr' + (flag && flag.some(f => f.indexOf('ERROR') === 0) ? ' class="po-row-error"' : '') + '>' +
+            poTd(r.seniority_no) +
+            poTd(r.name) +
+            poTd((ctx.categoryById[r.category_id] || {}).name || r.rank_code) +
+            poTd(r.gender) + poTd(r.cfms_id) + poTd(r.mobile) +
+            poTd(r.date_of_birth) + poTd(r.date_of_joining_category) +
+            poTd(r.social_category) + poTd(r.sc_group) +
+            poTd((ctx.cadreById[r.erstwhile_cadre_id] || {}).name) +
+            poTd((ctx.cadreById[r.present_local_cadre_id] || {}).name) +
+            poTd(r.present_working_place) +
+            poTd(poServiceLabel(r.service_status), r.service_status === 'PRESENT' ? '' : 'color:var(--warn)') +
+            '<td>' + (pref ? '<span class="po-badge po-badge-success">VERIFIED: ' + escapeHtml(pref.label) + '</span>'
+                : (pending ? '<span class="po-badge po-badge-warn">' + pending.length + ' claim(s) pending verification</span>' : '-')) + '</td>' +
+            '<td>' + (flag ? flag.map(f => '<span class="po-badge po-badge-' + (f.indexOf('ERROR') === 0 ? 'danger' : 'warn') + '">' + escapeHtml(f.split(':')[1]) + '</span>').join(' ') : '-') + '</td>' +
+            '<td>' + (editable
+                ? '<button class="action-btn btn-primary" onclick="poEditDslRecord(\'' + poQs(r.employee_id) + '\')">Edit</button> ' +
+                  '<button class="action-btn btn-secondary" onclick="poOpenClaimPanel(\'' + poQs(r.employee_id) + '\')">Claims</button> ' +
+                  '<button class="action-btn btn-danger" onclick="poDeleteDslRecord(\'' + poQs(r.employee_id) + '\')">Del</button>'
+                : '<span style="color:var(--text-subtle)">locked</span>') + '</td>' +
+        '</tr>';
     });
-    downloadFile(csv, `PO_UnitData_${rank.replace(/[^a-zA-Z0-9]/g,'_')}.csv`, 'text/csv');
-    showToast('Exported to CSV', 'success');
+
+    content.innerHTML =
+        poCard('Step 4 &middot; Draft Seniority List',
+            '<p class="po-hint">The DSL is the single source of personnel data. Seniority numbers are official: they are copied exactly as supplied and ' +
+            'are never generated from row order. Employees on deputation, leave, probation, training, suspension or absence remain in the DSL.</p>' +
+            (editable
+                ? '<div class="po-actions" style="margin-bottom:12px;">' +
+                    '<button class="btn btn-primary" onclick="poEditDslRecord(\'\')">+ Add record</button>' +
+                    '<button class="btn btn-secondary" onclick="poDownloadDslTemplate()">Download CSV template</button>' +
+                    '<button class="btn btn-secondary" onclick="document.getElementById(\'poDslFile\').click()">Upload CSV / Excel</button>' +
+                    '<input type="file" id="poDslFile" accept=".csv,.xlsx,.xls" style="display:none" onchange="poImportDslFile(this)">' +
+                    '<button class="btn btn-secondary" onclick="poExportDslCsv()">Export DSL</button>' +
+                    '<button class="btn btn-primary" onclick="poValidateDslNow()">Run DSL validation</button>' +
+                  '</div>'
+                : '<div class="po-note po-note-info">The DSL is frozen at this stage.</div>') +
+            poStats([
+                { value: poState.dsl.length, label: 'DSL records' },
+                { value: (report ? report.errors.length : '-'), label: 'Errors' },
+                { value: (report ? report.warnings.length : '-'), label: 'Warnings' },
+                { value: poState.dsl.filter(r => r.service_status === 'DEPUTATION').length, label: 'On deputation' },
+                { value: poVersionLabel('dsl'), label: 'DSL version' }
+            ]) +
+            poTable(['Seniority No', 'Employee Name', 'Category', 'Gender', 'CFMS ID', 'Mobile', 'Date of Birth',
+                     'Date of Joining in Category', 'Social Category', 'SC/ST Group', 'Erstwhile Cadre',
+                     'Present Local Cadre', 'Present Working Place', 'Status', 'Preferential', 'Validation', ''], rows), '') +
+
+        poCard('DSL validation (para 7)', report ? poValidationPanel('DSL', report) :
+            '<div class="empty-state">Validation has not been run yet.</div>', '') +
+
+        renderObjectionPanel();
 }
 
-function downloadPOUnitTemplate(rank) {
-    const headers = [
-        'Sl.No', 'Type of Seniority', 'Proceedings No', 'Proceedings Date',
-        'Seniority No', 'Name', 'Gender', 'CFMS ID', 'Mobile', 'DOB', 'DOJ',
-        'SC/ST', 'PwBD%', 'Widow', 'MCC',
-        'Cancer', 'Neuro Surgery', 'Kidney Trans', 'Liver Trans', 'Open Heart',
-        'Rank', 'Genl.No', 'Cadre'
-    ];
-    const sampleRow = [
-        '1', 'Provisional', '', '',
-        '1', 'Sample Name', 'Male', '', '', '', '',
-        '', '', '', '',
-        'No', 'No', 'No', 'No', 'No',
-        rank, '', ''
-    ];
-    let csv = headers.join(',') + '\n' + sampleRow.join(',') + '\n';
-    downloadFile(csv, `PO_Template_${rank.replace(/[^a-zA-Z0-9]/g,'_')}.csv`, 'text/csv');
-    showToast('Template downloaded', 'success');
+/**
+ * PART 4 - the DSL objection subsystem. The order allows a period for objections
+ * after publication of the DSL, and the FSL follows on a later calculated date.
+ * Both are derived from the actual publication timestamp; nothing is hard-coded.
+ * The FAL cannot be finalized until every objection is disposed and the window
+ * has been closed.
+ */
+function renderObjectionPanel() {
+    const tl = poTimeline();
+    const rows = (poState.objections || []).map(o => '<tr>' +
+        poTd(o.objection_id, 'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px') +
+        poTd((o.submitted_at || '').slice(0, 16).replace('T', ' ')) +
+        poTd(o.employee_name || o.employee_id) +
+        poTd(o.objection_type) + poTd(o.objection_text) + poTd(o.supporting_documents) +
+        '<td><span class="po-badge po-badge-' + poObjectionTone(o.status) + '">' + escapeHtml(o.status) + '</span></td>' +
+        poTd(o.disposed_at ? String(o.disposed_at).slice(0, 16).replace('T', ' ') : '-') +
+        poTd(o.disposal_reason) + poTd(o.disposed_by) + poTd(o.revised_value) +
+        '<td>' + (poIsAdmin() && ['PENDING', 'UNDER_REVIEW'].indexOf(o.status) !== -1
+            ? '<button class="action-btn btn-primary" onclick="poDisposeObjectionFlow(\'' + poQs(o.objection_id) + '\')">Dispose</button>'
+            : '') + '</td></tr>');
+
+    const dslRecs = (poState.dsl || []).filter(r => !poState.objections.some(o => o.employee_id === r.employee_id));
+    const raise = '<div class="po-raise"><div class="po-raise-row">' +
+        '<select id="poObjEmp">' + dslRecs.map(r => '<option value="' + escapeHtml(r.employee_id) + '">' +
+            escapeHtml(r.name) + ' (' + escapeHtml(r.seniority_no === null ? 'no seniority' : r.seniority_no) + ')</option>').join('') + '</select>' +
+        '<select id="poObjType">' + PO_OBJECTION_TYPES.map(t => '<option value="' + t + '">' + escapeHtml(t) + '</option>').join('') + '</select>' +
+        '<input id="poObjText" placeholder="Objection" style="flex:2 1 240px">' +
+        '<input id="poObjDocs" placeholder="Supporting document ref" style="flex:1 1 160px">' +
+        '<button class="btn btn-primary" onclick="poRaiseObjectionFlow()">Record objection</button>' +
+        '</div></div>';
+
+    return poCard('DSL objection process',
+        '<div class="po-window">' +
+            '<div><span class="po-window-l">DSL publication date</span><span class="po-window-v">' + poDash(tl.dsl_published_at ? String(tl.dsl_published_at).slice(0, 10) : '-') + '</span></div>' +
+            '<div><span class="po-window-l">Objection closing date</span><span class="po-window-v">' + poDash(tl.objection_closing_date) + '</span></div>' +
+            '<div><span class="po-window-l">Objection window</span><span class="po-window-v">' + (poObjectionWindowOpen() ? 'OPEN' : (tl.objection_closed_at ? 'CLOSED' : 'NOT OPEN')) + '</span></div>' +
+            '<div><span class="po-window-l">Objections</span><span class="po-window-v">' + tl.objections_pending + ' pending / ' + tl.objections_disposed + ' disposed</span></div>' +
+            '<div><span class="po-window-l">FSL eligibility date</span><span class="po-window-v">' + poDash(tl.fsl_eligibility_date) + '</span></div>' +
+        '</div>' +
+        '<div class="po-note po-note-info"><span class="po-tag po-tag-go">GO REQUIREMENT</span> Objections may be recorded for ' +
+            PO_OBJECTION_DAYS + ' days following publication of the DSL. The FSL is published on the ' + PO_FSL_ELIGIBILITY_DAYS +
+            'th day from publication of the DSL. Both dates are calculated from the actual publication timestamp.</div>' +
+        (poIsAdmin() && poObjectionWindowOpen()
+            ? raise
+            : '<div class="po-note po-note-warn">The objection window is not open. Objections may only be recorded during the period following publication of the DSL.</div>') +
+        poTable(['Objection ID', 'Submitted', 'Employee', 'Type', 'Objection', 'Supporting documents',
+                 'Status', 'Disposed at', 'Disposal reason', 'Disposed by', 'Revised value', ''], rows) +
+        (poIsAdmin() && poObjectionWindowOpen() && !poPendingObjections().length
+            ? '<div class="po-actions"><button class="btn btn-primary" onclick="poCloseObjectionWindowFlow()">Close objection window</button></div>'
+            : '') +
+        (poPendingObjections().length
+            ? '<div class="po-note po-note-danger">The FAL cannot be finalized: ' + poPendingObjections().length +
+              ' objection(s) must be disposed and the window closed first.</div>'
+            : (tl.objections_disposed_at
+                ? '<div class="po-note po-note-info">Objection process complete at ' + escapeHtml(tl.objections_disposed_at) + '.</div>'
+                : '')), '');
 }
 
-function importPOUnitData(input, rank) {
-    if (userRole !== 'ADMIN') { showToast('Admin only', 'error'); input.value = ''; return; }
-    const file = input.files[0];
-    if (!file) return;
+function poObjectionTone(v) {
+    if (v === 'ACCEPTED' || v === 'PARTIALLY_ACCEPTED' || v === 'DISPOSED') return 'success';
+    if (v === 'REJECTED') return 'danger';
+    if (v === 'UNDER_REVIEW') return 'info';
+    return 'warn';
+}
 
+function poRaiseObjectionFlow() {
+    const g = id => (document.getElementById(id) || {}).value || '';
+    const r = poRaiseObjection(g('poObjEmp'), g('poObjType'), g('poObjText'), g('poObjDocs'));
+    if (!r.ok) { showToast((r.errors || [])[0] || 'Objection not recorded', 'error'); return; }
+    showToast('Objection ' + r.objection.objection_id + ' recorded', 'success');
+    renderPOModule();
+}
+
+function poDisposeObjectionFlow(objectionId) {
+    const status = prompt('Disposition (ACCEPTED / PARTIALLY_ACCEPTED / REJECTED / DISPOSED):', 'ACCEPTED');
+    if (!status) return;
+    const reason = prompt('Disposal reason (mandatory, recorded in the audit trail):', '');
+    if (reason === null) return;
+    const revised = prompt('Revised value if the objection requires a DSL correction (optional):', '') || '';
+    if (!poDisposeObjection(objectionId, status.trim().toUpperCase(), reason, revised)) return;
+    showToast('Objection disposed', 'success');
+    renderPOModule();
+}
+
+function poCloseObjectionWindowFlow() {
+    const reason = prompt('Reason for closing the objection window (recorded in the audit trail):', '');
+    if (reason === null) return;
+    if (poCloseObjectionWindow(reason)) { showToast('Objection window closed', 'success'); renderPOModule(); }
+}
+
+function poServiceLabel(id) {
+    const hit = POEngine.PO_SERVICE_STATUS.find(s => s.id === id);
+    return hit ? hit.label : (id || '-');
+}
+
+function poPendingClaims(rec) {
+    poEnsureClaims(rec);
+    return POEngine.PO_PREF_CLAIMS.filter(def => {
+        const c = rec.claims[def.id];
+        return c && c.claimed && String(c.verification).toUpperCase() !== 'VERIFIED' && String(c.verification).toUpperCase() !== 'REJECTED';
+    });
+}
+
+function poValidateDslNow() {
+    const r = poRunDslValidation();
+    showToast(r.valid ? 'DSL validation passed with ' + r.warnings.length + ' warning(s)' : 'DSL validation failed: ' + r.errors.length + ' error(s)',
+        r.valid ? 'success' : 'error');
+    renderPOModule();
+}
+
+function poDownloadDslTemplate() {
+    downloadFile(poDslTemplateCsv(), 'PO_DSL_Template.csv', 'text/csv');
+    showToast('DSL template downloaded', 'success');
+}
+
+function poExportDslCsv() {
+    if (!poState.dsl.length) { showToast('DSL is empty', 'error'); return; }
+    downloadFile(poDslExportCsv(), 'PO_DSL_' + poState.exercise.exercise_id + '.csv', 'text/csv');
+}
+
+function poReadSpreadsheet(file, done) {
     const reader = new FileReader();
-    reader.onload = function(e) {
+    reader.onload = e => {
         try {
-            let csvText = e.target.result;
-            
-            // If xlsx, convert to CSV using SheetJS
-            if (file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
-                const data = new Uint8Array(csvText.split('').map(c => c.charCodeAt(0)));
-                const workbook = XLSX.read(data, { type: 'array' });
-                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                csvText = XLSX.utils.sheet_to_csv(firstSheet);
+            let text = e.target.result;
+            const n = (file.name || '').toLowerCase();
+            if (n.endsWith('.xlsx') || n.endsWith('.xls')) {
+                if (typeof XLSX === 'undefined') throw new Error('SheetJS is not loaded; CSV upload only.');
+                const data = new Uint8Array(text.split('').map(c => c.charCodeAt(0)));
+                const wb = XLSX.read(data, { type: 'array' });
+                text = XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]);
             }
-            
-            const lines = splitCSVLines(csvText);
-            if (lines.length < 2) { showToast('Empty file', 'error'); input.value = ''; return; }
-
-            const headers = parseCSVLine(lines[0]).map(h => h.trim().replace(/^"|"$/g, '').toLowerCase().replace(/\s+/g, '_').replace(/\./g, ''));
-            const dataRows = lines.slice(1);
-
-            let imported = 0;
-            let errors = 0;
-            const startIdx = poUnitPersonnel.length;
-
-            dataRows.forEach((line, ri) => {
-                try {
-                    if (!line.trim()) return;
-                    const values = parseCSVLine(line);
-                    const row = {};
-                    headers.forEach((h, i) => { row[h] = (values[i] || '').trim().replace(/^"|"$/g, ''); });
-
-                    const name = row.name;
-                    if (!name) { errors++; return; }
-
-                    // Normalize values
-                    const gender = normalizePOGender(row.gender);
-                    const scst = normalizePOSCST(row.sc_st || row.scst || row.sc_st_group);
-                    const srType = normalizePOSeniorityType(row.type_of_seniority || row.seniority_type);
-                    const dob = normalizePODate(row.dob || row.date_of_birth);
-                    const doj = normalizePODate(row.doj || row.date_of_joining);
-                    const procDate = normalizePODate(row.proceedings_date);
-                    const isWidow = normalizePOBoolean(row.widow);
-                    const isMcc = normalizePOBoolean(row.mcc || row.disabled_children);
-                    const isCancer = normalizePOBoolean(row.cancer);
-                    const isNeuro = normalizePOBoolean(row.neuro_surgery || row.neuro || row.neurosurgery);
-                    const isKidney = normalizePOBoolean(row.kidney_trans || row.kidney);
-                    const isLiver = normalizePOBoolean(row.liver_trans || row.liver);
-                    const isHeart = normalizePOBoolean(row.open_heart || row.heart);
-                    const cadreId = normalizePOCadre(row.cadre || row.allocated_cadre_id);
-
-                    const entry = {
-                        rank: row.rank || rank,
-                        personnel_type: (row.rank || rank).includes('(AR)') ? 'AR' : 'CIVIL',
-                        name: name,
-                        genl_no: row.genl_no || '',
-                        seniority_no: parseInt(row.seniority_no || row.sl_no || row.sr_no) || (poUnitPersonnel.length + 1 + imported),
-                        gender: gender,
-                        date_of_birth: dob,
-                        date_of_joining: doj,
-                        cfms_id: row.cfms_id || row.cfms || '',
-                        mobile: row.mobile || row.phone || row.phone_number || '',
-                        caste: row.caste || '',
-                        sc_st_group: scst,
-                        pwbd_percent: row.pwbd || row.pwbd_percent || row.disability || '',
-                        widow: isWidow ? 'Yes' : '',
-                        disabled_children: isMcc ? 'Yes' : '',
-                        cancer: isCancer,
-                        neurosurgery: isNeuro,
-                        kidney: isKidney,
-                        liver: isLiver,
-                        heart: isHeart,
-                        seniority_type: srType,
-                        proceedings_no: row.proceedings_no || row.proceed_no || '',
-                        proceedings_date: procDate,
-                        allocated_cadre_id: cadreId,
-                        _idx: startIdx + imported
-                    };
-                    poUnitPersonnel.push(entry);
-                    imported++;
-                } catch(err) {
-                    errors++;
-                }
-            });
-
-            poUnitPersonnel.forEach((p, i) => { p._idx = i; });
-            savePOData();
-            renderPOUnitDetail();
-            showToast(`Imported ${imported} records` + (errors ? `, ${errors} errors` : ''), imported > 0 ? 'success' : 'error');
-        } catch(err) {
-            showToast('Import failed: ' + err.message, 'error');
+            done(poCsvToRows(text));
+        } catch (err) {
+            showToast('Read failed: ' + err.message, 'error');
         }
-        input.value = '';
     };
     reader.readAsText(file);
 }
 
-function splitCSVLines(text) {
-    const lines = [];
-    let current = '';
-    let inQuotes = false;
+/** Header-driven CSV reader. Header matching is case- and punctuation-insensitive. */
+function poCsvToRows(text) {
+    const lines = poSplitCsvLines(text);
+    if (lines.length < 2) return [];
+    const headers = poParseCsvLine(lines[0]).map(h =>
+        String(h).trim().toLowerCase().replace(/[^a-z0-9]+/g, ''));
+    const rows = [];
+    lines.slice(1).forEach(line => {
+        if (!line.trim()) return;
+        const vals = poParseCsvLine(line);
+        const row = {};
+        headers.forEach((h, i) => { row[h] = (vals[i] || '').trim(); });
+        rows.push(row);
+    });
+    return rows;
+}
+
+function poSplitCsvLines(text) {
+    const out = []; let cur = ''; let q = false;
     for (let i = 0; i < text.length; i++) {
-        const char = text[i];
-        const next = text[i + 1];
-        if (char === '"') {
-            if (inQuotes && next === '"') {
-                current += '"';
-                i++;
-            } else {
-                inQuotes = !inQuotes;
-            }
-        } else if (char === '\n' || char === '\r') {
-            if (inQuotes) {
-                current += char;
-            } else {
-                if (current || lines.length === 0) {
-                    lines.push(current);
-                    current = '';
-                }
-                if (char === '\r' && next === '\n') i++;
-            }
-        } else {
-            current += char;
-        }
+        const ch = text[i], nx = text[i + 1];
+        if (ch === '"') {
+            if (q && nx === '"') { cur += '"'; i++; } else { q = !q; }
+        } else if (ch === '\n' || ch === '\r') {
+            if (q) { cur += ch; } else { out.push(cur); cur = ''; if (ch === '\r' && nx === '\n') i++; }
+        } else { cur += ch; }
     }
-    if (current || lines.length === 0) lines.push(current);
-    return lines.filter(l => l.trim() !== '');
+    if (cur) out.push(cur);
+    return out.filter(l => l.trim() !== '');
 }
 
-function parseCSVLine(line) {
-    const values = [];
-    let current = '';
-    let inQuotes = false;
+function poParseCsvLine(line) {
+    const out = []; let cur = ''; let q = false;
     for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-        const next = line[i + 1];
-        if (char === '"') {
-            if (inQuotes && next === '"') {
-                current += '"';
-                i++;
-            } else {
-                inQuotes = !inQuotes;
-            }
-        } else if (char === ',') {
-            if (inQuotes) {
-                current += ',';
-            } else {
-                values.push(current.trim());
-                current = '';
-            }
-        } else {
-            current += char;
-        }
+        const ch = line[i], nx = line[i + 1];
+        if (ch === '"') {
+            if (q && nx === '"') { cur += '"'; i++; } else { q = !q; }
+        } else if (ch === ',') {
+            if (q) { cur += ','; } else { out.push(cur.trim()); cur = ''; }
+        } else { cur += ch; }
     }
-    values.push(current.trim());
-    return values.map(v => v.replace(/^"|"$/g, ''));
+    out.push(cur.trim());
+    return out;
 }
 
-function normalizePODate(val) {
-    if (!val || val === '') return '';
-    // Excel serial date (number)
-    const num = Number(val);
-    if (!isNaN(num) && num > 30000 && num < 100000) {
-        const epoch = new Date(1899, 11, 30);
-        const date = new Date(epoch.getTime() + num * 24 * 60 * 60 * 1000);
-        if (!isNaN(date.getTime())) {
-            return formatPODate(date);
-        }
-    }
-    // String date parsing
-    const str = String(val).trim();
-    // YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-    // DD-MM-YYYY or DD/MM/YYYY
-    const dm = str.match(/^(\d{1,2})[\-\/](\d{1,2})[\-\/](\d{4})$/);
-    if (dm) {
-        const d = parseInt(dm[1], 10);
-        const m = parseInt(dm[2], 10);
-        const y = parseInt(dm[3], 10);
-        if (m <= 12 && d <= 31) {
-            return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-        }
-    }
-    // Try native Date parse
-    const d = new Date(str);
-    if (!isNaN(d.getTime()) && str.length > 5) {
-        return formatPODate(d);
-    }
-    return str;
-}
-
-function formatPODate(date) {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-}
-
-function normalizePOGender(val) {
-    const v = String(val).toLowerCase().trim();
-    if (v === 'male' || v === 'm' || v === 'boy' || v === 'man') return 'Male';
-    if (v === 'female' || v === 'f' || v === 'girl' || v === 'woman') return 'Female';
-    if (v === 'other' || v === 'transgender' || v === 'tg') return 'Other';
-    return val;
-}
-
-function normalizePOSCST(val) {
-    const v = String(val).toUpperCase().trim().replace(/\./g, '').replace(/\s/g, '');
-    if (v === 'SC1' || v === 'SC-1' || v === 'SC_1' || v === 'S-1' || v === 'S1' || v.includes('GROUP1') || v.includes('GRP1')) return 'SC_1';
-    if (v === 'SC2' || v === 'SC-2' || v === 'SC_2' || v === 'S-2' || v === 'S2' || v.includes('GROUP2') || v.includes('GRP2')) return 'SC_2';
-    if (v === 'SC3' || v === 'SC-3' || v === 'SC_3' || v === 'S-3' || v === 'S3' || v.includes('GROUP3') || v.includes('GRP3')) return 'SC_3';
-    if (v === 'ST' || v === 'S-T' || v === 'SCHEDULEDTRIBE') return 'ST';
-    if (v === 'SC' && !v.includes('1') && !v.includes('2') && !v.includes('3')) return '';
-    return '';
-}
-
-function normalizePOSeniorityType(val) {
-    const v = String(val).toLowerCase().trim();
-    if (v === 'final' || v === 'f') return 'Final';
-    if (v === 'tentative' || v === 't') return 'Tentative';
-    return 'Provisional';
-}
-
-function normalizePOBoolean(val) {
-    const v = String(val).toLowerCase().trim();
-    if (v === 'true' || v === 'yes' || v === '1' || v === 'y' || v === 'checked') return true;
-    if (v === 'false' || v === 'no' || v === '0' || v === 'n' || v === '' || v === 'unchecked') return false;
-    return Boolean(val);
-}
-
-function normalizePOCadre(val) {
-    if (!val) return '';
-    const v = String(val).trim();
-    // If it's already a valid cadre ID
-    if (poCadres.find(c => c.id === v)) return v;
-    // Try matching by name
-    const lower = v.toLowerCase();
-    const match = poCadres.find(c => c.name.toLowerCase() === lower || c.name.toLowerCase().includes(lower));
-    if (match) return match.id;
-    return v;
-}
-
-// ==================== OVERVIEW TAB ====================
-function renderPOOverview(content) {
-    const isAdmin = userRole === 'ADMIN';
-    const totalPersonnel = poUnitPersonnel.length;
-    const hasCFMS = poUnitPersonnel.filter(p => p.cfms_id).length;
-    const optionSubmitted = Object.keys(poOptions).length;
-    const allocated = poAllocations.length;
-    const dbPersonnelCount = (typeof allPersonnel !== 'undefined' ? allPersonnel : []).filter(p => (p.district === 'ERSTWHILE' || p.district === 'NEW') && !p.is_on_deployment).length;
-
-    content.innerHTML = `
-        <div class="card">
-            <h2>Presidential Order-2025 Implementation Dashboard</h2>
-            <div class="district-tiles" style="grid-template-columns: repeat(4, 1fr);">
-                <div class="district-tile">
-                    <h3>Total Personnel</h3>
-                    <div class="tile-count">${totalPersonnel}</div>
-                    <div class="tile-label">PO Unit Personnel</div>
-                </div>
-                <div class="district-tile" style="background:linear-gradient(135deg,#2e7d32,#1b5e20);">
-                    <h3>Cadres Defined</h3>
-                    <div class="tile-count">${poCadres.length}</div>
-                    <div class="tile-label">District Cadres</div>
-                </div>
-                <div class="district-tile" style="background:linear-gradient(135deg,#ef6c00,#e65100);">
-                    <h3>Extended Data</h3>
-                    <div class="tile-count">${hasCFMS}</div>
-                    <div class="tile-label">Personnel with CFMS/SC-ST data</div>
-                </div>
-                <div class="district-tile" style="background:linear-gradient(135deg,#6a1b9a,#4a148c);">
-                    <h3>Options Submitted</h3>
-                    <div class="tile-count">${optionSubmitted}</div>
-                    <div class="tile-label">of ${dbPersonnelCount} employees</div>
-                </div>
-            </div>
-            <div style="margin-top:20px;">
-                <h3 style="color:var(--primary);margin-bottom:15px;">Implementation Workflow</h3>
-                <div class="po-workflow">
-                    <div class="po-wf-step ${['init','cadre_defined','dsl_published','objection_period','fsl_published','options_open','allocation_done'].includes(poStage) ? 'done' : ''}">
-                        <div class="po-wf-num">1</div>
-                        <div class="po-wf-label">Define Cadres</div>
-                    </div>
-                    <div class="po-wf-arrow">→</div>
-                    <div class="po-wf-step ${['dsl_published','objection_period','fsl_published','options_open','allocation_done'].includes(poStage) ? 'done' : ''}">
-                        <div class="po-wf-num">2</div>
-                        <div class="po-wf-label">DSL Published</div>
-                    </div>
-                    <div class="po-wf-arrow">→</div>
-                    <div class="po-wf-step ${['fsl_published','options_open','allocation_done'].includes(poStage) ? 'done' : ''}">
-                        <div class="po-wf-num">3</div>
-                        <div class="po-wf-label">FSL Published</div>
-                    </div>
-                    <div class="po-wf-arrow">→</div>
-                    <div class="po-wf-step ${['options_open','allocation_done'].includes(poStage) ? 'done' : ''}">
-                        <div class="po-wf-num">4</div>
-                        <div class="po-wf-label">Options Open</div>
-                    </div>
-                    <div class="po-wf-arrow">→</div>
-                    <div class="po-wf-step ${poStage==='allocation_done' ? 'done' : ''}">
-                        <div class="po-wf-num">5</div>
-                        <div class="po-wf-label">Allocation</div>
-                    </div>
-                </div>
-            </div>
-            ${isAdmin ? `
-            <div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;">
-                <button class="btn btn-primary" onclick="syncAllPersonnelToPO()">Sync Personnel from District DB</button>
-                <button class="btn btn-primary" onclick="generateDSLFromPersonnel()">Generate Seniority List</button>
-                <button class="btn btn-secondary" onclick="exportPOData()">Export All PO Data (CSV)</button>
-                <button class="btn btn-danger" onclick="resetPOModule()">Reset PO Module</button>
-            </div>` : ''}
-        </div>
-    `;
-}
-
-// ==================== CADRES TAB ====================
-function renderPOCadres(content) {
-    const isAdmin = userRole === 'ADMIN';
-    let html = '';
-    html += `<h3 style="color:#1565c0;margin-bottom:10px;">District Cadres (${poCadres.length})</h3>`;
-    poCadres.forEach(c => {
-        html += `
-        <div class="card" style="margin-bottom:10px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <h4 style="margin:0;">${c.name} <span style="font-size:12px;color:#888;">[${c.id}]</span></h4>
-                <div>
-                    <button class="action-btn btn-primary" onclick="viewCadreStrength('${c.id}')">View Strength</button>
-                    ${isAdmin ? `<button class="action-btn btn-primary" onclick="editCadreStrength('${c.id}')">Edit Strength</button>` : ''}
-                </div>
-            </div>
-            <div id="cadreStrength_${c.id}" class="detail-section"></div>
-        </div>`;
+function poImportDslFile(input) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    if (!confirm('Import this file into the DSL? Existing DSL records will be replaced.')) { input.value = ''; return; }
+    poReadSpreadsheet(file, rows => {
+        if (!rows.length) { showToast('No usable rows found in the file', 'error'); input.value = ''; return; }
+        const n = poImportDslRows(rows, true);
+        poAudit('DSL_UPLOADED', { prev: '', next: file.name + ' -> ' + n + ' records', reason: 'DSL upload' });
+        poSave();
+        showToast(n + ' DSL records imported. Run DSL validation to see blocking errors.', 'success');
+        input.value = '';
+        renderPOModule();
     });
-
-    if (isAdmin) {
-        html += `
-        <div class="card" style="margin-top:15px;">
-            <h3>Add New Cadre</h3>
-            <div class="filter-row">
-                <select id="newCadreLevel"><option value="DISTRICT">District</option></select>
-                <input type="text" id="newCadreName" placeholder="Cadre Name">
-                <input type="text" id="newCadreId" placeholder="Cadre ID (short code)">
-                <button class="btn btn-primary" onclick="addNewCadre()">Add Cadre</button>
-            </div>
-        </div>
-        <div class="card">
-            <h3>Bulk Set Working Strength</h3>
-            <p style="font-size:13px;color:#666;">Assign sanctioned working strength from existing personnel distribution.</p>
-            <div class="filter-row">
-                <select id="bulkStrengthCadre"><option value="">Select Cadre</option>${poCadres.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
-                <select id="bulkStrengthType"><option value="CIVIL">Civil</option><option value="AR">AR</option></select>
-                <button class="btn btn-primary" onclick="autoFillCadreStrength()">Auto-Fill from Personnel Data</button>
-            </div>
-        </div>`;
-    }
-
-    content.innerHTML = html;
+    input.value = '';
 }
 
-function viewCadreStrength(cadreId) {
-    const section = document.getElementById('cadreStrength_' + cadreId);
-    if (!section) return;
+function poEditDslRecord(employeeId) {
+    if (!poIsAdmin()) { showToast('Admin only', 'error'); return; }
+    if (!poDslEditable()) { showToast('The DSL is frozen at this stage', 'error'); return; }
+    const rec = employeeId
+        ? poState.dsl.find(r => r.employee_id === employeeId)
+        : poBlankRecord(poState.categories.length ? poState.categories[0].id : '');
+    if (!rec) return;
 
-    if (section.classList.contains('visible')) {
-        section.classList.remove('visible');
-        section.innerHTML = '';
-        return;
-    }
+    const catOpts = '<option value="">Select category</option>' + poState.categories.map(c =>
+        '<option value="' + escapeHtml(c.id) + '"' + (rec.category_id === c.id ? ' selected' : '') + '>' + escapeHtml((c.code ? c.code + ' - ' : '') + c.name) + '</option>').join('');
+    const cadreOpts = (sel, blank) => (blank ? '<option value="">' + blank + '</option>' : '') + poState.cadres.map(c =>
+        '<option value="' + escapeHtml(c.id) + '"' + (sel === c.id ? ' selected' : '') + '>' + escapeHtml(c.name) + '</option>').join('');
+    const statusOpts = POEngine.PO_SERVICE_STATUS.map(s =>
+        '<option value="' + s.id + '"' + (rec.service_status === s.id ? ' selected' : '') + '>' + escapeHtml(s.label) + '</option>').join('');
+    const segOpts = '<option value="">Not reserved</option>' + POEngine.PO_SEG_GROUPS.map(g =>
+        '<option value="' + g.id + '"' + (rec.sc_group === g.id ? ' selected' : '') + '>' + escapeHtml(g.label + ' (' + g.percent + '%)') + '</option>').join('');
 
-    const allCivRanks = rankMap['ERSTWHILE_CIVIL'] || [];
-    const allARRanks = rankMap['ERSTWHILE_AR'] || [];
-
-    let html = '<table class="dep-consol-table" style="margin-top:10px;">';
-    html += '<thead><tr><th>Rank</th><th>Type</th><th>Sanctioned</th><th>Actual (from Personnel)</th></tr></thead><tbody>';
-
-    const personnelInCadre = getPersonnelForCadre(cadreId);
-
-    allCivRanks.forEach(r => {
-        const key = cadreId + '_CIVIL_' + r;
-        const sanctioned = poCadreStrength[key] || 0;
-        const actual = personnelInCadre.filter(p => p.personnel_type === 'CIVIL' && p.rank === r).length;
-        const style = sanctioned !== 0 && sanctioned !== actual ? 'color:orange;font-weight:bold;' : '';
-        html += `<tr><td>${r}</td><td>CIVIL</td><td>${sanctioned}</td><td style="${style}">${actual}</td></tr>`;
-    });
-    allARRanks.forEach(r => {
-        const key = cadreId + '_AR_' + r;
-        const sanctioned = poCadreStrength[key] || 0;
-        const actual = personnelInCadre.filter(p => p.personnel_type === 'AR' && p.rank === r).length;
-        const style = sanctioned !== 0 && sanctioned !== actual ? 'color:orange;font-weight:bold;' : '';
-        html += `<tr><td>${r}</td><td>AR</td><td>${sanctioned}</td><td style="${style}">${actual}</td></tr>`;
-    });
-
-    html += '</tbody></table>';
-    section.innerHTML = html;
-    section.classList.add('visible');
+    const dlg = document.createElement('div');
+    dlg.className = 'modal-overlay';
+    dlg.style.display = 'flex';
+    dlg.innerHTML =
+        '<div class="modal" style="max-width:820px;">' +
+        '<div class="modal-header"><h3>' + (employeeId ? 'Edit' : 'Add') + ' DSL record</h3>' +
+        '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button></div>' +
+        '<div class="modal-body"><div class="po-note po-note-info">Date of joining means <strong>date of joining in the category</strong>. ' +
+        'Appointment, promotion and present-office joining dates are never substituted.</div>' +
+        '<div class="form-grid">' +
+            '<div class="form-group"><label>Seniority No. * (official)</label><input type="number" min="1" id="poR_sen" value="' + escapeHtml(rec.seniority_no === null ? '' : rec.seniority_no) + '"></div>' +
+            '<div class="form-group"><label>Employee Name *</label><input id="poR_name" value="' + escapeHtml(rec.name) + '"></div>' +
+            '<div class="form-group"><label>Parentage</label><input id="poR_par" value="' + escapeHtml(rec.parentage) + '"></div>' +
+            '<div class="form-group"><label>Rank / category *</label><select id="poR_cat">' + catOpts + '</select></div>' +
+            '<div class="form-group"><label>Gender</label><select id="poR_gen">' +
+                ['', 'Male', 'Female', 'Other'].map(g => '<option value="' + g + '"' + (rec.gender === g ? ' selected' : '') + '>' + (g || 'Select') + '</option>').join('') +
+            '</select></div>' +
+            '<div class="form-group"><label>CFMS ID</label><input id="poR_cfms" value="' + escapeHtml(rec.cfms_id) + '"></div>' +
+            '<div class="form-group"><label>Mobile Number</label><input id="poR_mob" value="' + escapeHtml(rec.mobile) + '"></div>' +
+            '<div class="form-group"><label>Date of Birth</label><input type="date" id="poR_dob" value="' + escapeHtml(rec.date_of_birth) + '"></div>' +
+            '<div class="form-group"><label>Date of Joining in Category *</label><input type="date" id="poR_doj" value="' + escapeHtml(rec.date_of_joining_category) + '"></div>' +
+            '<div class="form-group"><label>Type of seniority</label><input id="poR_stype" value="' + escapeHtml(rec.seniority_type) + '"></div>' +
+            '<div class="form-group"><label>Office</label><input id="poR_off" value="' + escapeHtml(rec.office) + '"></div>' +
+            '<div class="form-group"><label>Designation</label><input id="poR_desig" value="' + escapeHtml(rec.designation) + '"></div>' +
+            '<div class="form-group"><label>Social Category *</label><input id="poR_social" placeholder="e.g. BC-B / OC / SC / ST" value="' + escapeHtml(rec.social_category) + '"></div>' +
+            '<div class="form-group"><label>SC/ST reserved group</label><select id="poR_seg">' + segOpts + '</select></div>' +
+            '<div class="form-group"><label>Erstwhile Local Cadre</label><select id="poR_erc">' + cadreOpts(rec.erstwhile_cadre_id, 'Not stated') + '</select></div>' +
+            '<div class="form-group"><label>Present Local Cadre</label><select id="poR_prc">' + cadreOpts(rec.present_local_cadre_id, 'Not stated') + '</select></div>' +
+            '<div class="form-group"><label>Present Working Place</label><input id="poR_pwp" value="' + escapeHtml(rec.present_working_place) + '"></div>' +
+            '<div class="form-group"><label>Deputation / other status</label><select id="poR_stat">' + statusOpts + '</select></div>' +
+            '<div class="form-group"><label>Deputation unit</label><input id="poR_dunit" value="' + escapeHtml(rec.deputation_unit) + '"></div>' +
+        '</div></div>' +
+        '<div class="modal-footer"><button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">Cancel</button>' +
+        '<button class="btn btn-primary" onclick="poSaveDslForm(' + (employeeId ? '\'' + poQs(employeeId) + '\'' : 'null') + ')">Save</button></div>' +
+        '</div>';
+    document.body.appendChild(dlg);
 }
 
-function getPersonnelForCadre(cadreId) {
-    return poUnitPersonnel.filter(p => p.allocated_cadre_id === cadreId);
-}
+function poSaveDslForm(employeeId) {
+    const g = id => (document.getElementById(id) || {}).value;
+    const catId = g('poR_cat') || '';
+    const cat = poState.categories.find(c => c.id === catId);
+    const senRaw = (g('poR_sen') || '').trim();
+    const sen = /^\d+$/.test(senRaw) ? parseInt(senRaw, 10) : null;
 
-function editCadreStrength(cadreId) {
-    if (userRole !== 'ADMIN') { showToast('Admin only', 'error'); return; }
-    const section = document.getElementById('cadreStrength_' + cadreId);
-    if (!section) return;
+    const rec = employeeId
+        ? poState.dsl.find(r => r.employee_id === employeeId)
+        : poBlankRecord(catId);
+    if (!rec) return;
+    if (!rec.claims) rec.claims = poBlankClaims();
 
-    const allCivRanks = rankMap['ERSTWHILE_CIVIL'] || [];
-    const allARRanks = rankMap['ERSTWHILE_AR'] || [];
+    rec.category_id = catId;
+    rec.rank_code = cat ? cat.code : '';
+    rec.seniority_no = sen;              // null stays null - never a row number
+    rec.name = (g('poR_name') || '').trim();
+    rec.parentage = (g('poR_par') || '').trim();
+    rec.gender = g('poR_gen') || '';
+    rec.cfms_id = (g('poR_cfms') || '').trim();
+    rec.mobile = (g('poR_mob') || '').trim();
+    rec.date_of_birth = g('poR_dob') || '';
+    rec.date_of_joining_category = g('poR_doj') || '';
+    rec.seniority_type = poNormalizeSeniorityType(g('poR_stype'));
+    rec.office = (g('poR_off') || '').trim();
+    rec.designation = (g('poR_desig') || '').trim();
+    rec.social_category = (g('poR_social') || '').trim();
+    rec.sc_group = g('poR_seg') || '';
+    rec.erstwhile_cadre_id = g('poR_erc') || '';
+    rec.present_local_cadre_id = g('poR_prc') || '';
+    rec.present_working_place = (g('poR_pwp') || '').trim();
+    rec.service_status = g('poR_stat') || 'PRESENT';
+    rec.deputation_unit = (g('poR_dunit') || '').trim();
 
-    let html = '<table class="dep-consol-table" style="margin-top:10px;">';
-    html += '<thead><tr><th>Rank</th><th>Type</th><th>Working Strength</th></tr></thead><tbody>';
-
-    allCivRanks.forEach(r => {
-        const key = cadreId + '_CIVIL_' + r;
-        const val = poCadreStrength[key] || 0;
-        html += `<tr><td>${r}</td><td>CIVIL</td><td><input type="number" class="po-strength-input" data-key="${key}" value="${val}" min="0" style="width:80px;padding:4px;text-align:center;"></td></tr>`;
-    });
-    allARRanks.forEach(r => {
-        const key = cadreId + '_AR_' + r;
-        const val = poCadreStrength[key] || 0;
-        html += `<tr><td>${r}</td><td>AR</td><td><input type="number" class="po-strength-input" data-key="${key}" value="${val}" min="0" style="width:80px;padding:4px;text-align:center;"></td></tr>`;
-    });
-
-    html += '</tbody></table>';
-    html += `<button class="btn btn-primary" style="margin-top:10px;" onclick="saveCadreStrengthEdits('${cadreId}')">Save Working Strength</button>`;
-
-    section.innerHTML = html;
-    section.classList.add('visible');
-}
-
-function saveCadreStrengthEdits(cadreId) {
-    const inputs = document.querySelectorAll('.po-strength-input');
-    inputs.forEach(inp => {
-        poCadreStrength[inp.dataset.key] = parseInt(inp.value) || 0;
-    });
-    savePOData();
-    if (poStage === 'init') poStage = 'cadre_defined';
-    savePOData();
-    showToast('Cadre working strength saved', 'success');
-    renderPOModule();
-}
-
-function addNewCadre() {
-    if (userRole !== 'ADMIN') return;
-    const level = document.getElementById('newCadreLevel').value;
-    const name = document.getElementById('newCadreName').value.trim();
-    const id = document.getElementById('newCadreId').value.trim();
-    if (!name || !id) { showToast('Fill all fields', 'error'); return; }
-
-    poCadres.push({ id, name, type: level, level });
-    const allCivRanks = rankMap['ERSTWHILE_CIVIL'] || [];
-    const allARRanks = rankMap['ERSTWHILE_AR'] || [];
-    allCivRanks.forEach(r => { poCadreStrength[id + '_CIVIL_' + r] = 0; });
-    allARRanks.forEach(r => { poCadreStrength[id + '_AR_' + r] = 0; });
-    savePOData();
-    renderPOModule();
-    showToast('Cadre added', 'success');
-}
-
-function autoFillCadreStrength() {
-    if (userRole !== 'ADMIN') return;
-    const cadreId = document.getElementById('bulkStrengthCadre').value;
-    const type = document.getElementById('bulkStrengthType').value;
-    if (!cadreId) { showToast('Select a cadre', 'error'); return; }
-
-    const personnel = getPersonnelForCadre(cadreId).filter(p => p.personnel_type === type);
-    const ranks = type === 'CIVIL' ? (rankMap['ERSTWHILE_CIVIL'] || []) : (rankMap['ERSTWHILE_AR'] || []);
-    ranks.forEach(r => {
-        const count = personnel.filter(p => p.rank === r).length;
-        poCadreStrength[cadreId + '_' + type + '_' + r] = count;
-    });
-    savePOData();
-    showToast('Strength auto-filled from personnel counts', 'success');
-    renderPOModule();
-}
-
-// ==================== SENIORITY LIST TAB ====================
-function renderPOSeniority(content) {
-    const isAdmin = userRole === 'ADMIN';
-    const stageText = { init:'Not Started', cadre_defined:'DSL not yet generated', dsl_published:'DSL Published',
-        objection_period:'Objection Period Open', fsl_published:'FSL Published', options_open:'Options Open',
-        allocation_done:'Allocation Complete' }[poStage] || '';
-
-    let dslCount = poDSL.length;
-    let fslCount = poFSL.length;
-    let objCount = Object.keys(poObjections).length;
-
-    content.innerHTML = `
-        <div class="card">
-            <h2>Seniority List Management</h2>
-            <p style="color:#666;">Status: <strong>${stageText}</strong></p>
-            <div class="district-tiles" style="grid-template-columns: repeat(3, 1fr);margin:15px 0;">
-                <div class="district-tile">
-                    <h3>DSL Records</h3><div class="tile-count">${dslCount}</div>
-                </div>
-                <div class="district-tile" style="background:linear-gradient(135deg,#2e7d32,#1b5e20);">
-                    <h3>Objections</h3><div class="tile-count">${objCount}</div>
-                </div>
-                <div class="district-tile" style="background:linear-gradient(135deg,#ef6c00,#e65100);">
-                    <h3>FSL Records</h3><div class="tile-count">${fslCount}</div>
-                </div>
-            </div>
-            ${isAdmin ? `
-            <div style="display:flex;gap:10px;margin-bottom:15px;flex-wrap:wrap;">
-                <button class="btn btn-primary" onclick="generateDSLFromPersonnel()">Generate DSL from Personnel</button>
-                ${dslCount > 0 && poStage === 'cadre_defined' ? `<button class="btn btn-primary" onclick="publishDSL()">Publish DSL (Start 5-day Objection Period)</button>` : ''}
-                ${poStage === 'objection_period' ? `<button class="btn btn-primary" onclick="publishFSL()">Close Objections & Publish FSL</button>` : ''}
-                ${poStage === 'fsl_published' ? `<button class="btn btn-primary" onclick="openOptionsPhase()">Open Option Form Phase</button>` : ''}
-            </div>` : ''}
-            <div id="poSeniorityContent"></div>
-        </div>
-    `;
-
-    renderSeniorityTable();
-}
-
-function syncAllPersonnelToPO() {
-    if (userRole !== 'ADMIN') { showToast('Admin only', 'error'); return; }
-    if (!allPersonnel || allPersonnel.length === 0) { showToast('No district personnel data available. Upload or add personnel first.', 'error'); return; }
-
-    if (!confirm(`Import ${allPersonnel.length} personnel from District DB into Presidential Order module? This will replace current PO unit personnel.`)) return;
-
-    const districtPersonnel = allPersonnel.filter(p => (p.district === 'ERSTWHILE' || p.district === 'NEW') && !p.is_on_deployment);
-
-    poUnitPersonnel = districtPersonnel.map((p, i) => ({
-        rank: p.rank,
-        personnel_type: p.personnel_type || 'CIVIL',
-        name: p.name,
-        genl_no: p.genl_no,
-        seniority_no: i + 1,
-        gender: p.gender || '',
-        date_of_birth: p.date_of_birth || '',
-        date_of_joining: p.date_of_joining_present || p.date_of_appointment || p.date_of_promotion || '',
-        cfms_id: '',
-        mobile: p.phone_number || '',
-        caste: p.caste || '',
-        sc_st_group: '',
-        pwbd_percent: '',
-        widow: '',
-        disabled_children: '',
-        cancer: false,
-        neurosurgery: false,
-        kidney: false,
-        liver: false,
-        heart: false,
-        seniority_type: 'Provisional',
-        proceedings_no: '',
-        proceedings_date: '',
-        allocated_cadre_id: '',
-        _idx: i
-    }));
-
-    // Reset PO stage so user can regenerate DSL
-    poStage = 'init';
-    poDSL = [];
-    poFSL = [];
-    poOptions = {};
-    poAllocations = [];
-    poObjections = {};
-
-    savePOData();
-    showToast(`Synced ${poUnitPersonnel.length} personnel to PO module`, 'success');
-    renderPOModule();
-}
-
-function generateDSLFromPersonnel() {
-    if (userRole !== 'ADMIN') { showToast('Admin only', 'error'); return; }
-    if (poUnitPersonnel.length === 0) { showToast('No PO unit personnel data available. Sync from District DB or add personnel in the Unit Data tab.', 'error'); return; }
-
-    poDSL = poUnitPersonnel.map((p, i) => {
-        return {
-            id: p._idx,
-            name: p.name,
-            gender: p.gender || '-',
-            cfms_id: p.cfms_id || '',
-            mobile: p.mobile || '',
-            date_of_birth: p.date_of_birth || '',
-            date_of_joining: p.date_of_joining || '',
-            sc_st_group: p.sc_st_group || '',
-            pwbd_percent: p.pwbd_percent || '',
-            widow: p.widow || '',
-            disabled_children: p.disabled_children || '',
-            cancer: p.cancer || false,
-            neurosurgery: p.neurosurgery || false,
-            kidney: p.kidney || false,
-            liver: p.liver || false,
-            heart: p.heart || false,
-            seniority_type: p.seniority_type || 'Provisional',
-            proceedings_no: p.proceedings_no || '',
-            proceedings_date: p.proceedings_date || '',
-            rank: p.rank,
-            personnel_type: p.personnel_type || 'CIVIL',
-            district: 'ERSTWHILE',
-            present_working: '',
-            status: 'Present',
-            is_on_deployment: false,
-            seniority_no: p.seniority_no || (i + 1)
-        };
-    });
-
-    poDSL.sort((a, b) => a.seniority_no - b.seniority_no);
-    poStage = 'dsl_published';
-    savePOData();
-    showToast('DSL generated with ' + poDSL.length + ' records', 'success');
-    renderPOModule();
-}
-
-function publishDSL() {
-    if (userRole !== 'ADMIN') return;
-    poStage = 'objection_period';
-    savePOData();
-    showToast('DSL published. 5-day objection period started.', 'success');
-    renderPOModule();
-}
-
-function publishFSL() {
-    if (userRole !== 'ADMIN') return;
-    poFSL = [...poDSL];
-
-    const currentUserEmail = localStorage.getItem('userEmail') || 'admin';
-    const resolved = [];
-    const rejected = [];
-    Object.entries(poObjections).forEach(([id, obj]) => {
-        if (obj.resolution === 'accepted') resolved.push(id);
-        else rejected.push(id);
-    });
-
-    poFSL = poFSL.map(p => {
-        const obj = poObjections[p.id];
-        const resolution = obj ? obj.resolution || 'pending' : 'none';
-        return { ...p, objection: obj ? obj.reason : '', objection_resolution: resolution };
-    });
-
-    poStage = 'fsl_published';
-    savePOData();
-    showToast('FSL published. Resolved ' + resolved.length + ' accepted, ' + rejected.length + ' rejected.', 'success');
-    renderPOModule();
-}
-
-function openOptionsPhase() {
-    if (userRole !== 'ADMIN') return;
-    poStage = 'options_open';
-    savePOData();
-    showToast('Option form phase opened. Employees can now submit preferences.', 'success');
-    renderPOModule();
-}
-
-function renderSeniorityTable() {
-    const container = document.getElementById('poSeniorityContent');
-    if (!container) return;
-
-    const list = poFSL.length > 0 ? poFSL : poDSL;
-    if (list.length === 0) {
-        container.innerHTML = '<div class="empty-state">No seniority list generated yet. Click "Generate DSL from Personnel" to create one.</div>';
-        return;
-    }
-
-    const isAdmin = userRole === 'ADMIN';
-    const showFsl = poFSL.length > 0;
-
-    let html = `<div class="search-box" style="margin-bottom:10px;">
-        <input type="text" id="poSenioritySearch" class="search-input" placeholder="Search by name, rank, CFMS ID, or mobile..." oninput="filterPOSeniority()">
-    </div>
-    <div style="overflow-x:auto;">
-    <table>
-        <thead>
-            <tr>
-                <th>Sr.No</th><th>Name</th><th>Gender</th><th>CFMS ID</th><th>Mobile</th>
-                <th>DOB</th><th>DOJ</th><th>Rank</th><th>Type</th><th>District</th>
-                <th>SC/ST</th><th>Present Working</th><th>Status</th>
-                ${showFsl ? '<th>Objection</th><th>Resolution</th>' : ''}
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>`;
-
-    list.forEach((p, i) => {
-        const doj = p.date_of_joining ? new Date(p.date_of_joining).toLocaleDateString('en-IN') : '-';
-        const dob = p.date_of_birth ? new Date(p.date_of_birth).toLocaleDateString('en-IN') : '-';
-        const scst = SC_ST_GROUPS.find(g => g.id === p.sc_st_group);
-        const scstLabel = scst ? scst.label : '-';
-
-        let objectionCol = '';
-        if (showFsl) {
-            objectionCol = `<td style="font-size:11px;">${p.objection || '-'}</td><td style="font-size:11px;color:${p.objection_resolution==='accepted'?'green':p.objection_resolution==='rejected'?'red':'#888'}">${p.objection_resolution || '-'}</td>`;
-        }
-
-        html += `<tr>
-            <td>${p.seniority_no}</td>
-            <td>${p.name}</td>
-            <td>${p.gender}</td>
-            <td>${p.cfms_id || '-'}</td>
-            <td>${p.mobile || '-'}</td>
-            <td>${dob}</td>
-            <td>${doj}</td>
-            <td>${p.rank}</td>
-            <td>${p.personnel_type}</td>
-            <td>${p.district === 'ERSTWHILE' ? 'Erstwhile' : 'Krishna New'}</td>
-            <td>${scstLabel}</td>
-            <td>${p.present_working || '-'}</td>
-            <td style="color:${p.status==='Present'?'green':'red'}">${p.status}</td>
-            ${objectionCol}
-            <td>
-                ${poStage === 'objection_period' && isAdmin ? `<button class="action-btn" style="background:#ef6c00;color:white;" onclick="addObjection('${p.id}')">Object</button>` : ''}
-            </td>
-        </tr>`;
-    });
-
-    html += '</tbody></table></div>';
-    container.innerHTML = html;
-}
-
-function filterPOSeniority() {
-    const search = document.getElementById('poSenioritySearch').value.toLowerCase().trim();
-    const container = document.getElementById('poSeniorityContent');
-    if (!container) return;
-
-    const list = poFSL.length > 0 ? poFSL : poDSL;
-    let filtered = list;
-    if (search) {
-        filtered = list.filter(p =>
-            p.name.toLowerCase().includes(search) ||
-            p.rank.toLowerCase().includes(search) ||
-            (p.cfms_id && p.cfms_id.toLowerCase().includes(search)) ||
-            (p.mobile && p.mobile.includes(search))
-        );
-    }
-
-    const isAdmin = userRole === 'ADMIN';
-    const showFsl = poFSL.length > 0;
-    const tbody = container.querySelector('tbody');
-    if (!tbody) return;
-
-    tbody.innerHTML = filtered.map((p, i) => {
-        const doj = p.date_of_joining ? new Date(p.date_of_joining).toLocaleDateString('en-IN') : '-';
-        const dob = p.date_of_birth ? new Date(p.date_of_birth).toLocaleDateString('en-IN') : '-';
-        const scst = SC_ST_GROUPS.find(g => g.id === p.sc_st_group);
-        const scstLabel = scst ? scst.label : '-';
-
-        let objectionCol = '';
-        if (showFsl) {
-            objectionCol = `<td style="font-size:11px;">${p.objection || '-'}</td><td style="font-size:11px;color:${p.objection_resolution==='accepted'?'green':p.objection_resolution==='rejected'?'red':'#888'}">${p.objection_resolution || '-'}</td>`;
-        }
-
-        return `<tr>
-            <td>${p.seniority_no}</td>
-            <td>${escapeHtml(p.name)}</td>
-            <td>${escapeHtml(p.gender)}</td>
-            <td>${escapeHtml(p.cfms_id) || '-'}</td>
-            <td>${escapeHtml(p.mobile) || '-'}</td>
-            <td>${dob}</td>
-            <td>${doj}</td>
-            <td>${escapeHtml(p.rank)}</td>
-            <td>${escapeHtml(p.personnel_type)}</td>
-            <td>${p.district === 'ERSTWHILE' ? 'Erstwhile' : 'Krishna New'}</td>
-            <td>${escapeHtml(scstLabel)}</td>
-            <td>${escapeHtml(p.present_working) || '-'}</td>
-            <td style="color:${p.status==='Present'?'green':'red'}">${escapeHtml(p.status)}</td>
-            ${objectionCol}
-            <td>
-                ${isAdmin ? `<button class="action-btn btn-primary" onclick="editPOExtended('${p.id}')">Edit</button>` : ''}
-            </td>
-        </tr>`;
-    }).join('');
-}
-
-function editPOExtended(persId) {
-    if (userRole !== 'ADMIN') return;
-    const ext = poExtended[persId] || {};
-    const pers = poUnitPersonnel.find(p => p._idx == persId);
-    if (!pers) return;
-
-    const scstOpts = SC_ST_GROUPS.map(g => `<option value="${g.id}" ${ext.sc_st_group===g.id?'selected':''}>${g.label}</option>`).join('');
-
-    const dialog = document.createElement('div');
-    dialog.className = 'modal-overlay';
-    dialog.style.display = 'flex';
-    dialog.innerHTML = `
-        <div class="modal" style="max-width:550px;">
-            <div class="modal-header">
-                <h3>Extended Data: ${pers.name}</h3>
-                <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
-                    <div class="form-group"><label>CFMS ID</label><input type="text" id="poedit_cfms" value="${ext.cfms_id || ''}"></div>
-                    <div class="form-group"><label>Mobile</label><input type="text" id="poedit_mobile" value="${ext.mobile || pers.phone_number || ''}"></div>
-                    <div class="form-group"><label>Date of Joining</label><input type="date" id="poedit_doj" value="${ext.date_of_joining || pers.date_of_promotion || ''}"></div>
-                    <div class="form-group"><label>Seniority No.</label><input type="number" id="poedit_srno" value="${ext.seniority_no || ''}" min="1"></div>
-                    <div class="form-group"><label>SC/ST Group</label><select id="poedit_scst"><option value="">None</option>${scstOpts}</select></div>
-                </div>
-                <h4 style="margin-top:15px;color:var(--primary);">Preferential Categories</h4>
-                <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
-                    ${PREF_CATEGORIES.map(pc => {
-                        const checked = ext[pc.id] ? 'checked' : '';
-                        return `<div class="form-group" style="display:flex;align-items:center;gap:8px;">
-                            <input type="checkbox" id="poedit_${pc.id}" ${checked}>
-                            <label for="poedit_${pc.id}" style="margin:0;">${pc.label}</label>
-                        </div>`;
-                    }).join('')}
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-                <button class="btn btn-primary" onclick="savePOExtended('${persId}')">Save</button>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(dialog);
-}
-
-function savePOExtended(persId) {
-    const ext = poExtended[persId] || {};
-    ext.cfms_id = document.getElementById('poedit_cfms').value.trim();
-    ext.mobile = document.getElementById('poedit_mobile').value.trim();
-    ext.date_of_joining = document.getElementById('poedit_doj').value;
-    ext.seniority_no = parseInt(document.getElementById('poedit_srno').value) || 0;
-    ext.sc_st_group = document.getElementById('poedit_scst').value;
-
-    PREF_CATEGORIES.forEach(pc => {
-        ext[pc.id] = document.getElementById('poedit_' + pc.id).checked;
-    });
-
-    poExtended[persId] = ext;
-    savePOData();
-
+    const isNew = !employeeId;
+    if (!poSaveDslRecord(rec, isNew)) return;
     document.querySelector('.modal-overlay').remove();
-    showToast('Extended data saved', 'success');
+    showToast(isNew ? 'DSL record added' : 'DSL record saved', 'success');
+    renderPOModule();
+}
 
-    // Refresh seniority list if visible
-    if (poDSL.length > 0) {
-        const sIdx = poDSL.findIndex(p => p.id == persId);
-        if (sIdx >= 0) {
-            poDSL[sIdx].cfms_id = ext.cfms_id || '';
-            poDSL[sIdx].mobile = ext.mobile || poDSL[sIdx].mobile;
-            poDSL[sIdx].date_of_joining = ext.date_of_joining || poDSL[sIdx].date_of_joining;
-            poDSL[sIdx].seniority_no = ext.seniority_no || poDSL[sIdx].seniority_no;
-            poDSL[sIdx].sc_st_group = ext.sc_st_group || '';
-            savePOData();
+function poDeleteDslRecord(employeeId) {
+    const rec = poState.dsl.find(r => r.employee_id === employeeId);
+    if (!confirm('Delete DSL record for ' + (rec ? rec.name : employeeId) + '?')) return;
+    if (poDeleteDslRecord(employeeId)) { showToast('DSL record deleted', 'success'); renderPOModule(); }
+}
+
+/** Convenience: raise an objection for one employee from the DSL table. */
+function poRecordDslObjection(employeeId) {
+    const type = prompt('Objection type (' + PO_OBJECTION_TYPES.join(' / ') + '):', 'SENIORITY_NUMBER');
+    if (!type) return;
+    const text = prompt('Objection:');
+    if (!text) return;
+    const docs = prompt('Supporting document reference (optional):', '') || '';
+    const r = poRaiseObjection(employeeId, type.trim().toUpperCase(), text, docs);
+    if (!r.ok) { showToast((r.errors || [])[0] || 'Objection not recorded', 'error'); return; }
+    showToast('Objection ' + r.objection.objection_id + ' recorded', 'success');
+    renderPOModule();
+}
+
+
+// --- preferential claim certification & verification (para 10) --------------
+
+function poOpenClaimPanel(employeeId) {
+    if (!poIsAdmin()) { showToast('Admin only', 'error'); return; }
+    const rec = poState.dsl.find(r => r.employee_id === employeeId) || poState.fsl.find(r => r.employee_id === employeeId);
+    if (!rec) { showToast('Record not found', 'error'); return; }
+    poEnsureClaims(rec);
+    const readOnly = !poDslEditable() && poStageIdx(poStage()) < poStageIdx('DSL_UPLOADED');
+
+    const rowsHtml = POEngine.PO_PREF_CLAIMS.map(def => {
+        const c = rec.claims[def.id];
+        const canEdit = !readOnly;
+        return '<tr>' +
+            '<td>' + def.priority + '</td>' +
+            '<td><strong>' + escapeHtml(def.label) + '</strong><br><span class="po-hint">' +
+                (def.minPercent ? 'Certified disability must be ' + def.minPercent + '% or above' : 'Supporting document required') + '</span></td>' +
+            '<td>' + (canEdit
+                ? '<input type="checkbox" id="cl_' + def.id + '"' + (c.claimed ? ' checked' : '') + '>'
+                : (c.claimed ? 'CLAIMED' : '-')) + '</td>' +
+            '<td>' + (canEdit
+                ? '<input type="number" min="0" max="100" style="width:70px" id="pct_' + def.id + '" value="' + escapeHtml(c.disability_percent) + '"' + (def.minPercent ? '' : 'disabled') + '>'
+                : poDash(c.disability_percent)) + '</td>' +
+            '<td>' + (canEdit
+                ? '<input id="cert_' + def.id + '" style="width:130px" value="' + escapeHtml(c.cert_no) + '">'
+                : poDash(c.cert_no)) + '</td>' +
+            '<td>' + (canEdit
+                ? '<select id="doc_' + def.id + '">' + ['', 'Yes', 'No'].map(v =>
+                    '<option value="' + v + '"' + (c.doc_present === v ? ' selected' : '') + '>' + (v || 'select') + '</option>').join('') + '</select>'
+                : poDash(c.doc_present)) + '</td>' +
+            '<td><span class="po-badge po-badge-' + poVerifyTone(c.verification) + '">' + escapeHtml(c.verification || 'NOT_CLAIMED') + '</span></td>' +
+            '<td>' + (canEdit
+                ? '<button class="action-btn btn-primary" onclick="poVerifyClaim(\'' + poQs(employeeId) + '\',\'' + def.id + '\',\'VERIFIED\')">Verify</button> ' +
+                  '<button class="action-btn btn-danger" onclick="poVerifyClaim(\'' + poQs(employeeId) + '\',\'' + def.id + '\',\'REJECTED\')">Reject</button>'
+                : '') + '</td>' +
+        '</tr>';
+    }).join('');
+
+    const dlg = document.createElement('div');
+    dlg.className = 'modal-overlay';
+    dlg.style.display = 'flex';
+    dlg.innerHTML =
+        '<div class="modal" style="max-width:980px;">' +
+        '<div class="modal-header"><h3>Preferential claim certification - ' + escapeHtml(rec.name) + '</h3>' +
+        '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button></div>' +
+        '<div class="modal-body">' +
+        '<div class="po-note po-note-info">A claim is <strong>not</strong> preferential merely because a flag was ticked. ' +
+        'Claim &rarr; supporting document &rarr; verification &rarr; eligible / not eligible. Only VERIFIED claims are processed in the preferential phase.</div>' +
+        '<div class="po-table-wrap"><table><thead><tr><th>Priority</th><th>Category</th><th>Claimed</th><th>Disability %</th>' +
+        '<th>Certification no.</th><th>Document</th><th>Verification</th><th>Action</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>' +
+        '</div>' +
+        '<div class="modal-footer">' +
+            (readOnly ? '' : '<button class="btn btn-primary" onclick="poSaveClaims(\'' + poQs(employeeId) + '\')">Save claims</button>') +
+            '<button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">Close</button>' +
+        '</div></div>';
+    document.body.appendChild(dlg);
+}
+
+function poVerifyTone(v) {
+    const s = String(v || '').toUpperCase();
+    if (s === 'VERIFIED') return 'success';
+    if (s === 'REJECTED') return 'danger';
+    return 'warn';
+}
+
+function poSaveClaims(employeeId) {
+    const rec = poState.dsl.find(r => r.employee_id === employeeId) || poState.fsl.find(r => r.employee_id === employeeId);
+    if (!rec) return;
+    poEnsureClaims(rec);
+    POEngine.PO_PREF_CLAIMS.forEach(def => {
+        const c = rec.claims[def.id];
+        const box = document.getElementById('cl_' + def.id);
+        if (!box) return;
+        const wasClaimed = c.claimed;
+        c.claimed = box.checked;
+        if (!c.claimed) { c.verification = 'NOT_CLAIMED'; c.verified_by = ''; c.verified_at = ''; }
+        else if (c.verification === 'NOT_CLAIMED') c.verification = 'PENDING';
+        c.disability_percent = (document.getElementById('pct_' + def.id) || {}).value || '';
+        c.cert_no = ((document.getElementById('cert_' + def.id) || {}).value || '').trim();
+        c.doc_present = (document.getElementById('doc_' + def.id) || {}).value || '';
+        if (wasClaimed !== c.claimed && c.claimed) {
+            c.verification = 'PENDING';
+            c.verified_by = ''; c.verified_at = '';
         }
-    }
-    renderSeniorityTable();
-}
-
-function addObjection(persId) {
-    if (userRole !== 'ADMIN') return;
-    const reason = prompt('Enter objection reason for this employee:');
-    if (!reason) return;
-    const resolution = confirm('Accept this objection? Click OK to accept, Cancel to reject.') ? 'accepted' : 'rejected';
-    poObjections[persId] = { reason, resolution, timestamp: new Date().toISOString() };
-    savePOData();
-    showToast('Objection recorded (' + resolution + ')', 'success');
+    });
+    if (!poDslEditable()) { showToast('DSL is frozen; claim edits are not permitted at this stage', 'error'); return; }
+    poSaveDslRecord(rec, false);
+    document.querySelector('.modal-overlay').remove();
+    showToast('Claims saved. Verification is still required before the claim is preferential.', 'success');
     renderPOModule();
 }
 
-// ==================== OPTION FORMS TAB ====================
-function renderPOOptions(content) {
-    const isAdmin = userRole === 'ADMIN';
-    const list = poFSL.length > 0 ? poFSL : poDSL;
-    const submitted = Object.keys(poOptions).length;
-
-    let cadreOpts = poCadres.map(c => `<option value="${c.id}">${c.name} (${c.level})</option>`).join('');
-
-    content.innerHTML = `
-        <div class="card">
-            <h2>Option Forms (Annexure-II)</h2>
-            <p style="color:#666;">
-                Options Submitted: <strong>${submitted}</strong> of <strong>${list.length}</strong> employees
-                ${poStage === 'options_open' ? '<span style="color:green;"> (Phase Open)</span>' : ''}
-            </p>
-            ${isAdmin && poStage === 'options_open' ? `
-            <div style="margin:15px 0;display:flex;gap:10px;flex-wrap:wrap;">
-                <button class="btn btn-secondary" onclick="bulkInitOptions()">Initialize Options for All</button>
-            </div>` : ''}
-            <div class="search-box" style="margin-bottom:10px;">
-                <input type="text" id="poOptionSearch" class="search-input" placeholder="Search by name..." oninput="filterPOOptions()">
-            </div>
-            <div style="overflow-x:auto;" id="poOptionsTableContainer">
-                ${renderOptionsTable(list, cadreOpts, isAdmin, submitted)}
-            </div>
-        </div>
-    `;
-}
-
-function renderOptionsTable(list, cadreOpts, isAdmin, submitted) {
-    if (list.length === 0) return '<div class="empty-state">Generate FSL first and open option phase.</div>';
-
-    let html = '<table><thead><tr><th>Sr.No</th><th>Name</th><th>Rank</th><th>District</th><th>Preference 1</th><th>Preference 2</th><th>Preference 3</th><th>Submitted</th></tr></thead><tbody>';
-
-    list.forEach(p => {
-        const opt = poOptions[p.id] || {};
-        const pref1 = opt.pref1 || '-';
-        const pref2 = opt.pref2 || '-';
-        const pref3 = opt.pref3 || '-';
-        const sub = opt.submitted ? '✓' : '✗';
-        const subColor = opt.submitted ? 'green' : 'red';
-
-        html += `<tr>
-            <td>${p.seniority_no}</td>
-            <td>${p.name}</td>
-            <td>${p.rank}</td>
-            <td>${p.district === 'ERSTWHILE' ? 'Erstwhile' : 'Krishna New'}</td>
-            <td>${pref1}</td>
-            <td>${pref2}</td>
-            <td>${pref3}</td>
-            <td style="color:${subColor};font-weight:bold;">${sub}</td>
-        </tr>`;
+function poVerifyClaim(employeeId, claimId, status) {
+    const rec = poState.dsl.find(r => r.employee_id === employeeId) || poState.fsl.find(r => r.employee_id === employeeId);
+    if (!rec) return;
+    poEnsureClaims(rec);
+    const c = rec.claims[claimId];
+    if (!c) return;
+    const remark = prompt('Verification remark (recorded in the audit trail):', '') ;
+    if (remark === null) return;
+    const prev = c.verification;
+    c.verification = status;
+    c.verified_by = poUser();
+    c.verified_at = poNow();
+    c.remark = remark;
+    if (!poDslEditable()) { showToast('DSL is frozen; verification is not permitted at this stage', 'error'); return; }
+    poSaveDslRecord(rec, false);
+    poAudit(status === 'VERIFIED' ? 'CLAIM_VERIFIED' : 'CLAIM_REJECTED', {
+        prev: prev, next: status + ' (' + claimId + ')', reason: remark, employee_id: employeeId
     });
-
-    html += '</tbody></table>';
-    return html;
-}
-
-function filterPOOptions() {
-    const search = document.getElementById('poOptionSearch').value.toLowerCase().trim();
-    const container = document.getElementById('poOptionsTableContainer');
-    if (!container) return;
-    const list = poFSL.length > 0 ? poFSL : poDSL;
-    const filtered = search ? list.filter(p => p.name.toLowerCase().includes(search)) : list;
-    const cadreOpts = poCadres.map(c => `<option value="${c.id}">${c.name} (${c.level})</option>`).join('');
-    const isAdmin = userRole === 'ADMIN';
-    container.innerHTML = renderOptionsTable(filtered, cadreOpts, isAdmin, Object.keys(poOptions).length);
-}
-
-function bulkInitOptions() {
-    if (userRole !== 'ADMIN') return;
-    const list = poFSL.length > 0 ? poFSL : poDSL;
-    if (list.length === 0) return;
-
-    if (!confirm('This will randomly assign first 3 cadre preferences for ' + list.length + ' employees. Continue?')) return;
-
-    const districtCadres = poCadres.filter(c => c.level === 'DISTRICT').map(c => c.id);
-    list.forEach((p, i) => {
-        if (poOptions[p.id] && poOptions[p.id].submitted) return;
-        const shuffled = [...districtCadres].sort(() => Math.random() - 0.5);
-        poOptions[p.id] = {
-            pref1: shuffled[0] || '',
-            pref2: shuffled[1] || '',
-            pref3: shuffled[2] || '',
-            submitted: true,
-            submittedAt: new Date().toISOString()
-        };
-    });
-    savePOData();
-    showToast('Options initialized for eligible employees', 'success');
+    poSave();
+    document.querySelector('.modal-overlay').remove();
+    showToast('Claim ' + status.toLowerCase(), 'success');
     renderPOModule();
 }
 
-// ==================== PREFERENTIAL CATEGORIES TAB ====================
-function renderPOPrefCat(content) {
-    const isAdmin = userRole === 'ADMIN';
-    const list = poFSL.length > 0 ? poFSL : poDSL;
 
-    let prefCounts = {};
-    PREF_CATEGORIES.forEach(pc => { prefCounts[pc.id] = 0; });
+// ============================================================================
+// STEP 5 - FSL + analysis (para 8 & 9)
+// ============================================================================
 
-    list.forEach(p => {
-        PREF_CATEGORIES.forEach(pc => {
-            if (p[pc.id]) prefCounts[pc.id]++;
+function renderStepFsl(content) {
+    const editableDsl = poDslEditable();
+    const ctx = poCtx();
+    const fsl = poState.fsl;
+    const a = poFsAnalysis();
+    const tl = poTimeline();
+    const canFinalize = poIsAdmin() && poStageIdx(poStage()) <= poStageIdx('FSL_FINALIZED') && !poState.optionsLocked;
+    const published = !!poState.fslPublishedAt;
+
+    const rows = fsl.map(r => '<tr>' +
+        poTd(r.seniority_no) + poTd(r.name) +
+        poTd((ctx.categoryById[r.category_id] || {}).name || r.rank_code) +
+        poTd(r.cfms_id) + poTd(r.mobile) + poTd(r.date_of_joining_category) +
+        poTd(r.social_category) + poTd(r.sc_group) +
+        poTd((ctx.cadreById[r.erstwhile_cadre_id] || {}).name) +
+        poTd((ctx.cadreById[r.present_local_cadre_id] || {}).name) +
+        poTd(r.service_status) +
+        poTd(POEngine.poPreferredClaim(r) ? POEngine.poPreferredClaim(r).label : '-') +
+        poTd(r.fsl_version, 'font-size:11px') +
+        poTd((poState.objections[r.employee_id] || {}).reason || '-') +
+        '</tr>');
+
+    const segRows = a.N_strength.map(n => '<tr>' +
+        poTd(n.category) +
+        poTd(String(n.approved_working_strength === null ? '-' : n.approved_working_strength)) +
+        poTd(String(n.fws_total)) +
+        poTd(String(n.current_working_strength)) +
+        poTd(String(n.fsl_employee_count)) +
+        poTd(String(n.allocable_strength)) +
+        '</tr>');
+
+    content.innerHTML =
+        poCard('Step 5 &middot; FSL timeline',
+            '<div class="po-note po-note-info"><span class="po-tag po-tag-go">GO REQUIREMENT</span> The FSL is published on the ' +
+                PO_FSL_ELIGIBILITY_DAYS + 'th day from publication of the DSL. Every date below is calculated from the actual ' +
+                'DSL publication timestamp &mdash; no date is hard-coded and publication cannot precede eligibility.</div>' +
+            '<div class="po-window">' +
+                '<div><span class="po-window-l">DSL publication date</span><span class="po-window-v">' + poDash(tl.dsl_published_at ? String(tl.dsl_published_at).slice(0, 10) : '-') + '</span></div>' +
+                '<div><span class="po-window-l">Objection closing date</span><span class="po-window-v">' + poDash(tl.objection_closing_date) + '</span></div>' +
+                '<div><span class="po-window-l">Objections disposed</span><span class="po-window-v">' + (tl.objections_disposed_at ? escapeHtml(tl.objections_disposed_at) : tl.objections_pending + ' pending') + '</span></div>' +
+                '<div><span class="po-window-l">FSL eligibility date</span><span class="po-window-v">' + poDash(tl.fsl_eligibility_date) +
+                    (tl.fsl_eligible_reached ? ' <span class="po-badge po-badge-success">REACHED</span>' : ' <span class="po-badge po-badge-warn">NOT YET</span>') + '</span></div>' +
+                '<div><span class="po-window-l">FSL created</span><span class="po-window-v">' + poDash(tl.fsl_created_at || '-') + '</span></div>' +
+                '<div><span class="po-window-l">FSL finalized</span><span class="po-window-v">' + poDash(tl.fsl_finalized_at || '-') + '</span></div>' +
+                '<div><span class="po-window-l">FSL publication date</span><span class="po-window-v">' + poDash(tl.fsl_published_at || '-') + '</span></div>' +
+            '</div>' +
+            (poPendingObjections().length
+                ? '<div class="po-note po-note-danger">' + poPendingObjections().length + ' objection(s) not disposed. The FSL cannot be finalized.</div>'
+                : ''), '') +
+
+        poCard('Step 5 &middot; Final Seniority List',
+            '<p class="po-hint">The FSL is the authoritative personnel dataset for the allocation engine. Once finalized it is locked; ' +
+            'any later change requires an authorized revision with a reason and creates a new version. Superseded versions are retained, never destroyed.</p>' +
+            '<div class="po-actions" style="margin-bottom:12px;">' +
+                (canFinalize ? '<button class="btn btn-primary" onclick="poFinalizeFsl()">Build &amp; finalize FSL from DSL</button>' : '') +
+                (poIsAdmin() && poState.fsl.length && !published ? '<button class="btn btn-primary" onclick="poPublishFslFlow()">Publish FSL</button>' : '') +
+                '<button class="btn btn-secondary" onclick="poExportFslCsv()">Export FSL</button>' +
+                (poIsAdmin() && poState.fslLocked ? '<button class="btn btn-secondary" onclick="poReviseFslFlow()">Start FSL revision</button>' : '') +
+            '</div>' +
+            poStats([
+                { value: fsl.length, label: 'FSL records' },
+                { value: poVersionLabel('fsl'), label: 'FSL version' },
+                { value: poState.fslLocked ? 'LOCKED' : 'OPEN', label: 'FSL state' },
+                { value: poState.fslPublishedAt ? (poState.fslPublishedAt.slice(0, 10)) : '-', label: 'Published' },
+                { value: Object.keys(poState.objections || {}).length, label: 'DSL objections' }
+            ]) +
+            (poState.fslLocked ? '' : '<div class="po-note po-note-warn">FSL is not locked yet. Allocation is blocked until it is.</div>') +
+            poTable(['Seniority No', 'Employee Name', 'Category', 'CFMS ID', 'Mobile', 'DOJ in Category',
+                     'Social Category', 'SC/ST Group', 'Erstwhile Cadre', 'Present Cadre', 'Status',
+                     'Verified Preferential Claim', 'FSL Ver', 'DSL Objection'], rows), '') +
+
+        poCard('FSL analysis (para 9) - the four strengths are NOT interchangeable',
+            '<div class="po-hint">FWS = sanctioned posts. Current Working Strength = employees presently borne on the category. ' +
+            'FSL Employee Count = rows in the FSL. Available / Allocable Strength = FWS less those already borne.</div>' +
+            poTable(['Category', 'Approved WS', 'FWS', 'Current Working Strength', 'FSL Employee Count', 'Available / Allocable'], segRows) +
+            '<div class="po-analysis-grid">' +
+                '<div><h4>A. Cadre-wise (present local cadre)</h4>' + poTally(a.A_cadreWise) + '</div>' +
+                '<div><h4>B. Rank-wise</h4>' + poTally(a.B_rankWise) + '</div>' +
+                '<div><h4>C. Erstwhile cadre distribution</h4>' + poTally(a.C_erstwhileCadre) + '</div>' +
+                '<div><h4>D. Present working location</h4>' + poTally(a.D_workingLocation) + '</div>' +
+                '<div><h4>J. Gender</h4>' + poTally(a.J_gender) + '</div>' +
+                '<div><h4>K. Deputation / other status</h4>' + poTally(a.K_deputation.by_status) + '</div>' +
+            '</div>' +
+            '<div class="po-analysis-grid">' +
+                '<div><h4>E. Preferential categories</h4><table class="po-mini"><thead><tr><th>Category</th><th>Claimed</th><th>Verified</th></tr></thead><tbody>' +
+                    a.E_preferential.map(e => '<tr><td>' + escapeHtml(e.label) + '</td><td>' + e.claimed + '</td><td><strong>' + e.verified + '</strong></td></tr>').join('') +
+                '</tbody></table></div>' +
+                '<div><h4>F-I. Reserved groups</h4>' +
+                    '<div class="po-chip">SC Group-I: ' + a.F_sc_group_1 + '</div>' +
+                    '<div class="po-chip">SC Group-II: ' + a.G_sc_group_2 + '</div>' +
+                    '<div class="po-chip">SC Group-III: ' + a.H_sc_group_3 + '</div>' +
+                    '<div class="po-chip">ST: ' + a.I_st + '</div>' +
+                    '<div class="po-chip">Total reserved: ' + (a.F_sc_group_1 + a.G_sc_group_2 + a.H_sc_group_3 + a.I_st) + '</div>' +
+                '</div>' +
+                '<div><h4>L / M. Option coverage</h4>' +
+                    '<div class="po-chip">With valid options: ' + a.M_withOptions + '</div>' +
+                    '<div class="po-chip">NO OPTION: ' + a.L_noOptionCount + '</div>' +
+                    (a.L_noOptions.length ? '<details><summary>List of employees without options</summary><ul>' +
+                        a.L_noOptions.slice(0, 100).map(e => '<li>' + escapeHtml((e.seniority_no || '-') + ' - ' + e.name) + '</li>').join('') + '</ul></details>' : '') +
+                '</div>' +
+            '</div>', '');
+}
+
+function poFinalizeFsl() {
+    if (!confirm('Finalize the FSL from the DSL? The FSL will be locked and becomes the authoritative dataset for allocation.')) return;
+    const n = poBuildFslFromDsl();
+    if (n) { showToast('FSL finalized and locked with ' + n + ' records', 'success'); renderPOModule(); }
+}
+
+function poPublishFslFlow() {
+    if (!confirm('Publish the FSL?\n\nPublication is permitted only after the objection period is complete, every objection is disposed, and the eligibility date has been reached.')) return;
+    if (poPublishFsl()) { showToast('FSL published', 'success'); renderPOModule(); }
+}
+
+function poExportFslCsv() {
+    const fsl = poState.fsl;
+    if (!fsl.length) { showToast('FSL is empty', 'error'); return; }
+    const headers = ['FSL Version', 'Seniority No', 'Employee Name', 'Parentage', 'Gender', 'CFMS ID', 'Mobile',
+        'Date of Birth', 'Date of Joining in Category', 'Category', 'Office', 'Designation', 'Social Category',
+        'SC/ST Group', 'Erstwhile Cadre', 'Present Local Cadre', 'Present Working Place', 'Status',
+        'Deputation Unit', 'Verified Preferential Claim', 'DSL Objection', 'Objection Resolution'];
+    const ctx = poCtx();
+    const rows = fsl.map(r => [
+        r.fsl_version, r.seniority_no, r.name, r.parentage, r.gender, r.cfms_id, r.mobile,
+        r.date_of_birth, r.date_of_joining_category, (ctx.categoryById[r.category_id] || {}).name || r.rank_code,
+        r.office, r.designation, r.social_category, r.sc_group,
+        (ctx.cadreById[r.erstwhile_cadre_id] || {}).name, (ctx.cadreById[r.present_local_cadre_id] || {}).name,
+        r.present_working_place, r.service_status, r.deputation_unit,
+        POEngine.poPreferredClaim(r) ? POEngine.poPreferredClaim(r).label : '',
+        (poState.objections[r.employee_id] || {}).reason || '',
+        (poState.objections[r.employee_id] || {}).resolution || ''
+    ]);
+    downloadFile(poToCsv(headers, rows), 'PO_FSL_' + poState.exercise.exercise_id + '_' + poVersionLabel('fsl') + '.csv', 'text/csv');
+}
+
+function poReviseFslFlow() {
+    const reason = prompt('FSL revision reason (mandatory - recorded in the audit trail and a new FSL version is created):', '');
+    if (reason === null) return;
+    if (!confirm('This unlocks the FSL, clears the FSL records, voids all submitted options and requires a fresh FSL build. Continue?')) return;
+    if (poReviseFsl(reason)) { showToast('FSL revision started at ' + poVersionLabel('fsl'), 'success'); renderPOModule(); }
+}
+
+
+// ============================================================================
+// STEP 6 - Option filling (para 12 & 13)
+// ============================================================================
+
+function renderStepOptions(content) {
+    const fsl = poActiveFsl();
+    const deadline = poOptionDeadline();
+    const remaining = deadline ? Math.max(0, deadline.getTime() - Date.now()) : null;
+    const withOpt = fsl.filter(r => (poState.options[r.employee_id] || {}).submitted).length;
+    const open = !poState.optionsLocked && !poOptionDeadlinePassed();
+    const canEdit = poIsAdmin() && poStageIdx(poStage()) >= poStageIdx('OPTIONS_OPEN') && poStageIdx(poStage()) <= poStageIdx('OPTIONS_OPEN') && open && !!poState.fslPublishedAt;
+
+    const rows = fsl.map(r => {
+        const allowed = poApplicableCadreIds(r.category_id);
+        const ctx = poCtx();
+        const catName = (ctx.categoryById[r.category_id] || {}).name || r.category_id;
+        const opt = poState.options[r.employee_id] || {};
+        const sel = (field, n) => '<select class="po-opt-select" id="opt_' + n + '" ' + (canEdit ? '' : 'disabled') + '>' +
+            '<option value="">-</option>' + allowed.map(cid =>
+                '<option value="' + escapeHtml(cid) + '"' + (opt[field] === cid ? ' selected' : '') + '>' +
+                escapeHtml((ctx.cadreById[cid] || {}).name || cid) + '</option>').join('') + '</select>';
+
+        return '<tr>' +
+            poTd(r.seniority_no) + poTd(r.name) + poTd(catName) +
+            '<td>' + sel('pref1', '1_' + r.employee_id) + '</td>' +
+            '<td>' + sel('pref2', '2_' + r.employee_id) + '</td>' +
+            '<td>' + sel('pref3', '3_' + r.employee_id) + '</td>' +
+            '<td>' + (opt.submitted
+                ? '<span class="po-badge po-badge-success">SUBMITTED</span><br><span class="po-hint">' + escapeHtml(opt.version || '') + ' ' + escapeHtml((opt.submitted_at || '').slice(0, 16).replace('T', ' ')) +
+                  (opt.corrected_from_version ? '<br>corrected from ' + escapeHtml(opt.corrected_from_version) : '') + '</span>' +
+                  (canEdit ? '<br><button class="action-btn btn-secondary" onclick="poCorrectOptionFlow(\'' + poQs(r.employee_id) + '\')">Corrected version</button>' : '')
+                : (poState.optionsLocked ? '<span class="po-badge po-badge-danger">NO OPTION</span>' : '<span class="po-badge po-badge-warn">PENDING</span>')) + '</td>' +
+            '<td>' + (canEdit
+                ? '<button class="action-btn btn-primary" onclick="poSubmitOption(\'' + poQs(r.employee_id) + '\')">Submit</button>'
+                : '<span style="color:var(--text-subtle)">-</span>') + '</td>' +
+        '</tr>';
+    });
+
+    const window_ = deadline
+        ? '<div class="po-window">' +
+            '<div><span class="po-window-l">FSL published</span><span class="po-window-v">' + escapeHtml((poState.fslPublishedAt || '').slice(0, 10)) + '</span></div>' +
+            '<div><span class="po-window-l">Options opened</span><span class="po-window-v">' + escapeHtml((poState.optionsOpenedAt || '').slice(0, 16).replace('T', ' ')) + '</span></div>' +
+            '<div><span class="po-window-l">Options close</span><span class="po-window-v">' + escapeHtml(deadline.toISOString().slice(0, 10)) + '</span></div>' +
+            '<div><span class="po-window-l">Remaining</span><span class="po-window-v">' +
+                (poOptionDeadlinePassed() ? 'CLOSED' : Math.floor(remaining / 86400000) + 'd ' + Math.floor((remaining % 86400000) / 3600000) + 'h') +
+            '</span></div>' +
+            '<div><span class="po-window-l">Submitted / pending</span><span class="po-window-v">' + withOpt + ' / ' + (fsl.length - withOpt) + '</span></div>' +
+          '</div>'
+        : '<div class="po-note po-note-info">Publish the FSL to start the option window. Default window: ' +
+          (poState.optionWindowDays || 5) + ' days from FSL publication.</div>';
+
+    content.innerHTML =
+        poCard('Step 6 &middot; Option filling', window_, '') +
+        poCard('Employee options',
+            '<div class="po-note po-note-warn"><strong>Option once exercised is final and irrevocable.</strong> ' +
+            'Only cadres configured for that employee&rsquo;s rank/category are selectable. Options are never generated by the system.</div>' +
+            (poState.optionsLocked
+                ? '<div class="po-note po-note-info">Options are LOCKED at ' + escapeHtml(poVersionLabel('options')) + '. No further submission is possible.</div>'
+                : '') +
+            poTable(['Seniority No', 'Employee Name', 'Category', 'First Preference', 'Second Preference', 'Third Preference', 'Status', ''], rows),
+            (poIsAdmin() && !poState.optionsLocked && poState.fslPublishedAt
+                ? '<button class="btn btn-danger" onclick="poCloseOptionsFlow()">Close option entry &amp; lock</button>'
+                : '')) +
+        poCard('Option window setting',
+            '<div class="form-grid"><div class="form-group"><label>Option window (days from FSL publication)</label>' +
+            '<input type="number" min="1" max="60" id="poOptWindow" value="' + (poState.optionWindowDays || 5) + '"' + (poState.fslPublishedAt ? ' readonly' : '') + '></div></div>' +
+            '<div class="po-actions"><button class="btn btn-secondary" onclick="poSaveOptionWindow()">Save window</button></div>', '');
+}
+
+function poSubmitOption(employeeId) {
+    const v = n => {
+        const el = document.getElementById('opt_' + n + '_' + employeeId);
+        return el ? el.value : '';
+    };
+    const r = poSaveOption(employeeId, v('1'), v('2'), v('3'));
+    if (!r.ok) { showToast(r.errors[0] || 'Option rejected', 'error'); return; }
+    showToast('Option recorded', 'success');
+    renderPOModule();
+}
+
+function poSaveOptionWindow() {
+    if (!poIsAdmin()) { showToast('Admin only', 'error'); return; }
+    const n = parseInt((document.getElementById('poOptWindow') || {}).value, 10);
+    if (!n || n < 1) { showToast('Enter a valid number of days', 'error'); return; }
+    poState.optionWindowDays = n;
+    poAudit('OPTION_LOCKED', { prev: '', next: 'option window set to ' + n + ' days' });
+    poSave();
+    showToast('Option window saved', 'success');
+    renderPOModule();
+}
+
+function poCorrectOptionFlow(employeeId) {
+    const rec = poActiveFsl().find(r => r.employee_id === employeeId);
+    const cur = poState.options[employeeId];
+    if (!rec || !cur) { showToast('Option not found', 'error'); return; }
+    if (!confirm('Correct the option for ' + rec.name + '?\n\nThe submitted option is immutable. A NEW option version will be created and the superseded version retained with an audit entry. A reason and the correcting authority are mandatory.')) return;
+    const allowed = poApplicableCadreIds(rec.category_id);
+    const ctx = poCtx();
+    const pick = (n, current) => {
+        const v = prompt('Preference ' + n + ' for ' + ((ctx.categoryById[rec.category_id] || {}).name || rec.category_id) +
+            '\nOptions (type nothing to skip):\n' +
+            allowed.map((cid, i) => (i + 1) + ' = ' + ((ctx.cadreById[cid] || {}).name || cid)).join('\n') +
+            '\nCurrent: ' + (current || '(none)'), current || '');
+        if (v === null) return null;
+        const t = String(v).trim();
+        if (!t) return '';
+        const byIndex = parseInt(t, 10);
+        if (!isNaN(byIndex) && byIndex >= 1 && byIndex <= allowed.length) return allowed[byIndex - 1];
+        return t;
+    };
+    const p1 = pick(1, cur.pref1); if (p1 === null) return;
+    const p2 = pick(2, cur.pref2); if (p2 === null) return;
+    const p3 = pick(3, cur.pref3); if (p3 === null) return;
+    const reason = prompt('Correction reason (mandatory, recorded in the audit trail):', '');
+    if (reason === null) return;
+    const authority = prompt('Correcting authority (mandatory):', poCompetentAuthority());
+    if (authority === null) return;
+    const r = poCorrectOption(employeeId, p1, p2, p3, reason, authority);
+    if (!r.ok) { showToast((r.errors || [])[0] || 'Correction refused', 'error'); return; }
+    showToast('Corrected option version ' + r.version + ' created', 'success');
+    renderPOModule();
+}
+
+function poCloseOptionsFlow() {
+    const pending = poNoOptionEmployees().length;
+    if (!confirm('Close option entry and lock all options?\n' + pending + ' employee(s) will be recorded as NO OPTION and processed at the end of the allocation run.')) return;
+    if (poCloseOptions()) { showToast('Options locked. ' + pending + ' employee(s) marked NO OPTION.', 'success'); renderPOModule(); }
+}
+
+
+// ============================================================================
+// STEP 7 - Allocation (para 14, 15, 16, 17, 29)
+// ============================================================================
+
+function renderStepAllocation(content) {
+    const canRun = poIsAdmin() && !!poState.fslPublishedAt && poState.fslLocked;
+    const sim = poState.simulation;
+    const run = poState.allocationRun;
+
+    const preview = (data, title, tag) => {
+        if (!data) return '';
+        const alloc = data.allocations || [];
+        const ctx = poCtx();
+        const byReason = {};
+        alloc.forEach(a => { byReason[a.allocation_reason] = (byReason[a.allocation_reason] || 0) + 1; });
+
+        const reasonRows = POEngine.PO_ALLOC_REASONS.map(r =>
+            '<tr>' + poTd(r.label, 'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px') + poTd(String(byReason[r.id] || 0)) + '</tr>');
+
+        const ledger = [];
+        poState.strengths.forEach(s => {
+            const n = alloc.filter(a => a.category_id === s.category_id && a.cadre_id === s.cadre_id).length;
+            const fws = parseInt(s.fws) || 0;
+            ledger.push('<tr' + (n > fws ? ' class="po-row-error"' : '') + '>' +
+                poTd((ctx.categoryById[s.category_id] || {}).name) + poTd((ctx.cadreById[s.cadre_id] || {}).name) +
+                poTd(String(fws)) + poTd(String(n)) + poTd(String(fws - n)) +
+                '<td>' + (n > fws ? '<span class="po-badge po-badge-danger">OVER-ALLOCATED</span>' : '<span class="po-badge po-badge-success">OK</span>') + '</td></tr>');
         });
-    });
 
-    let html = '<div class="card"><h2>Preferential Categories</h2>';
-    html += '<p style="color:#666;margin-bottom:15px;">Priority order for allocation (as per Para 4.4 of Presidential Order 2025)</p>';
-
-    html += '<table><thead><tr><th>Priority</th><th>Category</th><th>Count</th></tr></thead><tbody>';
-    PREF_CATEGORIES.forEach(pc => {
-        html += `<tr><td>${pc.priority}</td><td>${pc.label}</td><td>${prefCounts[pc.id]}</td></tr>`;
-    });
-    html += '</tbody></table>';
-
-    html += '<h3 style="margin-top:20px;color:var(--primary);">Employees in Preferential Categories</h3>';
-    html += '<div class="search-box" style="margin-bottom:10px;"><input type="text" id="poPrefSearch" class="search-input" placeholder="Search by name..." oninput="filterPOPrefCat()"></div>';
-    html += '<div style="overflow-x:auto;" id="poPrefTableContainer">';
-
-    const prefEntries = list.filter(p => {
-        return PREF_CATEGORIES.some(pc => p[pc.id]);
-    });
-
-    if (prefEntries.length === 0) {
-        html += '<div class="empty-state">No employees identified in preferential categories. Use the Seniority List tab to add extended data.</div>';
-    } else {
-        html += '<table><thead><tr><th>Sr.No</th><th>Name</th><th>Rank</th><th>District</th>';
-        PREF_CATEGORIES.forEach(pc => { html += `<th>${pc.label}</th>`; });
-        html += '</tr></thead><tbody>';
-
-        prefEntries.forEach(p => {
-            html += `<tr><td>${p.seniority_no}</td><td>${p.name}</td><td>${p.rank}</td><td>${p.district==='ERSTWHILE'?'Erstwhile':'Krishna New'}</td>`;
-            PREF_CATEGORIES.forEach(pc => {
-                html += `<td style="text-align:center;">${p[pc.id] ? '✓' : '-'}</td>`;
+        const scst = data.scstReview || {};
+        const scstRows = [];
+        Object.keys(scst.perCategory || {}).forEach(catId => {
+            const row = scst.perCategory[catId];
+            const ws = row.total_working_strength !== undefined ? row.total_working_strength : row.total_posts;
+            row.groups.forEach(g => {
+                scstRows.push('<tr>' + poTd(row.category_name) + poTd(g.label) +
+                    poTd(String(ws)) + poTd(g.percent + '%') +
+                    poTd(String(g.required)) + poTd(String(g.actual)) + poTd(String(g.shortfall)) + poTd(String(g.actual_after === undefined ? '-' : g.actual_after)) +
+                    '<td><span class="po-badge po-badge-' + (g.actual_after !== undefined && g.actual_after >= g.required ? 'success' : 'warn') + '">' +
+                    (g.actual_after !== undefined && g.actual_after >= g.required ? 'MET' : 'SHORTFALL') + '</span></td></tr>');
             });
-            html += '</tr>';
         });
-        html += '</tbody></table>';
+        const adjRows = (scst.adjustments || []).map(a =>
+            '<tr>' + poTd(a.category) + poTd(a.sc_group_label || a.group_label) + poTd(a.to_cadre) +
+            poTd((a.inserted_employee_name || a.inserted_employee_id) + ' (seq ' + (a.inserted_allocation_sequence === null ? '-' : a.inserted_allocation_sequence) + ')') +
+            poTd((a.replaced_employee_name || a.replaced_employee_id) + ' (seq ' + (a.replaced_allocation_sequence === null ? '-' : a.replaced_allocation_sequence) + ')') +
+            poTd(a.from_cadre) + poTd(a.reason) + '</tr>');
+
+        const snap = data.snapshot || {};
+        const snapHtml = '<h4>Allocation run snapshot (reproducibility)</h4>' +
+            poTable(['Field', 'Value'], [
+                ['Exercise ID', snap.exercise_id], ['Run ID', snap.run_id],
+                ['Engine version', snap.engine_version], ['Engine hash', snap.engine_hash],
+                ['FWS version', snap.fws_version], ['FSL version', snap.fsl_version],
+                ['Options version', snap.options_version], ['Preferential-claim version', snap.preferential_claim_version],
+                ['Policy version', snap.policy_version], ['Policy frozen at', snap.policy_frozen_at],
+                ['SC/ST basis', (snap.scst_configuration || {}).basis],
+                ['SC/ST rounding policy', (snap.scst_configuration || {}).rounding_policy],
+                ['Compulsory allocation policy', snap.compulsory_allocation_policy],
+                ['Prefer existing cadre', snap.prefer_existing_on_compulsory === undefined ? '-' : (snap.prefer_existing_on_compulsory ? 'YES' : 'NO')],
+                ['Started at', snap.started_at], ['User', snap.user],
+                ['Input fingerprint', snap.input_fingerprint],
+                ['Input counts', snap.input_counts ? JSON.stringify(snap.input_counts) : '']
+            ].map(r => '<tr>' + poTd(r[0]) + poTd(r[1]) + '</tr>')) +
+            '<div class="po-note po-note-warn"><span class="po-tag po-tag-dlc">DLC POLICY DECISION</span> ' +
+            escapeHtml(POEngine.PO_POLICY_NOTICE_COMPULSORY) + '</div>' +
+            '<div class="po-note po-note-warn"><span class="po-tag po-tag-sys">SYSTEM CALCULATION RULE</span> ' +
+            escapeHtml(POEngine.PO_POLICY_NOTICE_ROUNDING) + '</div>';
+
+        const errRows = poExceptionRows(data.exceptions || []);
+
+        return poCard(title,
+            '<div class="po-actions" style="margin-bottom:12px;"><span class="po-badge po-badge-' +
+                (data.run.status === 'PASSED' ? 'success' : 'danger') + '">Run ' + tag + ' - ' + data.run.status + '</span>' +
+                '<span class="po-chip">Run id ' + escapeHtml(data.run.run_id) + '</span>' +
+                '<span class="po-chip">Engine ' + escapeHtml(data.run.engine_version) + '</span>' +
+                '<span class="po-chip">FSL ' + escapeHtml(data.run.fsl_version) + '</span>' +
+                '<span class="po-chip">Options ' + escapeHtml(data.run.options_version) + '</span>' +
+                '<span class="po-chip">FWS ' + escapeHtml(data.run.fws_version) + '</span></div>' +
+            poStats([
+                { value: data.run.total_fsl, label: 'FSL employees' },
+                { value: data.run.allocated, label: 'Allotted' },
+                { value: data.run.unallocated, label: 'Not allocable' },
+                { value: (data.exceptions || []).length, label: 'Exceptions' },
+                { value: (scst.adjustments || []).length, label: 'SC/ST adjustments' }
+            ]) +
+            '<div class="po-two-col">' +
+                '<div><h4>Allocation reasons</h4>' + poTable(['Reason', 'Count'], reasonRows) + '</div>' +
+                '<div><h4>Vacancy ledger by rank + cadre (FWS utilisation)</h4>' + poTable(['Category', 'Cadre', 'FWS', 'Allotted', 'Remaining working strength', 'Check'], ledger) + '</div>' +
+            '</div>' +
+            snapHtml +
+            '<h4>SC/ST proportionate review <span class="po-tag po-tag-go">GO REQUIREMENT</span> basis: ' +
+                escapeHtml(scst.basis || '') + '</h4>' +
+            '<div class="po-note po-note-info">Required representation is calculated from <strong>working strength</strong>, ' +
+                'not from the number of employees allotted. Rounding policy: <strong>' +
+                escapeHtml(scst.rounding_policy || POEngine.PO_DEFAULT_ROUNDING_POLICY) + '</strong>.</div>' +
+            poTable(['Category', 'Reserved group', 'Working strength', 'Percent', 'Required representation',
+                     'Actual allocated', 'Shortfall', 'Actual after adjustment', 'Status'], scstRows) +
+            (adjRows.length ? '<h4>SC/ST adjustments made (substituting the LAST ALLOTTED general category employee)</h4>' +
+                poTable(['Category', 'SC/ST group', 'Cadre', 'Employee inserted', 'Employee replaced (last allotted general category)', 'Replaced moved to', 'Reason'], adjRows) : '') +
+            ((scst.shortfalls || []).length ? '<h4>SC/ST shortfalls carried to the FAL as exceptions</h4>' +
+                poTable(['Category', 'Group', 'Cadre', 'Working strength', 'Required', 'Actual', 'Shortfall', 'Reason'],
+                    scst.shortfalls.map(s => '<tr>' + poTd(s.category) + poTd(s.group_label) + poTd(s.cadre) +
+                        poTd(String(s.working_strength)) + poTd(String(s.required)) + poTd(String(s.actual)) +
+                        poTd(String(s.shortfall)) + poTd(s.reason) + '</tr>')) : '') +
+            (errRows.length ? '<h4>Exceptions (PART 29 error format)</h4>' + errRows : ''),
+            '');
+    };
+
+    /** PART 29: code / description / employee / rank / cadre / source data / action. */
+    function poExceptionRows(list) {
+        if (!list.length) return '';
+        return '<div class="po-table-wrap"><table><thead><tr>' +
+            '<th>Severity</th><th>Error code</th><th>Description</th><th>Employee</th><th>Rank</th>' +
+            '<th>Cadre</th><th>Source data</th><th>Recommended action</th>' +
+            '</tr></thead><tbody>' +
+            list.map(e => {
+                const d = poIssueDetail(e);
+                return '<tr><td>' + poSev(e.severity) + '</td>' +
+                    '<td style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px">' + escapeHtml(d.code) + '</td>' +
+                    '<td>' + escapeHtml(d.description) + '</td>' + poTd(d.employee) + poTd(d.rank) + poTd(d.cadre) +
+                    poTd(d.source_data || e.message) + '<td>' + escapeHtml(d.recommended_action) + '</td></tr>';
+            }).join('') + '</tbody></table></div>';
     }
 
-    html += '</div></div>';
-    content.innerHTML = html;
+    content.innerHTML =
+        poCard('Step 7 &middot; Allocation engine',
+            '<p class="po-hint">The engine is deterministic and repeatable: FWS + FSL + preferential claims + FSL seniority + options + vacancy + SC/ST review. ' +
+            'Every allotment carries a reason and can be explained.</p>' +
+            '<div class="po-phases">' +
+                '<div><b>Phase 1</b> Preferential categories (verified claims, priority order)</div>' +
+                '<div><b>Phase 2-4</b> Remaining employees by FSL seniority: preference 1, then 2, then 3</div>' +
+                '<div><b>Phase 5</b> Compulsory allotment to an available clear post, only where a shortfall exists</div>' +
+                '<div><b>Phase 6</b> Employees with no option - processed at the end, only onto shortfall posts</div>' +
+                '<div><b>Phase 7</b> SC/ST proportionate review and documented adjustment</div>' +
+                '<div><b>Phase 8</b> Final result; allocation beyond FWS fails the run</div>' +
+            '</div>' +
+            (canRun
+                ? '<div class="po-actions">' +
+                    '<button class="btn btn-secondary" onclick="poRunSimulation()">RUN SIMULATION (does not alter official data)</button>' +
+                    '<button class="btn btn-primary" onclick="poConfirmAllocationFlow()">CONFIRM ALLOCATION (official version)</button>' +
+                  '</div>'
+                : '<div class="po-note po-note-info">Allocation is available once the FSL is finalized, locked and published.</div>'), '') +
+        preview(sim, 'Simulation result', 'SIMULATION') +
+        preview(run, 'Official allocation run', 'CONFIRMED');
 }
 
-function filterPOPrefCat() {
-    const search = document.getElementById('poPrefSearch').value.toLowerCase().trim();
-    const container = document.getElementById('poPrefTableContainer');
-    if (!container) return;
-    const list = poFSL.length > 0 ? poFSL : poDSL;
-    let prefEntries = list.filter(p => {
-        return PREF_CATEGORIES.some(pc => p[pc.id]);
-    });
-    if (search) prefEntries = prefEntries.filter(p => p.name.toLowerCase().includes(search));
-
-    if (prefEntries.length === 0) {
-        container.innerHTML = '<div class="empty-state">No matching employees found.</div>';
-        return;
-    }
-
-    let html = '<table><thead><tr><th>Sr.No</th><th>Name</th><th>Rank</th><th>District</th>';
-    PREF_CATEGORIES.forEach(pc => { html += `<th>${pc.label}</th>`; });
-    html += '</tr></thead><tbody>';
-
-    prefEntries.forEach(p => {
-        html += `<tr><td>${p.seniority_no}</td><td>${p.name}</td><td>${p.rank}</td><td>${p.district==='ERSTWHILE'?'Erstwhile':'Krishna New'}</td>`;
-        PREF_CATEGORIES.forEach(pc => {
-            html += `<td style="text-align:center;">${p[pc.id] ? '✓' : '-'}</td>`;
-        });
-        html += '</tr>';
-    });
-    html += '</tbody></table>';
-    container.innerHTML = html;
-}
-
-// ==================== ALLOCATION TAB ====================
-function renderPOAllocation(content) {
-    const isAdmin = userRole === 'ADMIN';
-    const allocated = poAllocations.length;
-    const list = poFSL.length > 0 ? poFSL : poDSL;
-
-    content.innerHTML = `
-        <div class="card">
-            <h2>Allocation of Persons (Stage III & IV)</h2>
-            <div class="district-tiles" style="grid-template-columns: repeat(3, 1fr);margin:15px 0;">
-                <div class="district-tile">
-                    <h3>Eligible Employees</h3><div class="tile-count">${list.length}</div>
-                </div>
-                <div class="district-tile" style="background:linear-gradient(135deg,#2e7d32,#1b5e20);">
-                    <h3>Options Submitted</h3><div class="tile-count">${Object.keys(poOptions).length}</div>
-                </div>
-                <div class="district-tile" style="background:linear-gradient(135deg,#6a1b9a,#4a148c);">
-                    <h3>Allocated</h3><div class="tile-count">${allocated}</div>
-                </div>
-            </div>
-            ${isAdmin ? `
-            <div style="display:flex;gap:10px;margin-bottom:15px;flex-wrap:wrap;">
-                <button class="btn btn-primary" onclick="runAllocation()">Run Allocation Algorithm</button>
-                ${allocated > 0 ? `<button class="btn btn-secondary" onclick="exportFAL()">Export FAL (Annexure-III)</button>` : ''}
-            </div>` : ''}
-            <div id="poAllocationContent">
-                ${allocated > 0 ? renderAllocationTable() : '<div class="empty-state">Allocation not yet performed. Click "Run Allocation Algorithm" to process.</div>'}
-            </div>
-        </div>
-    `;
-}
-
-function runAllocation() {
-    if (userRole !== 'ADMIN') { showToast('Admin only', 'error'); return; }
-    const list = poFSL.length > 0 ? poFSL : poDSL;
-    if (list.length === 0) { showToast('No seniority list available', 'error'); return; }
-
-    showToast('Running allocation algorithm...', 'loading');
-
-    poAllocations = [];
-    const districtCadres = poCadres.filter(c => c.level === 'DISTRICT');
-
-    // Step 1: Identify employees in preferential categories (in priority order)
-    const prefEmployees = [];
-    const nonPrefEmployees = [];
-
-    list.forEach(p => {
-        let prefCat = null;
-        for (const pc of PREF_CATEGORIES) {
-            if (p[pc.id]) { prefCat = pc; break; }
-        }
-        if (prefCat) {
-            prefEmployees.push({ ...p, prefCategory: prefCat });
-        } else {
-            nonPrefEmployees.push(p);
-        }
-    });
-
-    // Sort preferential by priority
-    prefEmployees.sort((a, b) => a.prefCategory.priority - b.prefCategory.priority || a.seniority_no - b.seniority_no);
-
-    // Sort non-preferential by seniority
-    nonPrefEmployees.sort((a, b) => a.seniority_no - b.seniority_no);
-
-    const allEligible = [...prefEmployees, ...nonPrefEmployees];
-
-    // Initialize cadre vacancy tracking (per rank + type)
-    const cadreVacancies = {};
-    districtCadres.forEach(c => {
-        cadreVacancies[c.id] = {};
-        const allRanks = [...(rankMap['ERSTWHILE_CIVIL'] || []), ...(rankMap['ERSTWHILE_AR'] || [])];
-        allRanks.forEach(r => {
-            cadreVacancies[c.id][r + '_CIVIL'] = poCadreStrength[c.id + '_CIVIL_' + r] || 0;
-            cadreVacancies[c.id][r + '_AR'] = poCadreStrength[c.id + '_AR_' + r] || 0;
-        });
-    });
-
-    // Allocate each employee
-    allEligible.forEach(emp => {
-        const opt = poOptions[emp.id];
-        let allocatedCadre = null;
-        let allocMethod = 'none';
-
-        const hrKey = emp.rank + '_' + emp.personnel_type;
-
-        // Try preferences in order
-        if (opt && opt.pref1) {
-            const prefs = [opt.pref1, opt.pref2, opt.pref3].filter(Boolean);
-            for (const pref of prefs) {
-                if (!cadreVacancies[pref]) continue;
-                const vac = cadreVacancies[pref][hrKey];
-                if (vac !== undefined && vac > 0) {
-                    cadreVacancies[pref][hrKey]--;
-                    allocatedCadre = pref;
-                    allocMethod = emp.prefCategory ? 'preferential_option' : 'seniority_option';
-                    break;
-                }
-            }
-        }
-
-        // Compulsory allocation - find any cadre with vacancy for this rank+type
-        if (!allocatedCadre) {
-            for (const c of districtCadres) {
-                const vac = cadreVacancies[c.id][hrKey];
-                if (vac !== undefined && vac > 0) {
-                    cadreVacancies[c.id][hrKey]--;
-                    allocatedCadre = c.id;
-                    allocMethod = emp.prefCategory ? 'preferential_compulsory' : 'compulsory';
-                    break;
-                }
-            }
-        }
-
-        // If still no allocation, assign to first cadre (overallocation)
-        if (!allocatedCadre && districtCadres.length > 0) {
-            allocatedCadre = districtCadres[0].id;
-            allocMethod = 'over_allocation';
-        }
-
-        const cadre = poCadres.find(c => c.id === allocatedCadre);
-        poAllocations.push({
-            personnel_id: emp.id,
-            name: emp.name,
-            rank: emp.rank,
-            personnel_type: emp.personnel_type,
-            district: emp.district,
-            seniority_no: emp.seniority_no,
-            sc_st_group: emp.sc_st_group || '',
-            pref_category: emp.prefCategory ? emp.prefCategory.id : '',
-            pref_category_label: emp.prefCategory ? emp.prefCategory.label : '',
-            option_pref1: opt ? opt.pref1 : '',
-            option_pref2: opt ? opt.pref2 : '',
-            option_pref3: opt ? opt.pref3 : '',
-            allocated_cadre_id: allocatedCadre,
-            allocated_cadre_name: cadre ? cadre.name : 'Unallocated',
-            allocation_method: allocMethod,
-            allocated_at: new Date().toISOString()
-        });
-    });
-
-    // SC/ST proportionate distribution review
-    reviewSCSTDistribution(districtCadres);
-
-    poStage = 'allocation_done';
-    savePOData();
-
-    // Summary
-    const byCadre = {};
-    poAllocations.forEach(a => {
-        if (!byCadre[a.allocated_cadre_name]) byCadre[a.allocated_cadre_name] = 0;
-        byCadre[a.allocated_cadre_name]++;
-    });
-
-    let summary = 'Allocation complete!\n';
-    Object.entries(byCadre).forEach(([name, count]) => {
-        summary += name + ': ' + count + ' employees\n';
-    });
-
-    showToast(summary, 'success');
+function poRunSimulation() {
+    const r = poSimulateAllocation();
+    if (!r) return;
+    showToast('Simulation complete: ' + r.run.allocated + ' proposed allotments, ' + r.run.unallocated + ' not allocable', r.run.status === 'PASSED' ? 'success' : 'error');
     renderPOModule();
 }
 
-function reviewSCSTDistribution(districtCadres) {
-    districtCadres.forEach(cadre => {
-        const cadreAllocs = poAllocations.filter(a => a.allocated_cadre_id === cadre.id);
-        const total = cadreAllocs.length;
-        if (total === 0) return;
-
-        SC_ST_GROUPS.forEach(group => {
-            const groupCount = cadreAllocs.filter(a => a.sc_st_group === group.id).length;
-            const targetCount = Math.round(total * group.percent / 100);
-            const shortfall = targetCount - groupCount;
-
-            if (shortfall > 0) {
-                const nonMatchingInCadre = cadreAllocs.filter(a => a.sc_st_group !== group.id && !a.pref_category);
-                const eligibleFromOther = poAllocations.filter(a =>
-                    a.allocated_cadre_id !== cadre.id &&
-                    a.sc_st_group === group.id &&
-                    !a.pref_category &&
-                    a.rank === nonMatchingInCadre[0]?.rank
-                );
-
-                for (let i = 0; i < Math.min(shortfall, eligibleFromOther.length); i++) {
-                    const toMove = eligibleFromOther[i];
-                    const toSwap = nonMatchingInCadre[i];
-                    if (toMove && toSwap) {
-                        const tempCadre = toMove.allocated_cadre_id;
-                        toMove.allocated_cadre_id = toSwap.allocated_cadre_id;
-                        toMove.allocated_cadre_name = toSwap.allocated_cadre_name;
-                        toSwap.allocated_cadre_id = tempCadre;
-                        toSwap.allocated_cadre_name = (poCadres.find(c => c.id === tempCadre) || {}).name || '';
-                        toMove.sc_st_adjustment = true;
-                        toSwap.sc_st_adjustment = true;
-                    }
-                }
-            }
-        });
-    });
-
-    savePOData();
-}
-
-function renderAllocationTable() {
-    if (poAllocations.length === 0) return '<div class="empty-state">No allocations yet.</div>';
-
-    const byCadre = {};
-    poAllocations.forEach(a => {
-        if (!byCadre[a.allocated_cadre_name]) byCadre[a.allocated_cadre_name] = [];
-        byCadre[a.allocated_cadre_name].push(a);
-    });
-
-    let html = '';
-    for (const [cadreName, allocs] of Object.entries(byCadre)) {
-        html += `<h3 style="color:var(--primary);margin-top:15px;">${cadreName} (${allocs.length} allocated)</h3>`;
-        html += '<table><thead><tr><th>Sr.No</th><th>Name</th><th>Rank</th><th>Type</th><th>Pref.Cat</th><th>Option 1</th><th>Allot Method</th><th>SC/ST</th></tr></thead><tbody>';
-        allocs.forEach(a => {
-            const methodColor = { preferential_option: 'green', preferential_compulsory: '#1565c0', seniority_option: '#333', compulsory: '#ef6c00', over_allocation: 'red' }[a.allocation_method] || '#333';
-            const scst = SC_ST_GROUPS.find(g => g.id === a.sc_st_group);
-            const scstLabel = scst ? scst.label : '-';
-            html += `<tr>
-                <td>${a.seniority_no}</td>
-                <td>${a.name}</td>
-                <td>${a.rank}</td>
-                <td>${a.personnel_type}</td>
-                <td>${a.pref_category_label || '-'}</td>
-                <td>${a.option_pref1 || '-'}</td>
-                <td style="color:${methodColor};font-weight:500;">${a.allocation_method.replace(/_/g,' ')}</td>
-                <td>${scstLabel}</td>
-            </tr>`;
-        });
-        html += '</tbody></table>';
-    }
-    return html;
-}
-
-function exportFAL() {
-    if (poAllocations.length === 0) { showToast('No allocations to export', 'error'); return; }
-
-    let csv = 'Final Allocation List (Annexure-III) - Presidential Order 2025\n\n';
-    csv += 'Cadre,Seniority No.,Name,Rank,Type,SC/ST Group,Preferential Category,Preference 1,Preference 2,Preference 3,Allocation Method\n';
-    poAllocations.forEach(a => {
-        csv += `"${a.allocated_cadre_name}",${a.seniority_no},"${a.name}","${a.rank}","${a.personnel_type}","${a.sc_st_group}","${a.pref_category_label}","${a.option_pref1}","${a.option_pref2}","${a.option_pref3}","${a.allocation_method}"\n`;
-    });
-
-    downloadFile(csv, 'FAL_Presidential_Order_2025.csv', 'text/csv');
-    showToast('FAL exported to CSV', 'success');
-}
-
-// ==================== ORDERS TAB (Stage V) ====================
-function renderPOOrders(content) {
-    const isAdmin = userRole === 'ADMIN';
-    const allocated = poAllocations.length;
-
-    content.innerHTML = `
-        <div class="card">
-            <h2>Final Orders (Stage V)</h2>
-            ${allocated === 0 ? '<div class="empty-state">Run allocation first to generate orders.</div>' : `
-            <div class="district-tiles" style="grid-template-columns: repeat(3, 1fr);margin:15px 0;">
-                <div class="district-tile"><h3>Total Allocated</h3><div class="tile-count">${allocated}</div></div>
-                <div class="district-tile" style="background:linear-gradient(135deg,#2e7d32,#1b5e20);"><h3>OOA Ready</h3><div class="tile-count">${allocated}</div></div>
-                <div class="district-tile" style="background:linear-gradient(135deg,#ef6c00,#e65100);"><h3>OOT Needed</h3><div class="tile-count">${poAllocations.filter(a => a.allocated_cadre_id !== 'DC_KRISHNA' && a.district === 'ERSTWHILE').length + poAllocations.filter(a => a.allocated_cadre_id === 'DC_KRISHNA' && a.district !== 'NEW').length}</div></div>
-            </div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;">
-                <button class="btn btn-primary" onclick="exportOOA()">Export OOA (Annexure-IV)</button>
-                <button class="btn btn-primary" onclick="exportOOT()">Export OOT</button>
-                <button class="btn btn-secondary" onclick="viewAllocationSummary()">View Summary</button>
-                <button class="btn btn-secondary" onclick="exportPOPrintFormat()">Print-Ready Format</button>
-            </div>
-            `}
-            <div id="poOrdersContent" style="margin-top:15px;"></div>
-        </div>
-    `;
-}
-
-function viewAllocationSummary() {
-    const container = document.getElementById('poOrdersContent');
-    if (!container) return;
-
-    const byCadre = {};
-    const byMethod = {};
-    poAllocations.forEach(a => {
-        if (!byCadre[a.allocated_cadre_name]) byCadre[a.allocated_cadre_name] = [];
-        byCadre[a.allocated_cadre_name].push(a);
-        byMethod[a.allocation_method] = (byMethod[a.allocation_method] || 0) + 1;
-    });
-
-    let html = '<h3 style="color:var(--primary);">Allocation Summary</h3>';
-
-    html += '<table><thead><tr><th>Cadre</th><th>Allocated</th><th>Pref. Categories</th><th>Seniority Options</th><th>Compulsory</th></tr></thead><tbody>';
-    for (const [cadre, allocs] of Object.entries(byCadre)) {
-        const prefCount = allocs.filter(a => a.pref_category).length;
-        const senCount = allocs.filter(a => a.allocation_method === 'seniority_option').length;
-        const compCount = allocs.filter(a => a.allocation_method.includes('compulsory') || a.allocation_method === 'over_allocation').length;
-        html += `<tr><td>${cadre}</td><td>${allocs.length}</td><td>${prefCount}</td><td>${senCount}</td><td>${compCount}</td></tr>`;
-    }
-    html += '</tbody></table>';
-
-    container.innerHTML = html;
-    container.classList.add('visible');
-}
-
-function exportOOA() {
-    if (poAllocations.length === 0) { showToast('No allocations to export', 'error'); return; }
-
-    let csv = 'Orders of Allotment (Annexure-IV) - Presidential Order 2025\n\n';
-    csv += 'SI.No,Name,Rank,Type,Seniority No.,Allocated Cadre,Allocation Method,SC/ST Group,Preferential Category,Option 1,Option 2,Option 3\n';
-    poAllocations.forEach((a, i) => {
-        csv += `${i+1},"${a.name}","${a.rank}","${a.personnel_type}",${a.seniority_no},"${a.allocated_cadre_name}","${a.allocation_method}","${a.sc_st_group}","${a.pref_category_label}","${a.option_pref1}","${a.option_pref2}","${a.option_pref3}"\n`;
-    });
-
-    downloadFile(csv, 'OOA_Annexure_IV.csv', 'text/csv');
-    showToast('OOA exported to CSV', 'success');
-}
-
-function exportOOT() {
-    if (poAllocations.length === 0) { showToast('No allocations to export', 'error'); return; }
-
-    let csv = 'Orders of Transfer (OOT) - Presidential Order 2025\n\n';
-    csv += 'SI.No,Name,Rank,Type,Allocated Cadre,Original District,Transfer Required,Date\n';
-    poAllocations.forEach((a, i) => {
-        let transferNeeded = 'No';
-        if ((a.district === 'ERSTWHILE' && a.allocated_cadre_id !== 'DC_KRISHNA') ||
-            (a.district === 'NEW' && a.allocated_cadre_id !== 'DC_KRISHNA')) {
-            transferNeeded = 'Yes';
-        }
-        csv += `${i+1},"${a.name}","${a.rank}","${a.personnel_type}","${a.allocated_cadre_name}","${a.district}","${transferNeeded}","${new Date().toISOString().slice(0,10)}"\n`;
-    });
-
-    downloadFile(csv, 'OOT_Presidential_Order_2025.csv', 'text/csv');
-    showToast('OOT exported to CSV', 'success');
-}
-
-function exportPOPrintFormat() {
-    if (poAllocations.length === 0) { showToast('No data', 'error'); return; }
-
-    const byCadre = {};
-    poAllocations.forEach(a => {
-        if (!byCadre[a.allocated_cadre_name]) byCadre[a.allocated_cadre_name] = [];
-        byCadre[a.allocated_cadre_name].push(a);
-    });
-
-    let html = '';
-    for (const [cadre, allocs] of Object.entries(byCadre)) {
-        html += `<h2>Cadre: ${cadre}</h2>`;
-        html += `<p>Total Allocated: ${allocs.length}</p>`;
-        html += '<table><thead><tr><th>SI.No</th><th>Name</th><th>Rank</th><th>Type</th><th>Seniority No.</th><th>Pref.Cat</th><th>SC/ST</th><th>Method</th></tr></thead><tbody>';
-        allocs.forEach((a, i) => {
-            html += `<tr><td>${i+1}</td><td>${a.name}</td><td>${a.rank}</td><td>${a.personnel_type}</td><td>${a.seniority_no}</td><td>${a.pref_category_label || '-'}</td><td>${a.sc_st_group || '-'}</td><td>${a.allocation_method.replace(/_/g,' ')}</td></tr>`;
-        });
-        html += '</tbody></table><br>';
-    }
-
-    const printWind = window.open('', '', 'width=1000,height=700');
-    printWind.document.write(`
-        <!DOCTYPE html><html><head><title>Presidential Order 2025 - Allotment</title>
-        <style>
-            body { font-family:serif;padding:30px; }
-            h1 { text-align:center; }
-            table { width:100%;border-collapse:collapse;margin-top:10px;font-size:13px; }
-            th, td { border:1px solid #000;padding:6px;text-align:left; }
-            th { background:#e0e0e0; }
-            @media print { .no-print { display:none; } }
-        </style></head><body>
-            <h1>Presidential Order 2025 - Final Allocation List</h1>
-            <h3 style="text-align:center;">Krishna District Police</h3>
-            ${html}
-            <br><button class="no-print" onclick="window.print()">Print</button>
-        </body></html>
-    `);
-    printWind.document.close();
-}
-
-// ==================== EXPORT / RESET ====================
-function exportPOData() {
-    const list = poFSL.length > 0 ? poFSL : poDSL;
-    if (list.length === 0 && poAllocations.length === 0) {
-        showToast('No PO data to export', 'error');
+function poConfirmAllocationFlow() {
+    if (!poState.simulation) { showToast('Run a simulation first', 'error'); return; }
+    if (!confirm('CONFIRM ALLOCATION?\n\nThis creates the official allocation version against the current FWS (' + poVersionLabel('fws') +
+        '), FSL (' + poVersionLabel('fsl') + ') and Options (' + poVersionLabel('options') + '). It cannot be silently re-run.')) return;
+    const r = poConfirmAllocation();
+    if (!r) return;
+    if (r.run.status !== 'PASSED') {
+        showToast('ALLOCATION FAILED: ' + r.exceptions.filter(e => e.severity === 'BLOCKING').map(e => e.code).join(', ') + '. No automatic correction applied.', 'error');
+        renderPOModule();
         return;
     }
-
-    let csv = 'Presidential Order 2025 - Complete Data Export\n\n';
-
-    if (poAllocations.length > 0) {
-        csv += '--- Final Allocation List ---\n';
-        csv += 'SI.No,Name,Rank,Type,Seniority No.,Allocated Cadre,Allocation Method,SC/ST,Pref.Category,Option1,Option2,Option3\n';
-        poAllocations.forEach((a, i) => {
-            csv += `${i+1},"${a.name}","${a.rank}","${a.personnel_type}",${a.seniority_no},"${a.allocated_cadre_name}","${a.allocation_method}","${a.sc_st_group}","${a.pref_category_label}","${a.option_pref1}","${a.option_pref2}","${a.option_pref3}"\n`;
-        });
-    }
-
-    if (list.length > 0) {
-        csv += '\n--- Personnel Data ---\n';
-        csv += 'Name,CFMS ID,SC/ST Group,Seniority No.,DOJ\n';
-        list.forEach(p => {
-            csv += `"${p.name}",${p.cfms_id || ''},${p.sc_st_group || ''},${p.seniority_no || ''},${p.date_of_joining || ''}\n`;
-        });
-    }
-
-    downloadFile(csv, 'PO2025_Complete_Data.csv', 'text/csv');
-    showToast('PO data exported to CSV', 'success');
-}
-
-function resetPOModule() {
-    if (userRole !== 'ADMIN') { showToast('Admin only', 'error'); return; }
-    if (!confirm('Reset all Presidential Order data? This cannot be undone.')) return;
-    if (!confirm('Are you sure? All cadres, seniority lists, options, and allocations will be cleared.')) return;
-
-    poData = {};
-    poExtended = {};
-    poDSL = [];
-    poFSL = [];
-    poOptions = {};
-    poAllocations = [];
-    poUnitPersonnel = [];
-    poCadres = [];
-    poCadreStrength = {};
-    poStage = 'init';
-    poObjections = {};
-    poPreferentialCategories = [];
-    poCurrentTab = 'unitdata';
-    savePOData();
-    defineDefaultCadres();
+    showToast('Allocation confirmed: ' + r.run.allocated + ' allotted', 'success');
     renderPOModule();
-    showToast('PO module reset', 'success');
 }
 
-// Initialize from existing showPage flow
+function poExplainAllocation(employeeId) {
+    const a = (poState.allocations || []).find(x => x.employee_id === employeeId);
+    if (!a) { showToast('No allotment recorded for this employee', 'error'); return; }
+    const dlg = document.createElement('div');
+    dlg.className = 'modal-overlay';
+    dlg.style.display = 'flex';
+    const rows = [
+        ['Employee', a.name], ['Rank / category', a.category_name + ' (' + a.rank_code + ')'],
+        ['FSL seniority', a.seniority_no], ['Preferential status', a.preferential_status + (a.preferential_claim_label ? ' - ' + a.preferential_claim_label : '')],
+        ['Options considered', (a.preference_considered || []).join(' -> ') || 'none stated'],
+        ['Option 1 / 2 / 3', [a.option_pref1, a.option_pref2, a.option_pref3].filter(Boolean).join(' / ') || 'none stated'],
+        ['Preference selected', a.preference_selected ? ((poCtx().cadreById[a.preference_selected] || {}).name || a.preference_selected) + ' (preference ' + a.preference_rank + ')' : 'none'],
+        ['FINAL ALLOYMENT', a.cadre_name],
+        ['Allocation reason', a.allocation_reason],
+        ['Why', a.reason_detail || ''],
+        ['Allocation sequence', a.allocation_sequence],
+        ['Vacancy before / after', a.vacancy_before + ' -> ' + a.vacancy_after],
+        ['SC/ST group', a.sc_group || 'not reserved'],
+        ['SC/ST adjustment', a.sc_st_adjustment ? (a.sc_st_adjustment.role + ' - ' + a.sc_st_adjustment.group + ' for ' + a.sc_st_adjustment.reason) : 'none'],
+        ['Run id', a.run_id], ['FSL version', a.fsl_version], ['Options version', a.options_version],
+        ['Allocation engine version', a.engine_version], ['Allocated at', a.allocated_at]
+    ];
+    dlg.innerHTML = '<div class="modal" style="max-width:640px;">' +
+        '<div class="modal-header"><h3>Why was ' + escapeHtml(a.name) + ' allotted to ' + escapeHtml(a.cadre_name) + '?</h3>' +
+        '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button></div>' +
+        '<div class="modal-body"><div class="po-table-wrap"><table class="po-mini"><tbody>' +
+        rows.map(r => '<tr><th style="width:230px">' + escapeHtml(r[0]) + '</th><td>' + poDash(r[1]) + '</td></tr>').join('') +
+        '</tbody></table></div></div>' +
+        '<div class="modal-footer"><button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">Close</button></div></div>';
+    document.body.appendChild(dlg);
+}
+
+
+// ============================================================================
+// STEP 8 - FAL (para 18 & 19)
+// ============================================================================
+
+function renderStepFal(content) {
+    const fal = poState.fal;
+    const report = poFALValidation();
+    const ctx = poCtx();
+    const admin = poIsAdmin();
+
+    const viewSel =
+        '<select id="poFalView" onchange="poFalViewChanged(this.value)">' +
+        ['cadre', 'rank', 'employee', 'erstwhile'].map(v =>
+            '<option value="' + v + '"' + (poFals.view === v ? ' selected' : '') + '>' +
+            escapeHtml({ cadre: 'Cadre-wise', rank: 'Rank-wise', employee: 'Employee-wise', erstwhile: 'Erstwhile-cadre-wise' }[v]) + '</option>').join('') +
+        '</select>';
+
+    let rows = [];
+    if (fal && fal.rows.length) {
+        let list = fal.rows;
+        if (poFals.query) {
+            const q = poFals.query.toLowerCase();
+            list = list.filter(r => (r.name || '').toLowerCase().indexOf(q) !== -1 ||
+                                     String(r.seniority_no).indexOf(q) !== -1 ||
+                                     (r.cadre_name || '').toLowerCase().indexOf(q) !== -1);
+        }
+        const keyOf = { cadre: r => r.cadre_name, rank: r => r.category_name, employee: r => r.name, erstwhile: r => r.erstwhile_cadre_name || '(not stated)' }[poFals.view];
+        const grouped = {};
+        list.forEach(r => {
+            const k = keyOf(r) || '(not stated)';
+            (grouped[k] = grouped[k] || []).push(r);
+        });
+        Object.keys(grouped).sort().forEach(k => {
+            rows.push('<tr class="po-group-row"><th colspan="17">' + escapeHtml(k) + ' (' + grouped[k].length + ')</th></tr>');
+            grouped[k].forEach((r, i) => {
+                const f = poState.fsl.find(x => x.employee_id === r.employee_id) || {};
+                const isExc = (report.blocking || []).some(b => b.employee_id === r.employee_id) ||
+                              ((poState.allocationRun ? poState.allocationRun.exceptions : []) || []).some(e => e.employee_id === r.employee_id);
+                rows.push('<tr>' +
+                    poTd(String(i + 1)) +
+                    poTd((ctx.cadreById[r.erstwhile_cadre_id] || {}).name || r.erstwhile_cadre_name) +
+                    poTd(r.name) + poTd(poState.exercise.department) +
+                    poTd(f.present_working_place || r.office) + poTd(r.designation || r.rank_code) +
+                    poTd(f.gender) + poTd(f.social_category) + poTd(f.cfms_id) + poTd(f.mobile) + poTd(f.date_of_birth) +
+                    poTd(r.seniority_no) + poTd(r.category_name) +
+                    poTd(r.preferential_claim_label || 'None') + poTd(r.preferential_status) +
+                    poTd([r.option_pref1, r.option_pref2, r.option_pref3].filter(Boolean).join(' / ') || '-') +
+                    '<td><strong>' + escapeHtml(r.cadre_name) + '</strong></td>' +
+                    poTd(r.allocation_reason, 'font-size:10px') +
+                    poTd(String(r.allocation_sequence), 'text-align:center') +
+                    '<td>' + (isExc ? '<span class="po-badge po-badge-danger">EXCEPTION</span>' : '<span class="po-badge po-badge-success">CLEAR</span>') + '</td>' +
+                    '<td><button class="action-btn btn-secondary" onclick="poExplainAllocation(\'' + poQs(r.employee_id) + '\')">Why?</button></td>' +
+                '</tr>');
+            });
+        });
+    }
+
+    content.innerHTML =
+        poCard('Step 8 &middot; Final Allocation List',
+            '<p class="po-hint">The FAL is generated by the allocation engine. It cannot be hand-edited: a change after publication requires the revision workflow with a reason and an audit entry.</p>' +
+            '<div class="po-actions" style="margin-bottom:12px;">' +
+                (admin && !fal ? '<button class="btn btn-primary" onclick="poGenerateFalFlow()">Generate FAL from the confirmed run</button>' : '') +
+                (admin && fal && fal.status === 'DRAFT' ? '<button class="btn btn-primary" onclick="poApproveFalFlow()">Approve FAL</button>' : '') +
+                (admin && fal && fal.status === 'APPROVED' ? '<button class="btn btn-primary" onclick="poPublishFalFlow()">Publish FAL (locks it)</button>' : '') +
+                (admin && fal && fal.locked ? '<button class="btn btn-secondary" onclick="poReviseFalFlow()">Start FAL revision</button>' : '') +
+                (fal ? '<button class="btn btn-secondary" onclick="poExportFalCsv()">Export FAL</button>' +
+                       '<button class="btn btn-secondary" onclick="poPrintFal()">Print / PDF</button>' : '') +
+            '</div>' +
+            poStats([
+                { value: fal ? fal.rows.length : 0, label: 'FAL rows' },
+                { value: fal ? fal.version : '-', label: 'FAL version' },
+                { value: fal ? fal.status : 'NONE', label: 'FAL status' },
+                { value: report.counts ? report.counts.preferential : 0, label: 'Preferential' },
+                { value: report.counts ? report.counts.compulsory : 0, label: 'Compulsory' },
+                { value: report.counts ? report.counts.no_option : 0, label: 'No-option' }
+            ]) +
+            (fal && fal.locked ? '<div class="po-note po-note-info">FAL published at ' + escapeHtml((fal.published_at || '').slice(0, 16).replace('T', ' ')) + ' and LOCKED.</div>' : '') +
+            '<div class="po-filters">' + viewSel +
+                '<input type="text" id="poFalSearch" placeholder="Search name, seniority, cadre" value="' + escapeHtml(poFals.query) + '" oninput="poFalSearchChanged(this.value)">' +
+            '</div>' +
+            poTable(['Sl.No', 'Erstwhile Local Cadre', 'Employee Name', 'Department', 'Present Office', 'Designation', 'Gender',
+                     'Social Category', 'CFMS ID', 'Mobile', 'Date of Birth', 'Seniority No.', 'Rank',
+                     'Preferential Category', 'Claim Status', 'Preference 1/2/3', 'Final Allotted Local Cadre',
+                     'Allocation Reason', 'Alloc Seq', 'Exception Status', ''], rows), '') +
+
+        poCard('FAL validation (para 19)', poValidationPanel('FAL', {
+            valid: report.valid,
+            errors: [],
+            blocking: report.blocking || [],
+            warnings: report.warnings || [],
+            passed: report.passed || []
+        }), '');
+}
+
+function poFalViewChanged(v) { poFals.view = v; renderCurrentPOTab(); }
+function poFalSearchChanged(v) { poFals.query = v; renderCurrentPOTab(); const el = document.getElementById('poFalSearch'); if (el) { el.focus(); el.setSelectionRange(v.length, v.length); } }
+
+function poGenerateFalFlow() {
+    if (!confirm('Generate the FAL from the confirmed allocation run?')) return;
+    if (poGenerateFal()) { showToast('FAL generated', 'success'); renderPOModule(); }
+}
+function poApproveFalFlow() {
+    if (!confirm('Approve the FAL?')) return;
+    if (poApproveFal()) { showToast('FAL approved', 'success'); renderPOModule(); }
+}
+function poPublishFalFlow() {
+    if (!confirm('Publish and LOCK the FAL? Subsequent change requires the revision workflow.')) return;
+    if (poPublishFal()) { showToast('FAL published and locked', 'success'); renderPOModule(); }
+}
+function poReviseFalFlow() {
+    const reason = prompt('FAL revision reason (mandatory):', '');
+    if (reason === null) return;
+    if (!confirm('This unlocks the FAL and discards the confirmed allocation run so it can be re-simulated and re-confirmed. Continue?')) return;
+    if (poReviseFal(reason)) { showToast('FAL revision started', 'success'); renderPOModule(); }
+}
+
+function poExportFalCsv() {
+    const fal = poState.fal;
+    if (!fal) return;
+    const fslById = {}; poState.fsl.forEach(f => { fslById[f.employee_id] = f; });
+    const headers = ['Sl.No', 'Erstwhile Local Cadre', 'Employee Name', 'Department', 'Office', 'Designation', 'Gender',
+        'Social Category', 'CFMS ID', 'Mobile', 'Date of Birth', 'Seniority No', 'Preferential Category',
+        'Claim Status', 'Final Allotted Local Cadre', 'Allocation Reason', 'Allocation Sequence',
+        'Vacancy Before', 'Vacancy After', 'SC/ST Adjustment', 'FAL Version', 'Engine Version'];
+    const rows = fal.rows.map((r, i) => {
+        const f = fslById[r.employee_id] || {};
+        return [i + 1, r.erstwhile_cadre_name, r.name, poState.exercise.department, r.office, r.designation || r.rank_code,
+            f.gender, f.social_category, f.cfms_id, f.mobile, f.date_of_birth, r.seniority_no,
+            r.preferential_claim_label || '', r.preferential_status, r.cadre_name, r.allocation_reason,
+            r.allocation_sequence, r.vacancy_before, r.vacancy_after,
+            r.sc_st_adjustment ? (r.sc_st_adjustment.role + ' for ' + r.sc_st_adjustment.group) : '', fal.version, r.engine_version];
+    });
+    downloadFile(poToCsv(headers, rows), 'PO_FAL_' + poState.exercise.exercise_id + '_' + fal.version + '.csv', 'text/csv');
+    showToast('FAL exported', 'success');
+}
+
+function poPrintFal() {
+    const fal = poState.fal;
+    if (!fal) return;
+    const byCadre = {};
+    fal.rows.forEach(r => { (byCadre[r.cadre_name] = byCadre[r.cadre_name] || []).push(r); });
+    let html = '';
+    Object.keys(byCadre).sort().forEach(cadre => {
+        html += '<h3>Local cadre: ' + escapeHtml(cadre) + ' (' + byCadre[cadre].length + ')</h3><table><thead><tr>' +
+            '<th>Sl.No</th><th>Erstwhile Local Cadre</th><th>Employee Name</th><th>Designation</th><th>Gender</th>' +
+            '<th>Social Cat.</th><th>CFMS ID</th><th>Seniority No.</th><th>Preferential Category</th><th>Reason</th></tr></thead><tbody>' +
+            byCadre[cadre].map((r, i) => '<tr><td>' + (i + 1) + '</td><td>' + escapeHtml(r.erstwhile_cadre_name) + '</td><td>' + escapeHtml(r.name) +
+                '</td><td>' + escapeHtml(r.designation || r.rank_code) + '</td><td>' + poDash((poState.fsl.find(f => f.employee_id === r.employee_id) || {}).gender) +
+                '</td><td>' + poDash((poState.fsl.find(f => f.employee_id === r.employee_id) || {}).social_category) +
+                '</td><td>' + poDash((poState.fsl.find(f => f.employee_id === r.employee_id) || {}).cfms_id) +
+                '</td><td>' + poDash(r.seniority_no) + '</td><td>' + poDash(r.preferential_claim_label) +
+                '</td><td>' + escapeHtml(r.allocation_reason) + '</td></tr>').join('') +
+            '</tbody></table><br>';
+    });
+    poPrintDocument('Final Allocation List (FAL)', html);
+}
+
+
+// ============================================================================
+// STEP 9 - OOA / OOT / joining (para 20 & 21)
+// ============================================================================
+
+function renderStepOrders(content) {
+    const admin = poIsAdmin();
+    const ooaRows = poState.ooa.map(o =>
+        '<tr>' + poTd(o.ooa_id) + poTd(o.name) + poTd(o.parentage) + poTd(o.cfms_id) + poTd(o.mobile) +
+        poTd(o.designation) + poTd(o.erstwhile_cadre) + poTd(o.new_cadre) +
+        poTd(o.order_no) + poTd(o.order_date) +
+        '<td><span class="po-badge po-badge-' + poOoaTone(o.status) + '">' + escapeHtml(o.status) + '</span></td>' +
+        '<td>' + (admin && o.status === 'DRAFT'
+            ? '<button class="action-btn btn-secondary" onclick="poReviseOoaFlow(\'' + poQs(o.ooa_id) + '\')">Cancel/Revise</button>'
+            : (admin && o.status === 'ISSUED'
+                ? '<button class="action-btn btn-secondary" onclick="poReviseOoaFlow(\'' + poQs(o.ooa_id) + '\')">Revise (never deleted)</button>' +
+                  '<button class="action-btn btn-primary" onclick="poPrintOoa(\'' + poQs(o.ooa_id) + '\')">Print</button>'
+                : '')) + '</td></tr>');
+
+    const ootRows = poState.oot.map(o =>
+        '<tr class="' + (o.transfer_required ? '' : 'po-row-muted') + '">' +
+        poTd(o.oot_id) + poTd(o.name) +
+        '<td><span class="po-badge po-badge-' + (o.transfer_required ? 'info' : 'success') + '">' + (o.transfer_required ? 'TRANSFER REQUIRED' : 'NO TRANSFER') + '</span></td>' +
+        poTd(o.existing_cadre) + poTd(o.existing_office) + poTd(o.new_cadre) + poTd(o.new_reporting_office) +
+        poTd(o.ooa_no) + poTd(o.order_no) + poTd(o.order_date) + poTd(o.joining_deadline) +
+        '<td><span class="po-badge po-badge-' + poJoiningTone(o.joining_status) + '">' + escapeHtml(poJoiningLabel(o.joining_status)) + '</span></td>' +
+        '<td>' + (admin && o.status === 'ISSUED' && o.transfer_required
+            ? '<button class="action-btn btn-primary" onclick="poRecordJoiningFlow(\'' + poQs(o.oot_id) + '\')">Record joining</button>' +
+              (o.joining_status === 'OVERDUE' ? '<button class="action-btn btn-secondary" onclick="poRecordJoiningFlow(\'' + poQs(o.oot_id) + '\',\'EXCEPTION\')">Mark exception</button>' : '')
+            : '') + '</td></tr>');
+
+    content.innerHTML =
+        poCard('Step 9a &middot; Order of Allotment (OOA)',
+            '<p class="po-hint">Status DRAFT &rarr; APPROVED &rarr; ISSUED. An issued OOA is never deleted; it is superseded by a recorded revision.</p>' +
+            '<div class="po-actions" style="margin-bottom:12px;">' +
+                (admin ? '<button class="btn btn-primary" onclick="poGenerateOoaFlow()">Generate OOA</button>' +
+                         '<button class="btn btn-secondary" onclick="poApproveOoaFlow()">Approve drafts</button>' +
+                         '<button class="btn btn-secondary" onclick="poIssueOoaFlow()">Issue approved OOA</button>' : '') +
+                (poState.ooa.length ? '<button class="btn btn-secondary" onclick="poPrintAllOoa()">Print all</button>' : '') +
+            '</div>' +
+            poTable(['OOA ID', 'Employee', 'Parentage', 'CFMS ID', 'Mobile', 'Designation',
+                     'Erstwhile Local Cadre', 'New Allotted Local Cadre', 'Order No', 'Order Date', 'Status', ''], ooaRows), '') +
+
+        poCard('Step 9b &middot; Order of Transfer (OOT) and joining',
+            '<p class="po-hint">If the allotted cadre equals the present local cadre, no transfer order is required and the employee continues in the existing post. ' +
+            'Otherwise an OOT is generated. Joining is to be reported within ' + (poState.joiningWindowDays || 7) + ' days of issue.</p>' +
+            '<div class="po-actions" style="margin-bottom:12px;">' +
+                (admin ? '<button class="btn btn-primary" onclick="poGenerateOotFlow()">Generate OOT where required</button>' +
+                         '<button class="btn btn-secondary" onclick="poIssueOotFlow()">Issue OOT</button>' : '') +
+                (poState.oot.length ? '<button class="btn btn-secondary" onclick="poPrintAllOot()">Print all</button>' : '') +
+                (poUnresolvedJoining().length ? '<button class="btn btn-danger" onclick="poJoiningClosureOverrideFlow()">Authorise closure override (' + poUnresolvedJoining().length + ')</button>' : '') +
+            '</div>' +
+            (poUnresolvedJoining().length
+                ? '<div class="po-note po-note-warn">' + poUnresolvedJoining().length + ' mandatory joining record(s) unresolved. The exercise cannot be closed until each is recorded, marked as an exception, or covered by an authorised closure override.</div>'
+                : '') +
+            poTable(['OOT ID', 'Employee', 'Transfer', 'Existing Local Cadre', 'Existing Office',
+                     'New Reporting Cadre', 'New Reporting Office', 'OOA No', 'OOT No', 'OOT Date',
+                     'Joining Deadline', 'Joining Status', ''], ootRows), '');
+}
+
+function poOoaTone(s) {
+    if (s === 'ISSUED') return 'success';
+    if (s === 'APPROVED') return 'info';
+    if (s === 'REVISED' || s === 'CANCELLED') return 'danger';
+    return 'warn';
+}
+
+function poGenerateOoaFlow() {
+    if (!confirm('Generate an OOA draft for every employee on the published FAL?')) return;
+    const n = poGenerateOoa();
+    if (n) { showToast(n + ' OOA draft(s) generated', 'success'); renderPOModule(); }
+}
+function poApproveOoaFlow() {
+    if (!confirm('Approve every OOA in DRAFT?')) return;
+    const n = poApproveOoa();
+    if (n) { showToast(n + ' OOA approved', 'success'); renderPOModule(); }
+}
+function poIssueOoaFlow() {
+    const prefix = prompt('Order number prefix (default OOA/<year>/):', 'OOA/' + new Date().getFullYear() + '/');
+    if (prefix === null) return;
+    if (!confirm('Issue every approved OOA? An issued order cannot be deleted afterwards.')) return;
+    const n = poIssueOoa(prefix);
+    if (n) { showToast(n + ' OOA issued', 'success'); renderPOModule(); }
+}
+function poReviseOoaFlow(ooaId) {
+    const reason = prompt('Revision / cancellation reason (mandatory, recorded in the audit trail):', '');
+    if (reason === null) return;
+    if (poReviseOoa(ooaId, reason)) { showToast('OOA marked REVISED', 'success'); renderPOModule(); }
+}
+function poGenerateOotFlow() {
+    if (!confirm('Generate an OOT for every employee whose allotted cadre differs from the present local cadre?')) return;
+    const n = poGenerateOot();
+    if (n === 0 && !poState.oot.length) { showToast('OOT generation blocked', 'error'); return; }
+    showToast(n + ' transfer order(s) required out of ' + poState.oot.length + ' employee(s)', 'success');
+    renderPOModule();
+}
+function poIssueOotFlow() {
+    const prefix = prompt('Order number prefix (default OOT/<year>/):', 'OOT/' + new Date().getFullYear() + '/');
+    if (prefix === null) return;
+    if (!confirm('Issue every draft OOT? Joining deadline is ' + (poState.joiningWindowDays || 7) + ' days from the issue date.')) return;
+    const n = poIssueOot(prefix);
+    if (n) { showToast(n + ' OOT issued', 'success'); renderPOModule(); }
+}
+function poJoiningLabel(s) {
+    return s === 'NOT_REQUIRED' ? 'NOT REQUIRED' : (s === 'REPORTED' ? 'JOINED' : (s || 'PENDING'));
+}
+
+function poJoiningTone(s) {
+    if (s === 'JOINED' || s === 'REPORTED') return 'success';
+    if (s === 'OVERDUE') return 'danger';
+    if (s === 'EXCEPTION') return 'warn';
+    if (s === 'NOT_REQUIRED') return 'info';
+    return 'warn';
+}
+
+function poRecordJoiningFlow(ootId, statusOverride) {
+    const d = prompt('Joining report date (YYYY-MM-DD):', new Date().toISOString().slice(0, 10));
+    if (!d) return;
+    const remark = prompt('Remark (optional):', '') || '';
+    if (poRecordJoining(ootId, d, remark, statusOverride)) { showToast('Joining recorded', 'success'); renderPOModule(); }
+}
+
+function poJoiningClosureOverrideFlow() {
+    const open = poUnresolvedJoining();
+    if (!open.length) { showToast('No unresolved joining records', 'error'); return; }
+    if (!confirm('Authorise closure with ' + open.length + ' unresolved joining record(s)?\n\n' +
+        open.map(o => o.name + ' - ' + o.joining_status + (o.joining_deadline ? ' (deadline ' + o.joining_deadline + ')' : '')).join('\n') +
+        '\n\nThis is recorded as an audit event with the reason and authority.')) return;
+    const reason = prompt('Reason for the closure override (mandatory):', '');
+    if (reason === null) return;
+    const authority = prompt('Authorising authority (mandatory):', '');
+    if (authority === null) return;
+    if (poOverrideJoiningClosure(reason, authority)) { showToast('Closure override authorised and recorded', 'success'); renderPOModule(); }
+}
+
+function poPrintOoa(ooaId) {
+    const o = poState.ooa.find(x => x.ooa_id === ooaId);
+    if (!o) return;
+    poPrintDocument('Order of Allotment - ' + (o.order_no || o.ooa_id),
+        '<table class="po-order"><tbody>' +
+        [['Order No', o.order_no || '(draft)'], ['Date', o.order_date || '(draft)'], ['Department', o.department],
+         ['Designation', o.designation], ['Name', o.name + ' ' + (o.parentage ? '(' + o.parentage + ')' : '')],
+         ['CFMS ID', o.cfms_id], ['Mobile', o.mobile],
+         ['Erstwhile Local Cadre', o.erstwhile_cadre], ['New Allotted Local Cadre', o.new_cadre],
+         ['Competent Authority', o.competent_authority],
+         ['Reference', o.po_reference], ['Reference', o.go_reference], ['Status', o.status], ['Version', o.version]]
+        .map(r => '<tr><th>' + escapeHtml(r[0]) + '</th><td>' + poDash(r[1]) + '</td></tr>').join('') +
+        '</tbody></table>' +
+        '<div class="po-sign">Signature of the Competent Authority</div>');
+}
+
+function poPrintAllOoa() {
+    poPrintDocument('Orders of Allotment',
+        '<table><thead><tr><th>Order No</th><th>Date</th><th>Name</th><th>CFMS ID</th><th>Designation</th>' +
+        '<th>Erstwhile Cadre</th><th>New Allotted Cadre</th><th>Status</th></tr></thead><tbody>' +
+        poState.ooa.map(o => '<tr><td>' + poDash(o.order_no) + '</td><td>' + poDash(o.order_date) + '</td><td>' + escapeHtml(o.name) +
+            '</td><td>' + poDash(o.cfms_id) + '</td><td>' + poDash(o.designation) + '</td><td>' + poDash(o.erstwhile_cadre) +
+            '</td><td>' + escapeHtml(o.new_cadre) + '</td><td>' + escapeHtml(o.status) + '</td></tr>').join('') +
+        '</tbody></table>');
+}
+
+function poPrintAllOot() {
+    const req = poState.oot.filter(o => o.transfer_required);
+    poPrintDocument('Orders of Transfer',
+        '<p>Joining is to be reported within ' + (poState.joiningWindowDays || 7) + ' days of issue.</p>' +
+        '<table><thead><tr><th>OOT No</th><th>Date</th><th>Name</th><th>Designation</th><th>Existing Local Cadre</th>' +
+        '<th>Existing Office</th><th>New Reporting Cadre</th><th>Joining Deadline</th><th>Joining Status</th></tr></thead><tbody>' +
+        (req.length ? req.map(o => '<tr><td>' + poDash(o.order_no) + '</td><td>' + poDash(o.order_date) + '</td><td>' + escapeHtml(o.name) +
+            '</td><td>' + poDash(o.designation) + '</td><td>' + poDash(o.existing_cadre) + '</td><td>' + poDash(o.existing_office) +
+            '</td><td>' + escapeHtml(o.new_cadre) + '</td><td>' + poDash(o.joining_deadline) + '</td><td>' + escapeHtml(o.joining_status) + '</td></tr>').join('')
+            : '<tr><td colspan="9">No transfer is required for any employee.</td></tr>') +
+        '</tbody></table>');
+}
+
+function poPrintDocument(title, bodyHtml) {
+    const w = window.open('', '', 'width=1000,height=760');
+    if (!w) { showToast('Allow pop-ups to print the order document', 'error'); return; }
+    w.document.write('<!DOCTYPE html><html><head><title>' + escapeHtml(title) + '</title><style>' +
+        'body{font-family:serif;padding:34px;font-size:13px;color:#000}' +
+        'h1{text-align:center;font-size:18px;text-transform:uppercase}' +
+        'h3{text-align:center;font-weight:normal;margin-top:4px}' +
+        '.ref{text-align:center;font-size:11px;margin-bottom:18px}' +
+        'table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}' +
+        'th,td{border:1px solid #000;padding:5px;text-align:left;vertical-align:top}' +
+        'th{background:#eee;width:200px}' +
+        '.po-order th{width:230px}' +
+        '.po-sign{margin-top:60px;text-align:right;padding-right:40px}' +
+        '@media print{.no-print{display:none}}</style></head><body>' +
+        '<h1>' + escapeHtml(title) + '</h1>' +
+        '<h3>' + escapeHtml(POEngine.PO_GO_REFERENCE.order) + ', ' + escapeHtml(POEngine.PO_GO_REFERENCE.department) + ', dated ' + escapeHtml(POEngine.PO_GO_REFERENCE.date) + '</h3>' +
+        '<div class="ref">Presidential Order-2025 &middot; ' + escapeHtml(poState.exercise.exercise_id || 'Exercise ID not set') + ' &middot; ' + escapeHtml(POEngine.PO_GO_REFERENCE.scope) + '</div>' +
+        bodyHtml +
+        '<br><button class="no-print" onclick="window.print()">Print</button></body></html>');
+    w.document.close();
+}
+
+
+// ============================================================================
+// DLC dashboard + audit trail (para 23 & 25)
+// ============================================================================
+
+function poShowDashboard() {
+    const d = poDashboard();
+    const dlg = document.createElement('div');
+    dlg.className = 'modal-overlay';
+    dlg.style.display = 'flex';
+    const block = (title, rows) => '<div class="po-block"><h4>' + title + '</h4>' +
+        rows.map(r => '<div class="po-dash-row"><span>' + escapeHtml(r[0]) + '</span><strong>' + escapeHtml(r[1]) + '</strong></div>').join('') + '</div>';
+
+    dlg.innerHTML = '<div class="modal" style="max-width:900px;">' +
+        '<div class="modal-header"><h3>DLC dashboard</h3>' +
+        '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button></div>' +
+        '<div class="modal-body">' +
+        block('Exercise status', [['Status', d.exercise_status], ['Stage', d.stage],
+            ['Exercise ID', poState.exercise.exercise_id || '-'], ['Department', poState.exercise.department || '-']]) +
+        block('Cadres', [['Total', d.cadres.total], ['Active', d.cadres.active], ['Total FWS', d.cadres.fws]]) +
+        block('Personnel', [['FSL total', d.personnel.fsl_total], ['Preferential cases', d.personnel.preferential_cases],
+            ['SC', d.personnel.sc], ['ST', d.personnel.st], ['Deputation', d.personnel.deputation], ['No option', d.personnel.no_option]]) +
+        block('Options', [['Submitted', d.options.submitted], ['Pending', d.options.pending], ['Locked', d.options.locked ? 'YES' : 'NO']]) +
+        block('Allocation', [['Allocated', d.allocation.allocated], ['Pending', d.allocation.pending],
+            ['Exceptions', d.allocation.exceptions], ['FWS exhausted', d.allocation.fws_exhausted],
+            ['Last run', d.allocation.last_run ? d.allocation.last_run.run_id + ' (' + d.allocation.last_run.status + ')' : '-']]) +
+        block('FAL', [['Generated', d.fal.generated ? 'YES' : 'NO'], ['Status', d.fal.status],
+            ['Validated', d.fal.validated ? 'YES' : 'NO'], ['Published', d.fal.published ? 'YES' : 'NO'], ['Version', d.fal.version]]) +
+        block('Orders', [['OOA generated', d.orders.ooa_generated], ['OOA issued', d.orders.ooa_issued],
+            ['OOT generated', d.orders.oot_generated], ['OOT issued', d.orders.oot_issued],
+            ['Joining completed', d.orders.joining_completed], ['No transfer required', d.orders.no_transfer_required]]) +
+        block('Versions', Object.keys(d.versions).map(k => [k, d.versions[k]])) +
+        '</div><div class="modal-footer"><button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">Close</button></div></div>';
+    document.body.appendChild(dlg);
+}
+
+function poShowAudit() {
+    const list = poState.audit.slice().reverse();
+    const dlg = document.createElement('div');
+    dlg.className = 'modal-overlay';
+    dlg.style.display = 'flex';
+    dlg.innerHTML = '<div class="modal" style="max-width:1180px;">' +
+        '<div class="modal-header"><h3>Audit trail (' + list.length + ' events)</h3>' +
+        '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button></div>' +
+        '<div class="modal-body">' +
+        (list.length
+            ? '<div class="po-table-wrap" style="max-height:62vh;overflow:auto"><table><thead><tr>' +
+              '<th>#</th><th>When</th><th>User</th><th>Action</th><th>Previous</th><th>New</th><th>Reason</th>' +
+              '<th>Exercise</th><th>Employee</th><th>Stage</th><th>Version</th></tr></thead><tbody>' +
+              list.map(e => '<tr><td>' + escapeHtml(e.id) + '</td><td style="font-size:10px">' + escapeHtml((e.ts || '').slice(0, 19).replace('T', ' ')) + '</td>' +
+                  '<td>' + poDash(e.user) + '</td><td>' + escapeHtml(e.label) + '</td>' + poTd(e.prev_value) + poTd(e.new_value) +
+                  poTd(e.reason) + poTd(e.exercise_id) + poTd(e.employee_id) + poTd(e.stage) + poTd(e.version) + '</tr>').join('') +
+              '</tbody></table></div>'
+            : '<div class="empty-state">No audit events yet.</div>') +
+        '<div class="po-actions" style="margin-top:12px;"><button class="btn btn-secondary" onclick="poExportAudit()">Export audit CSV</button></div>' +
+        '</div><div class="modal-footer"><button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">Close</button></div></div>';
+    document.body.appendChild(dlg);
+}
+
+function poExportAudit() {
+    const headers = ['Event ID', 'Timestamp', 'User', 'Action', 'Label', 'Previous Value', 'New Value', 'Reason', 'Exercise ID', 'Employee ID', 'Stage', 'Version'];
+    const rows = poState.audit.map(e => [e.id, e.ts, e.user, e.action, e.label, e.prev_value, e.new_value, e.reason, e.exercise_id, e.employee_id, e.stage, e.version]);
+    downloadFile(poToCsv(headers, rows), 'PO_Audit_' + poState.exercise.exercise_id + '.csv', 'text/csv');
+    showToast('Audit trail exported', 'success');
+}
+
+
+// ============================================================================
+// Wiring into the existing page navigation
+// ============================================================================
+
+function initPOModule() {
+    poLoad();
+    renderPOModule();
+}
+
 const origShowPage = showPage;
-showPage = function(pageId) {
+showPage = function (pageId) {
     try {
         origShowPage(pageId);
-    } catch(e) {
+    } catch (e) {
         console.error('showPage error:', e);
     }
     if (pageId === 'presidentialOrder') {
         try {
             showPOPage();
-        } catch(e) {
+        } catch (e) {
             console.error('PO module render error:', e);
-            const container = document.getElementById('poMainContent');
-            if (container) {
-                container.innerHTML = `<div class="card"><h2>Error</h2><p style="color:red;">Failed to load: ${e.message}</p><p>Please hard-refresh (Ctrl+Shift+R) and try again.</p></div>`;
-            }
+            const c = document.getElementById('poMainContent');
+            if (c) c.innerHTML = '<div class="card"><h2>Error</h2><p style="color:var(--danger);">' + escapeHtml(e.message) +
+                '</p><p>Please hard-refresh (Ctrl+Shift+R) and try again.</p></div>';
         }
     }
 };
 
-// Attach to window
-window.initPOModule = initPOModule;
-window.showPOPage = showPOPage;
-window.switchPOTab = switchPOTab;
-window.renderCurrentPOTab = renderCurrentPOTab;
-window.viewCadreStrength = viewCadreStrength;
-window.editCadreStrength = editCadreStrength;
-window.saveCadreStrengthEdits = saveCadreStrengthEdits;
-window.addNewCadre = addNewCadre;
-window.autoFillCadreStrength = autoFillCadreStrength;
-window.generateDSLFromPersonnel = generateDSLFromPersonnel;
-window.publishDSL = publishDSL;
-window.publishFSL = publishFSL;
-window.openOptionsPhase = openOptionsPhase;
-window.editPOExtended = editPOExtended;
-window.savePOExtended = savePOExtended;
-window.addObjection = addObjection;
-window.bulkInitOptions = bulkInitOptions;
-window.filterPOSeniority = filterPOSeniority;
-window.filterPOOptions = filterPOOptions;
-window.filterPOPrefCat = filterPOPrefCat;
-window.runAllocation = runAllocation;
-window.exportFAL = exportFAL;
-window.exportOOA = exportOOA;
-window.exportOOT = exportOOT;
-window.viewAllocationSummary = viewAllocationSummary;
-window.exportPOPrintFormat = exportPOPrintFormat;
-window.syncAllPersonnelToPO = syncAllPersonnelToPO;
-window.exportPOData = exportPOData;
-window.resetPOModule = resetPOModule;
-window.renderPOUnitData = renderPOUnitData;
-window.selectPOUnitRank = selectPOUnitRank;
-window.renderPOUnitDetail = renderPOUnitDetail;
-window.saveUnitCadreStrength = saveUnitCadreStrength;
-window.addPOUnitPersonnel = addPOUnitPersonnel;
-window.editPOUnitPersonnel = editPOUnitPersonnel;
-window.savePOUnitPersonnel = savePOUnitPersonnel;
-window.deletePOUnitPersonnel = deletePOUnitPersonnel;
-window.exportPOUnitCSV = exportPOUnitCSV;
-window.downloadPOUnitTemplate = downloadPOUnitTemplate;
-window.importPOUnitData = importPOUnitData;
-window.downloadFile = downloadFile;
+// Inline onclick handlers resolve against the global object. Classic scripts
+// already expose function declarations, but they are bound explicitly here so
+// the module keeps working if it is ever loaded as a non-classic script.
+[
+    'initPOModule', 'showPOPage', 'renderPOModule', 'renderCurrentPOTab', 'switchPOTab', 'poGotoStep',
+    'poAdvanceStage', 'poSaveExerciseFromForm', 'poSaveMembersFromForm',
+    'poEditCategory', 'poSaveCategoryForm', 'poDeleteCategory', 'poLoadRankMaster',
+    'poEditCadre', 'poSaveCadreForm', 'poDeleteCadre',
+    'poSetStrengthField', 'poSetApprovedFromForm',
+    'poValidateDslNow', 'poDownloadDslTemplate', 'poExportDslCsv', 'poImportDslFile',
+    'poEditDslRecord', 'poSaveDslForm', 'poDeleteDslRecord', 'poRecordDslObjection',
+    'poOpenClaimPanel', 'poSaveClaims', 'poVerifyClaim',
+    'poFinalizeFsl', 'poExportFslCsv', 'poReviseFslFlow',
+    'poSubmitOption', 'poSaveOptionWindow', 'poCloseOptionsFlow',
+    'poRunSimulation', 'poConfirmAllocationFlow', 'poExplainAllocation',
+    'poFalViewChanged', 'poFalSearchChanged', 'poGenerateFalFlow', 'poApproveFalFlow',
+    'poPublishFalFlow', 'poReviseFalFlow', 'poExportFalCsv', 'poPrintFal',
+    'poGenerateOoaFlow', 'poApproveOoaFlow', 'poIssueOoaFlow', 'poReviseOoaFlow', 'poPrintOoa',
+    'poGenerateOotFlow', 'poIssueOotFlow', 'poRecordJoiningFlow', 'poPrintAllOoa', 'poPrintAllOot',
+    'poSetPolicyFromUi', 'poFreezePolicyFlow', 'poRaiseObjectionFlow', 'poDisposeObjectionFlow',
+    'poCloseObjectionWindowFlow', 'poPublishFslFlow', 'poCorrectOptionFlow',
+    'poJoiningClosureOverrideFlow', 'poRecordDslObjection',
+    'poShowAudit', 'poExportAudit', 'poShowDashboard'
+].forEach(name => {
+    try { window[name] = window[name] || eval(name); } catch (e) { /* not a function - ignore */ }
+});
