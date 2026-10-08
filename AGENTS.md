@@ -182,6 +182,26 @@ requires the D1 schema and append-only audit endpoints first.
 
 ### Workflow
 
+### Stage-based UI — eight steps
+
+| # | Step | Key | Renderer |
+|---|------|-----|----------|
+| 1 | Ranks & Cadres — exercise, DLC composition, rank master, cadre master, allocation policy | `ranks` | `renderStepRanks` |
+| 2 | Working Strength | `strength` | `renderStepStrength` |
+| 3 | DSL | `dsl` | `renderStepDsl` |
+| 4 | FSL | `fsl` | `renderStepFsl` |
+| 5 | Option Filling | `options` | `renderStepOptions` |
+| 6 | Allocation | `allocation` | `renderStepAllocation` |
+| 7 | FAL | `fal` | `renderStepFal` |
+| 8 | OOA / OOT | `orders` | `renderStepOrders` |
+
+There is deliberately **no separate DLC Configuration screen**. The exercise reference
+data and the DLC composition are rendered by `renderExerciseCards()` inside step 1,
+because those values (cadre scope, competent authority, exercise identity) are needed by
+the rank/cadre masters and appear on every downstream document. The underlying fields are
+unchanged and still gate the `DRAFT` stage. Step 1 therefore opens at `DRAFT` and stays
+open through `CADRE_CONFIGURED`.
+
 The state machine is the workflow; the **procedural event register** (`poState.events`)
 is the statutory process behind it. `PO_EVENT_KEYS` is a whitelist, so only these
 can be recorded, and every write is audited:
@@ -478,7 +498,8 @@ UI (`presidentialOrder.js`):
 |----------|---------|
 | `showPOPage()` / `renderPOModule()` | Module shell + step rail + versions |
 | `renderCurrentPOTab()` | Render the open step, then the workflow control |
-| `renderStepDlc` … `renderStepOrders` | The nine step screens |
+| `renderExerciseCards()` | Exercise + DLC composition card (rendered inside step 1) |
+| `renderStepRanks` … `renderStepOrders` | The eight step screens |
 | `poAdvanceStage()` | Advance the workflow, prompting for a reason |
 | `poExplainAllocation(employeeId)` | Full "why this cadre?" explanation |
 | `poShowAudit()` / `poShowDashboard()` | Audit trail and DLC dashboard modals |

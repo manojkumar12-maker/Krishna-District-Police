@@ -47,13 +47,16 @@ Scope is fixed to **"District and Contiguous District Cadre"**; zonal and multi-
 allocation are out of scope and are never mixed in.
 
 ```
-DLC Config → Ranks & Cadres → Working Strength → DSL → (Objections) → FSL
+Ranks & Cadres → Working Strength → DSL → (Objections) → FSL
 → Option Filling → Allocation → FAL → OOA / OOT → Joining
 ```
 
 **Implemented with reference to G.O.Ms.No.129, G.A.(SPF & MC) Department, dated
 17-07-2026. Final procedural/legal validation is subject to the competent
 authority/DLC.** The module is not a legal-compliance claim.
+
+There is no separate DLC Configuration screen: the exercise reference data and the DLC
+composition live inside step 1, alongside the rank and cadre masters.
 
 ### How the rules are labelled
 

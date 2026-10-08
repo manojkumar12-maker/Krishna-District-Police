@@ -51,17 +51,19 @@ const PO_DEFAULT_CATEGORIES = [
     'Barbers', 'Cobbler'
 ];
 
-// --- The nine stage-based screens (para 28) ---------------------------------
+// --- The stage-based screens (para 28) -------------------------------------
+// The exercise reference data and the DLC composition are folded into step 1
+// (Ranks & Cadres) rather than given a screen of their own; the underlying
+// values are unchanged and still gate the DRAFT stage.
 const PO_STEPS = [
-    { n: 1,  key: 'dlc',        label: 'DLC Configuration', from: 'DRAFT' },
-    { n: 2,  key: 'ranks',      label: 'Ranks & Cadres',    from: 'CADRE_CONFIGURED' },
-    { n: 3,  key: 'strength',   label: 'Working Strength',  from: 'WORKING_STRENGTH_FINALIZED' },
-    { n: 4,  key: 'dsl',        label: 'DSL',               from: 'DSL_UPLOADED' },
-    { n: 5,  key: 'fsl',        label: 'FSL',               from: 'FSL_FINALIZED' },
-    { n: 6,  key: 'options',    label: 'Option Filling',    from: 'OPTIONS_OPEN' },
-    { n: 7,  key: 'allocation', label: 'Allocation',        from: 'ALLOCATION_RUNNING' },
-    { n: 8,  key: 'fal',        label: 'FAL',               from: 'FAL_GENERATED' },
-    { n: 9,  key: 'orders',     label: 'OOA / OOT',         from: 'OOA_GENERATED' }
+    { n: 1,  key: 'ranks',      label: 'Ranks & Cadres',    from: 'DRAFT' },
+    { n: 2,  key: 'strength',   label: 'Working Strength',  from: 'WORKING_STRENGTH_FINALIZED' },
+    { n: 3,  key: 'dsl',        label: 'DSL',               from: 'DSL_UPLOADED' },
+    { n: 4,  key: 'fsl',        label: 'FSL',               from: 'FSL_FINALIZED' },
+    { n: 5,  key: 'options',    label: 'Option Filling',    from: 'OPTIONS_OPEN' },
+    { n: 6,  key: 'allocation', label: 'Allocation',        from: 'ALLOCATION_RUNNING' },
+    { n: 7,  key: 'fal',        label: 'FAL',               from: 'FAL_GENERATED' },
+    { n: 8,  key: 'orders',     label: 'OOA / OOT',         from: 'OOA_GENERATED' }
 ];
 
 const PO_DEFAULT_SEG_PERCENTS = { SC_1: 1, SC_2: 6.5, SC_3: 7.5, ST: 6 };
