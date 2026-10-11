@@ -290,12 +290,12 @@ function poCurrentStepIndex() {
 }
 
 function poStepState(stepIdx) {
-    const idx = poStageIdx(poStage());
-    const from = poStageIdx(PO_STEPS[stepIdx].from);
-    if (stepIdx < poCurrentStepIndex()) return 'LOCKED';
-    if (stepIdx > poCurrentStepIndex()) return 'LOCKED';
+    const current = poCurrentStepIndex();
     if (poStage() === 'EXERCISE_CLOSED') return 'LOCKED';
-    if (stepIdx === poCurrentStepIndex()) return 'OPEN';
+    // A step already passed is DONE, not LOCKED: "finished" and "not yet
+    // reachable" are different facts and the rail must not conflate them.
+    if (stepIdx < current) return 'DONE';
+    if (stepIdx === current) return 'OPEN';
     return 'LOCKED';
 }
 

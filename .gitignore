@@ -19,4 +19,5 @@ nul
 .smoke/*
 !.smoke/po-flow.cjs
 !.smoke/ui-verify.cjs
+!.smoke/contrast-probe.cjs
 .backups/
