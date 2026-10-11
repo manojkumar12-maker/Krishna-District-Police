@@ -20,9 +20,9 @@ const PORepositoryContract = {
     name: 'PORepository',
     methods: [
         'loadExercise', 'saveExercise',
-        'saveDSL', 'saveFSL', 'saveOptions',
+        'saveSeniorityList', 'saveFSL', 'saveOptions',
         'saveAllocationRun', 'saveFAL',
-        'saveOOA', 'saveOOT', 'saveAuditEvent'
+        'saveOOA', 'saveOOT'
     ],
     authoritative: false
 };
@@ -50,17 +50,23 @@ LocalStoragePORepository.prototype.loadExercise = function () {
 };
 
 LocalStoragePORepository.prototype._write = function (doc) {
-    // PART 25: retain prior official records instead of delete + recreate.
+    // Retain prior official records instead of delete + recreate: a write that
+    // would shorten a retained history list cannot be a legitimate regression.
     const prev = this._read();
-    if (prev && doc && Array.isArray(prev.audit) && Array.isArray(doc.audit)) {
-        if (doc.audit.length < prev.audit.length) doc.audit = prev.audit;
+    if (prev && doc && doc.history) {
+        Object.keys(doc.history).forEach(k => {
+            if (Array.isArray(prev.history && prev.history[k]) &&
+                (!Array.isArray(doc.history[k]) || doc.history[k].length < prev.history[k].length)) {
+                doc.history[k] = prev.history[k];
+            }
+        });
     }
     localStorage.setItem(this.key, JSON.stringify(doc));
     return doc;
 };
 
 LocalStoragePORepository.prototype.saveExercise = function (doc) { return this._write(doc); };
-LocalStoragePORepository.prototype.saveDSL = function (doc) { return this._write(doc); };
+LocalStoragePORepository.prototype.saveSeniorityList = function (doc) { return this._write(doc); };
 LocalStoragePORepository.prototype.saveFSL = function (doc) { return this._write(doc); };
 LocalStoragePORepository.prototype.saveOptions = function (doc) { return this._write(doc); };
 LocalStoragePORepository.prototype.saveAllocationRun = function (doc) { return this._write(doc); };
@@ -68,20 +74,13 @@ LocalStoragePORepository.prototype.saveFAL = function (doc) { return this._write
 LocalStoragePORepository.prototype.saveOOA = function (doc) { return this._write(doc); };
 LocalStoragePORepository.prototype.saveOOT = function (doc) { return this._write(doc); };
 
-LocalStoragePORepository.prototype.saveAuditEvent = function (event) {
-    const doc = this._read() || {};
-    doc.audit = doc.audit || [];
-    doc.audit.push(event);
-    return this._write(doc);
-};
-
 /**
  * Intended production implementation. Each call maps to a Worker endpoint that
  * appends a versioned row rather than overwriting, so previous versions survive.
  *
  * NOT WIRED. It is declared so the architecture is ready; activating it is a
  * backend task and must not be done for a live exercise without the D1 schema
- * and the audit/append endpoints in place.
+ * and the append-only endpoints in place.
  */
 function BackendPORepository(baseUrl, opts) {
     this.kind = 'BACKEND';
@@ -94,14 +93,13 @@ function BackendPORepository(baseUrl, opts) {
 BackendPORepository.prototype._endpoint = {
     loadExercise: 'po/exercise',
     saveExercise: 'po/exercise',
-    saveDSL: 'po/dsl',
+    saveSeniorityList: 'po/seniority-list',
     saveFSL: 'po/fsl',
     saveOptions: 'po/options',
     saveAllocationRun: 'po/allocation-run',
     saveFAL: 'po/fal',
     saveOOA: 'po/ooa',
-    saveOOT: 'po/oot',
-    saveAuditEvent: 'po/audit'
+    saveOOT: 'po/oot'
 };
 
 BackendPORepository.prototype._call = function (method, payload) {

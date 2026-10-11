@@ -3,7 +3,7 @@
  *
  *   node --test tests/po-conformance.test.cjs
  *
- * Each test is named after the requirement it proves. The 21-state workflow,
+ * Each test is named after the requirement it proves. The 19-state workflow,
  * objection subsystem, option locking, repository and FAL immutability are
  * covered separately in tests/po-workflow.test.cjs (TEST 35 .. TEST 40).
  */
@@ -98,7 +98,7 @@ function run(fsl, options, cfg, strengths) {
 // ===========================================================================
 test('TEST 1/2: a missing seniority is a blocking error and is never generated', () => {
     const rec = emp('01', null);
-    const r = E.validateDSL([rec], { ctx: ctx() });
+    const r = E.validateSeniorityList([rec], { ctx: ctx() });
     assert.strictEqual(r.valid, false);
     assert.ok(r.errors.some(e => e.code === 'MISSING_SENIORITY'));
     assert.strictEqual(rec.seniority_no, null, 'seniority must remain null');
@@ -110,7 +110,7 @@ test('TEST 1/2: a missing seniority is a blocking error and is never generated',
 // TEST 3 - Duplicate seniority blocks validation
 // ===========================================================================
 test('TEST 3: duplicate seniority within a rank/category blocks validation', () => {
-    const r = E.validateDSL([emp('01', 5), emp('02', 5)], { ctx: ctx() });
+    const r = E.validateSeniorityList([emp('01', 5), emp('02', 5)], { ctx: ctx() });
     assert.ok(r.errors.some(e => e.code === 'DUPLICATE_SENIORITY'));
 });
 
@@ -118,7 +118,7 @@ test('TEST 3: duplicate seniority within a rank/category blocks validation', () 
 // TEST 4 - Duplicate CFMS blocks validation
 // ===========================================================================
 test('TEST 4: duplicate CFMS within a rank/category blocks validation', () => {
-    const r = E.validateDSL([emp('01', 1), emp('02', 2, { cfms_id: 'C01' })], { ctx: ctx() });
+    const r = E.validateSeniorityList([emp('01', 1), emp('02', 2, { cfms_id: 'C01' })], { ctx: ctx() });
     assert.ok(r.errors.some(e => e.code === 'DUPLICATE_CFMS'));
 });
 
@@ -126,7 +126,7 @@ test('TEST 4: duplicate CFMS within a rank/category blocks validation', () => {
 // TEST 5 - Duplicate employee across ranks blocks validation
 // ===========================================================================
 test('TEST 5: an employee duplicated across ranks blocks validation', () => {
-    const r = E.validateDSL([
+    const r = E.validateSeniorityList([
         emp('01', 1),
         emp('02', 9, { category_id: 'CAT_PC', rank_code: 'PC', cfms_id: 'C01' })
     ], { ctx: ctx() });
@@ -140,7 +140,7 @@ test('TEST 5: an employee duplicated across ranks blocks validation', () => {
     test('TEST ' + (6 + i) + ': a ' + status + ' employee remains in the dataset', () => {
         const fsl = [emp('01', 1, { service_status: status })];
         // validation retains them
-        const v = E.validateDSL(fsl, { ctx: ctx() });
+        const v = E.validateSeniorityList(fsl, { ctx: ctx() });
         assert.strictEqual(v.stats.total, 1);
         assert.ok(!v.errors.some(e => /STATUS|EXCLUD|DROP/i.test(e.code)));
         // allocation retains them
@@ -157,7 +157,7 @@ test('TEST 5: an employee duplicated across ranks blocks validation', () => {
 test('TEST 10: PwBD certified below 70% cannot qualify under the preferential rule', () => {
     const rec = emp('01', 1, { claims: { pwbd: { claimed: true, verification: 'VERIFIED', disability_percent: 65 } } });
     assert.strictEqual(E.poPreferredClaim(rec), null);
-    assert.ok(E.validateDSL([rec], { ctx: ctx() }).errors.some(e => e.code === 'CLAIM_PERCENT_BELOW_MIN'));
+    assert.ok(E.validateSeniorityList([rec], { ctx: ctx() }).errors.some(e => e.code === 'CLAIM_PERCENT_BELOW_MIN'));
     const rec70 = emp('02', 2, { claims: { pwbd: { claimed: true, verification: 'VERIFIED', disability_percent: 70 } } });
     assert.strictEqual(E.poPreferredClaim(rec70).id, 'pwbd');
 });

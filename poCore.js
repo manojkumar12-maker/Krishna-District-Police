@@ -1,45 +1,48 @@
 // ============================================================================
 // poCore.js  —  Presidential Order-2025 / G.O.Ms.No.129  state & official-input layer
 // ----------------------------------------------------------------------------
-// Owns: persistence, versioning, audit trail, the workflow state machine, and every
-// mutation of OFFICIAL INPUT data (cadres, rank/categories, FWS, DSL, FSL,
-// preferential claims, options, allocation, FAL, OOA, OOT).
+// Owns: persistence, versioning, the workflow state machine, and every mutation
+// of OFFICIAL INPUT data (ranks, strengths, the seniority list, preferential
+// claims, options, allocation, FAL, OOA, OOT).
 //
 // It does NOT render. All rendering lives in presidentialOrder.js.
 // All allocation / validation maths lives in poEngine.js.
 //
-// Official inputs are only ever written by an explicit, permission-checked,
-// audited action. Nothing here invents a seniority number, a cadre, a strength
-// or an option.
+// The module is deliberately minimal. There is no DSL, no objection window and
+// no audit trail: the DLC uploads the Seniority List for each cadre, that list
+// is the only personnel dataset, and the allocation order is fixed by the order.
+//
+// Official inputs are only ever written by an explicit, permission-checked
+// action. Nothing here invents a seniority number, a cadre, a strength or an
+// option.
 // ============================================================================
 
-const PO_DATA_VERSION = 10;
+const PO_DATA_VERSION = 11;
 const PO_STORAGE_KEY = 'po_state';
-const PO_AUDIT_LIMIT = 3000;
 
 // --- Statutory periods (GO REQUIREMENT) -------------------------------------
-// The GO provides 5 days for objections after publication of the DSL, and the
-// FSL is published on the 7th day from publication of the DSL. These are
-// computed from the ACTUAL DSL publication timestamp; no date is hard-coded.
-const PO_OBJECTION_DAYS = 5;
-const PO_FSL_ELIGIBILITY_DAYS = 7;
+// There is no objection period in this workflow. The option window opens on
+// publication of the Seniority List; the joining deadline is set when the OOT
+// is issued. Both are computed from the ACTUAL recorded timestamps.
 const PO_DEFAULT_OPTION_DAYS = 5;
 const PO_DEFAULT_JOINING_DAYS = 7;
 
-// --- Persistence mode label (PART 24) --------------------------------------
+// --- Persistence mode label --------------------------------------------------
 const PO_STORAGE_MODE_NOTICE =
     'LOCAL DEVELOPMENT MODE - NOT AN AUTHORITATIVE OFFICIAL RECORD. ' +
     'PO exercise data is held in this browser only. It is not a shared DLC record, ' +
     'is not backed up centrally and must not be treated as the statutory register.';
 
-// --- Cadres carried over unchanged from the previous module ------------------
-// The exercise cadres are NOT hard-coded: they are seeded here for convenience
-// and the DLC can add, rename, retype or retire any of them.
-const PO_DEFAULT_CADRES = [
-    { id: 'DC_KRISHNA', name: 'Krishna District (Residuary)', cadre_type: 'RESIDUARY_ERSTWHILE', level: 'DISTRICT', status: 'ACTIVE' },
-    { id: 'DC_NTR',    name: 'NTR District',                   cadre_type: 'NEWLY_FORMED_DISTRICT', level: 'DISTRICT', status: 'ACTIVE' },
-    { id: 'DC_ELURU',  name: 'Eluru District',                 cadre_type: 'NEWLY_FORMED_DISTRICT', level: 'DISTRICT', status: 'ACTIVE' }
-];
+// --- Cadres (fixed scope) ----------------------------------------------------
+// This module covers exactly three districts. The cadre list is NOT editable:
+// ids, names, order and cadre types are part of the module contract.
+const PO_DEFAULT_CADRES = POEngine.PO_DISTRICTS.map(d => ({
+    id: d.id,
+    name: d.name,
+    cadre_type: d.cadre_type,
+    level: 'DISTRICT',
+    status: 'ACTIVE'
+}));
 
 // Seed rank/categories preserved from the previous module (curated by request).
 // Ranks are configuration, not law: the DLC may load the departmental rank
@@ -51,19 +54,18 @@ const PO_DEFAULT_CATEGORIES = [
     'Barbers', 'Cobbler'
 ];
 
-// --- The stage-based screens (para 28) -------------------------------------
-// The exercise reference data and the DLC composition are folded into step 1
-// (Ranks & Cadres) rather than given a screen of their own; the underlying
-// values are unchanged and still gate the DRAFT stage.
+// --- The stage-based screens -------------------------------------------------
+// Seven steps. The exercise reference data and the DLC composition are folded
+// into step 1 (Ranks & Cadres) rather than given a screen of their own; the
+// underlying values are unchanged and still gate the DRAFT stage.
 const PO_STEPS = [
-    { n: 1,  key: 'ranks',      label: 'Ranks & Cadres',    from: 'DRAFT' },
-    { n: 2,  key: 'strength',   label: 'Working Strength',  from: 'WORKING_STRENGTH_FINALIZED' },
-    { n: 3,  key: 'dsl',        label: 'DSL',               from: 'DSL_UPLOADED' },
-    { n: 4,  key: 'fsl',        label: 'FSL',               from: 'FSL_FINALIZED' },
-    { n: 5,  key: 'options',    label: 'Option Filling',    from: 'OPTIONS_OPEN' },
-    { n: 6,  key: 'allocation', label: 'Allocation',        from: 'ALLOCATION_RUNNING' },
-    { n: 7,  key: 'fal',        label: 'FAL',               from: 'FAL_GENERATED' },
-    { n: 8,  key: 'orders',     label: 'OOA / OOT',         from: 'OOA_GENERATED' }
+    { n: 1,  key: 'ranks',      label: 'Ranks & Cadres',   from: 'DRAFT' },
+    { n: 2,  key: 'strength',   label: 'Working Strength', from: 'WORKING_STRENGTH_FINALIZED' },
+    { n: 3,  key: 'seniority',  label: 'Seniority List',  from: 'FSL_UPLOADED' },
+    { n: 4,  key: 'options',    label: 'Option Filling',   from: 'OPTIONS_OPEN' },
+    { n: 5,  key: 'allocation', label: 'Allocation',       from: 'ALLOCATION_RUNNING' },
+    { n: 6,  key: 'fal',        label: 'FAL',              from: 'FAL_GENERATED' },
+    { n: 7,  key: 'orders',     label: 'OOA / OOT',        from: 'OOA_GENERATED' }
 ];
 
 const PO_DEFAULT_SEG_PERCENTS = { SC_1: 1, SC_2: 6.5, SC_3: 7.5, ST: 6 };
@@ -94,7 +96,7 @@ function poFreshState() {
             created_at: null,
             modified_at: null
         },
-        // DLC policy decisions (PART 10 / 11 / 14). Frozen before ALLOCATION_RUNNING.
+        // DLC policy decisions. Frozen before ALLOCATION_RUNNING.
         policy: {
             compulsory_allocation_policy: POEngine.PO_DEFAULT_COMPULSORY_POLICY,
             prefer_existing_on_compulsory: false,
@@ -107,12 +109,8 @@ function poFreshState() {
         cadres: [],
         strengths: [],
         approved: [],
-        dsl: [],
-        dslVersion: 0,
-        dslPublishedAt: null,
-        dslValidation: null,
-        // Objection subsystem (PART 4) - one record per objection.
-        objections: [],
+        // The Seniority List. Uploaded per cadre by the DLC and locked as the
+        // authoritative personnel dataset. There is no separate DSL.
         fsl: [],
         fslVersion: 0,
         fslLocked: false,
@@ -136,22 +134,19 @@ function poFreshState() {
         falRevisions: [],
         ooa: [],
         oot: [],
-        // Procedural event register (PART 3) - the statutory process behind the
-        // workflow state machine.
+        // Procedural event register - the statutory process behind the workflow.
         events: {},
         stage: 'DRAFT',
-        versions: { fws: 0, dsl: 0, fsl: 0, options: 0, fal: 0, ooa: 0, oot: 0, claims: 0, policy: 0 },
-        // Retained prior versions of official records (PART 25). Never
-        // delete + recreate: every superseded version is appended here.
-        history: { fsl: [], allocationRun: [], fal: [], ooa: [], oot: [], options: [] },
-        audit: []
+        versions: { fws: 0, fsl: 0, options: 0, fal: 0, ooa: 0, oot: 0, claims: 0, policy: 0 },
+        // Retained prior versions of official records. Never delete + recreate:
+        // every superseded version is appended here.
+        history: { fsl: [], allocationRun: [], fal: [], ooa: [], oot: [], options: [] }
     };
 }
 
-/** Procedural event register keys (PART 3). */
+/** Procedural event register keys. */
 const PO_EVENT_KEYS = [
-    'dsl_published_at', 'objection_opened_at', 'objection_closed_at', 'objections_disposed_at',
-    'fsl_created_at', 'fsl_finalized_at', 'fsl_published_at',
+    'seniority_uploaded_at', 'fsl_created_at', 'fsl_finalized_at', 'fsl_published_at',
     'options_opened_at', 'options_closed_at',
     'allocation_started_at', 'allocation_completed_at',
     'fal_generated_at', 'fal_approved_at', 'fal_published_at',
@@ -159,21 +154,14 @@ const PO_EVENT_KEYS = [
     'oot_generated_at', 'oot_issued_at', 'joining_deadline'
 ];
 
-const PO_OBJECTION_STATUS = ['PENDING', 'UNDER_REVIEW', 'ACCEPTED', 'PARTIALLY_ACCEPTED', 'REJECTED', 'DISPOSED'];
-const PO_OBJECTION_TYPES = [
-    'SENIORITY_NUMBER', 'DATE_OF_JOINING', 'NAME', 'CADRE', 'RANK_CATEGORY',
-    'SOCIAL_CATEGORY', 'SERVICE_STATUS', 'PREFERENTIAL_CLAIM', 'OTHER'
-];
 const PO_JOINING_STATUS = ['PENDING', 'JOINED', 'OVERDUE', 'EXCEPTION'];
 
 /** Record a procedural event. The state machine shows the workflow; this shows
- *  the statutory process behind it. Every write is audited. */
-function poRecordEvent(key, at, opts) {
+ *  the statutory process behind it. */
+function poRecordEvent(key, at) {
     if (PO_EVENT_KEYS.indexOf(key) === -1) return null;
-    const o = opts || {};
     poState.events = poState.events || {};
     poState.events[key] = at || poNow();
-    poAudit(o.action || 'STAGE_CHANGED', { prev: o.prev || '', next: o.next || key, reason: o.reason || '', employee_id: o.employee_id || '' });
     return poState.events[key];
 }
 
@@ -182,22 +170,8 @@ function poEvent(key) { return (poState.events || {})[key] || null; }
 /** Timeline derived from the recorded events. Nothing is hard-coded. */
 function poTimeline() {
     const d = iso => iso ? String(iso).slice(0, 10) : null;
-    const addDays = (iso, days) => iso ? new Date(new Date(iso).getTime() + days * 86400000) : null;
-    const dslPub = poEvent('dsl_published_at');
-    const objectionClose = dslPub ? addDays(dslPub, PO_OBJECTION_DAYS) : null;
-    const fslEligible = dslPub ? addDays(dslPub, PO_FSL_ELIGIBILITY_DAYS) : null;
     return {
-        dsl_published_at: dslPub,
-        objection_window_days: PO_OBJECTION_DAYS,
-        objection_opened_at: d(poEvent('objection_opened_at')),
-        objection_closing_date: objectionClose ? objectionClose.toISOString().slice(0, 10) : null,
-        objection_closed_at: d(poEvent('objection_closed_at')),
-        objections_disposed_at: d(poEvent('objections_disposed_at')),
-        objections_total: (poState.objections || []).length,
-        objections_disposed: poDisposedObjections().length,
-        objections_pending: poPendingObjections().length,
-        fsl_eligibility_date: fslEligible ? fslEligible.toISOString().slice(0, 10) : null,
-        fsl_eligible_reached: !!(fslEligible && Date.now() >= fslEligible.getTime()),
+        seniority_uploaded_at: d(poEvent('seniority_uploaded_at')),
         fsl_created_at: d(poEvent('fsl_created_at')),
         fsl_finalized_at: d(poEvent('fsl_finalized_at')),
         fsl_published_at: d(poEvent('fsl_published_at')),
@@ -205,6 +179,8 @@ function poTimeline() {
         options_closed_at: d(poEvent('options_closed_at')),
         allocation_started_at: d(poEvent('allocation_started_at')),
         allocation_completed_at: d(poEvent('allocation_completed_at')),
+        fal_generated_at: d(poEvent('fal_generated_at')),
+        fal_approved_at: d(poEvent('fal_approved_at')),
         fal_published_at: d(poEvent('fal_published_at')),
         ooa_issued_at: d(poEvent('ooa_issued_at')),
         oot_issued_at: d(poEvent('oot_issued_at'))
@@ -227,11 +203,13 @@ function poLoad() {
         poState = Object.assign(poFreshState(), parsed);
         poState.exercise = Object.assign(poFreshState().exercise, parsed.exercise || {});
         poState.policy = Object.assign(poFreshState().policy, parsed.policy || {});
-        poState.versions = Object.assign({ fws: 0, dsl: 0, fsl: 0, options: 0, fal: 0, ooa: 0, oot: 0, claims: 0, policy: 0 }, parsed.versions || {});
+        poState.versions = Object.assign({ fws: 0, fsl: 0, options: 0, fal: 0, ooa: 0, oot: 0, claims: 0, policy: 0 }, parsed.versions || {});
         poState.segPercents = Object.assign({}, PO_DEFAULT_SEG_PERCENTS, parsed.segPercents || {});
         poState.events = Object.assign({}, parsed.events || {});
         poState.history = Object.assign(poFreshState().history, parsed.history || {});
         poState.storage_mode_notice = PO_STORAGE_MODE_NOTICE;
+        // The cadre set is fixed by the module, never carried in from storage.
+        poState.cadres = PO_DEFAULT_CADRES.map(c => Object.assign({}, c));
         return poState;
     } catch (e) {
         console.error('poLoad failed', e);
@@ -242,9 +220,6 @@ function poLoad() {
 
 function poSave() {
     if (!poState) poState = poFreshState();
-    if (poState.audit.length > PO_AUDIT_LIMIT) {
-        poState.audit = poState.audit.slice(poState.audit.length - PO_AUDIT_LIMIT);
-    }
     try {
         if (typeof poRepository !== 'undefined' && poRepository.saveExercise) poRepository.saveExercise(poState);
         else localStorage.setItem(PO_STORAGE_KEY, JSON.stringify(poState));
@@ -274,91 +249,15 @@ function poSessionId() {
 
 
 // ============================================================================
-// Audit trail (para 23)
-// ============================================================================
-
-const PO_AUDIT_LABEL = {
-    CADRE_CREATED: 'Cadre created',
-    CADRE_UPDATED: 'Cadre updated',
-    FWS_CHANGED: 'Final Working Strength changed',
-    CATEGORY_CREATED: 'Post category / rank created',
-    CATEGORY_UPDATED: 'Post category / rank updated',
-    APPROVED_STRENGTH_CHANGED: 'Approved working strength changed',
-    DSL_UPLOADED: 'DSL uploaded',
-    DSL_RECORD_SAVED: 'DSL record saved',
-    DSL_RECORD_DELETED: 'DSL record deleted',
-    DSL_VALIDATED: 'DSL validated',
-    DSL_PUBLISHED: 'DSL published',
-    OBJECTION_RECORDED: 'DSL objection recorded',
-    FSL_UPLOADED: 'FSL uploaded',
-    FSL_FINALIZED: 'FSL finalized',
-    FSL_LOCKED: 'FSL locked',
-    FSL_VALIDATED: 'FSL validated',
-    FSL_PUBLISHED: 'FSL published',
-    FSL_REVISED: 'FSL revised',
-    CLAIM_VERIFIED: 'Preferential claim verified',
-    CLAIM_REJECTED: 'Preferential claim rejected',
-    OPTION_SUBMITTED: 'Option submitted',
-    OPTION_LOCKED: 'Options locked',
-    ALLOCATION_SIMULATED: 'Allocation simulated',
-    ALLOCATION_STARTED: 'Allocation started',
-    ALLOCATION_COMPLETED: 'Allocation completed',
-    ALLOCATION_FAILED: 'Allocation failed',
-    SC_ST_ADJUSTMENT: 'SC/ST adjustment',
-    FAL_GENERATED: 'FAL generated',
-    FAL_VALIDATED: 'FAL validated',
-    FAL_APPROVED: 'FAL approved',
-    FAL_PUBLISHED: 'FAL published',
-    FAL_REVISED: 'FAL revised',
-    OOA_GENERATED: 'OOA generated',
-    OOA_APPROVED: 'OOA approved',
-    OOA_ISSUED: 'OOA issued',
-    OOA_REVISED: 'OOA revised',
-    OOT_GENERATED: 'OOT generated',
-    OOT_ISSUED: 'OOT issued',
-    JOINING_RECORDED: 'Joining recorded',
-    STAGE_CHANGED: 'Workflow stage changed',
-    EXERCISE_CLOSED: 'Exercise closed',
-    OBJECTION_DISPOSED: 'Objection disposed',
-    OBJECTION_WINDOW_CLOSED: 'Objection window closed',
-    OBJECTIONS_DISPOSED: 'Objections disposed',
-    DSL_CORRECTED: 'DSL corrected',
-    OPTION_CORRECTED: 'Option corrected (new version)',
-    POLICY_CHANGED: 'Allocation policy changed',
-    POLICY_FROZEN: 'Allocation policy frozen',
-    SC_ST_EXCEPTION_ACCEPTED: 'Critical SC/ST shortfall acknowledged by the DLC',
-    JOINING_CLOSURE_OVERRIDE: 'Joining closure override authorised',
-    PO_RESET: 'PO module reset'
-};
-
-function poAudit(action, opts) {
-    if (!poState) poState = poFreshState();
-    const o = opts || {};
-    const ev = {
-        id: 'AUD-' + poState.audit.length + 1,
-        ts: o.ts || poNow(),
-        user: o.user || poUser(),
-        action: action,
-        label: PO_AUDIT_LABEL[action] || action,
-        prev_value: o.prev === undefined ? '' : o.prev,
-        new_value: o.next === undefined ? '' : o.next,
-        reason: o.reason || '',
-        exercise_id: poState.exercise.exercise_id || '',
-        employee_id: o.employee_id || '',
-        stage: poState.stage,
-        version: o.version || ''
-    };
-    poState.audit.push(ev);
-    return ev;
-}
-
-
-// ============================================================================
-// Versioning (para 24)
+// Versioning
+//
+// Versions are NOT an audit trail. They are the reproducibility contract: the
+// allocation run snapshot and the FAL both record which version of the seniority
+// list, options and working strength they were computed against.
 // ============================================================================
 
 function poBumpVersion(key) {
-    if (!poState.versions) poState.versions = { fws: 0, dsl: 0, fsl: 0, options: 0, fal: 0, ooa: 0, oot: 0 };
+    if (!poState.versions) poState.versions = { fws: 0, fsl: 0, options: 0, fal: 0, ooa: 0, oot: 0, claims: 0, policy: 0 };
     poState.versions[key] = (poState.versions[key] || 0) + 1;
     return poState.versions[key];
 }
@@ -429,12 +328,7 @@ function poStageGuard() {
                 g.errors.push('Cadre scope must be "District and Contiguous District Cadre" for district-level processing.');
             }
             if (!poState.categories.length) g.errors.push('Define at least one post category / rank.');
-            if (!poState.cadres.length) g.errors.push('Define at least one local cadre.');
-            poState.cadres.forEach(c => {
-                if (!POEngine.PO_CADRE_TYPES.some(t => t.id === c.cadre_type)) {
-                    g.errors.push('Cadre "' + c.name + '" has no cadre type. Choose Residuary / Newly Formed / Contiguous.');
-                }
-            });
+            if (poState.cadres.length !== PO_DEFAULT_CADRES.length) g.errors.push('The cadre set must be Krishna, NTR and Eluru.');
             poState.categories.forEach(c => {
                 const n = poState.strengths.filter(s2 => s2.category_id === c.id && s2.status !== 'INACTIVE').length;
                 if (!n) g.errors.push('Category "' + c.name + '" has no local cadre configured.');
@@ -466,14 +360,16 @@ function poStageGuard() {
             g.ok = g.errors.length === 0;
             break;
         }
-        case 'DSL_UPLOADED': {
-            if (!poState.dsl.length) {
-                g.errors.push('DSL is empty. Upload or enter the Draft Seniority List first.');
+        case 'FSL_UPLOADED': {
+            // The seniority list is the only personnel dataset. It must be
+            // non-empty and pass validation before it can be finalized.
+            if (!poState.fsl.length) {
+                g.errors.push('The seniority list is empty. Upload it for Krishna, NTR and Eluru first.');
                 g.ok = false;
                 break;
             }
-            const r = POEngine.validateDSL(poState.dsl, { ctx: poCtx() });
-            poState.dslValidation = r;
+            const r = POEngine.validateSeniorityList(poState.fsl, { ctx: poCtx() });
+            poState.fslValidation = r;
             if (!r.valid) {
                 r.errors.slice(0, 12).forEach(e => g.errors.push(e.code + ': ' + e.message));
                 if (r.errors.length > 12) g.errors.push('... and ' + (r.errors.length - 12) + ' more validation errors.');
@@ -481,42 +377,9 @@ function poStageGuard() {
             g.ok = g.errors.length === 0;
             break;
         }
-        case 'DSL_VALIDATED': {
-            const r = POEngine.validateDSL(poState.dsl, { ctx: poCtx() });
-            if (!r.valid) g.errors.push('DSL validation no longer passes. Re-validate before publishing.');
-            g.ok = g.errors.length === 0;
-            break;
-        }
-        case 'DSL_PUBLISHED': {
-            // Publication starts the statutory clock: a 5-day objection period,
-            // and FSL eligibility on the 7th day. Both are calculated, never hard-coded.
-            if (!poState.dsl.length) g.errors.push('DSL is empty.');
-            if (!poEvent('dsl_published_at')) {
-                poRecordEvent('dsl_published_at', poNow(), {
-                    action: 'DSL_PUBLISHED',
-                    reason: 'Objection period ' + PO_OBJECTION_DAYS + ' days; FSL eligible on day ' + PO_FSL_ELIGIBILITY_DAYS
-                });
-            }
-            if (!poEvent('objection_opened_at')) {
-                poRecordEvent('objection_opened_at', poNow(), { action: 'OBJECTION_WINDOW_OPENED', next: 'closes ' + String(poObjectionClosingDate() || '').slice(0, 10) });
-            }
-            const pending = poPendingObjections();
-            if (pending.length) g.warnings.push(pending.length + ' DSL objection(s) are still pending. They must be disposed before the FSL can be published.');
-            g.ok = g.errors.length === 0;
-            break;
-        }
         case 'FSL_FINALIZED': {
-            if (!poState.fslLocked) g.errors.push('FSL must be locked before it can be published.');
-            const pending = poPendingObjections();
-            if (pending.length) g.errors.push(pending.length + ' DSL objection(s) are not disposed. The objection period must be completed before the FSL is published.');
-            if (!poEvent('objections_disposed_at')) g.errors.push('The DSL objection period has not been closed.');
-            if (!poFslEligible()) {
-                const d = poFslEligibilityDate();
-                g.errors.push('The FSL is not yet eligible for publication. It becomes eligible on ' + d.toISOString().slice(0, 10) +
-                    ' (calculated: day ' + PO_FSL_ELIGIBILITY_DAYS + ' from publication of the DSL on ' +
-                    String(poEvent('dsl_published_at') || '').slice(0, 10) + ').');
-            }
-            const r = POEngine.validateFSL(poState.fsl, { ctx: poCtx(), dsl: poState.dsl });
+            if (!poState.fslLocked) g.errors.push('Lock the seniority list before it can be published.');
+            const r = POEngine.validateSeniorityList(poState.fsl, { ctx: poCtx() });
             if (!r.valid) {
                 r.errors.slice(0, 10).forEach(e => g.errors.push(e.code + ': ' + e.message));
             }
@@ -529,8 +392,13 @@ function poStageGuard() {
             break;
         }
         case 'OPTIONS_OPEN': {
-            if (poState.optionsLocked) { g.errors.push('Options are already locked.'); break; }
-            if (poOptionDeadlinePassed()) g.errors.push('The option period has already closed. Close the option stage instead.');
+            // Leaving this stage asserts its own work is done: the option window
+            // was closed and every submitted option was locked.
+            if (!poState.optionsLocked) {
+                g.errors.push(poOptionDeadlinePassed()
+                    ? 'The option period has closed. Close and lock the options to continue.'
+                    : 'Close and lock the option entry before advancing.');
+            }
             g.ok = g.errors.length === 0;
             break;
         }
@@ -566,12 +434,14 @@ function poStageGuard() {
             break;
         }
         case 'FAL_APPROVED': {
-            if (!poState.fal || poState.fal.status !== 'APPROVED') g.errors.push('FAL must be in APPROVED state.');
+            // Leaving this stage asserts its own work is done: published and locked.
+            if (!poState.fal || poState.fal.status !== 'PUBLISHED') g.errors.push('Publish the FAL before advancing.');
             g.ok = g.errors.length === 0;
             break;
         }
         case 'FAL_PUBLISHED': {
-            if (!poState.fal || poState.fal.status !== 'PUBLISHED') g.errors.push('Publish the FAL before generating orders.');
+            if (!poState.fal || poState.fal.status !== 'PUBLISHED') g.errors.push('The FAL must be published before orders can be generated.');
+            if (!poState.fal || !poState.fal.rows.length) g.errors.push('The FAL has no rows; orders cannot be generated from it.');
             g.ok = g.errors.length === 0;
             break;
         }
@@ -637,16 +507,6 @@ function poAdvance(reason) {
     if (to === 'OPTIONS_OPEN' && !poState.optionsOpenedAt) poState.optionsOpenedAt = poNow();
     if (to === 'EXERCISE_CLOSED') poState.exercise.status = 'CLOSED';
     if (poState.exercise.status === 'DRAFT' && to !== 'DRAFT') poState.exercise.status = 'ACTIVE';
-    poAudit('STAGE_CHANGED', { prev: from, next: to, reason: reason || '' });
-    // A named audit event is also emitted for the transitions that the order lists
-    // individually, so the trail is searchable without scanning stage names.
-    const NAMED = {
-        DSL_VALIDATED: 'DSL_VALIDATED',
-        DSL_PUBLISHED: 'DSL_PUBLISHED',
-        FSL_PUBLISHED: 'FSL_PUBLISHED',
-        EXERCISE_CLOSED: 'EXERCISE_CLOSED'
-    };
-    if (NAMED[to]) poAudit(NAMED[to], { prev: from, next: to, reason: reason || '' });
     poSave();
     return { ok: true, from: from, to: to, guard: guard };
 }
@@ -670,11 +530,11 @@ function poCtx() {
     });
 }
 
-function poActiveFsl() { return poState.fsl.length ? poState.fsl : poState.dsl; }
+function poActiveFsl() { return poState.fsl; }
 
 
 // ============================================================================
-// Masters: categories + cadres + strength
+// Masters: ranks/categories + the fixed cadre set + working strength
 // ============================================================================
 
 function poSeedMasters() {
@@ -719,7 +579,6 @@ function poSuggestCategoriesFromRankMaster() {
         added++;
     });
     poSyncStrengthMatrix();
-    poAudit('CATEGORY_CREATED', { next: added + ' categories loaded from departmental rank master' });
     poSave();
     return added;
 }
@@ -747,7 +606,6 @@ function poSyncStrengthMatrix() {
 
 function poSaveExercise() {
     if (!poIsAdmin()) { showToast('Admin only', 'error'); return false; }
-    const prev = poState.exercise.exercise_id;
     const ex = poState.exercise;
     ex.exercise_id = (ex.exercise_id || '').trim();
     ex.department = (ex.department || '').trim();
@@ -755,42 +613,6 @@ function poSaveExercise() {
     ex.new_districts = (ex.new_districts || '').trim();
     if (!ex.created_at) ex.created_at = poNow();
     ex.modified_at = poNow();
-    poAudit('CADRE_UPDATED', { prev: prev, next: ex.exercise_id, reason: 'DLC configuration saved' });
-    poSave();
-    return true;
-}
-
-function poSaveCadre(id, name, cadreType) {
-    if (!poIsAdmin()) { showToast('Admin only', 'error'); return false; }
-    if (poStageIdx(poStage()) > poStageIdx('WORKING_STRENGTH_FINALIZED') && poState.strengths.some(s => s.cadre_id === id && (s.fws || 0) > 0)) {
-        showToast('Cadre carries Final Working Strength and can no longer be renamed or retyped.', 'error');
-        return false;
-    }
-    const clean = (id || '').trim();
-    if (!clean || !name) { showToast('Cadre ID and name are required', 'error'); return false; }
-    if (poState.cadres.some(c => c.id === clean && c.id !== id)) { showToast('Cadre ID already exists', 'error'); return false; }
-    if (POEngine.PO_CADRE_TYPES.some(t => t.id === id)) { showToast('"' + id + '" is a reserved cadre-type id. Choose another.', 'error'); return false; }
-
-    const existing = poState.cadres.find(c => c.id === id);
-    if (existing) {
-        poAudit('CADRE_UPDATED', { prev: existing.name + ' / ' + existing.cadre_type, next: name + ' / ' + cadreType });
-        existing.name = name; existing.cadre_type = cadreType;
-    } else {
-        poState.cadres.push({ id: clean, name: name, cadre_type: cadreType, level: 'DISTRICT', status: 'ACTIVE' });
-        poAudit('CADRE_CREATED', { next: clean + ' - ' + name + ' (' + cadreType + ')' });
-    }
-    poSyncStrengthMatrix();
-    poSave();
-    return true;
-}
-
-function poRemoveCadre(id) {
-    if (!poIsAdmin()) { showToast('Admin only', 'error'); return false; }
-    if (poState.dsl.length || poState.fsl.length) { showToast('Cannot remove a cadre once personnel data exists.', 'error'); return false; }
-    if (poState.strengths.some(s => s.cadre_id === id && (s.fws || 0) > 0)) { showToast('Cannot remove a cadre carrying Final Working Strength.', 'error'); return false; }
-    poState.cadres = poState.cadres.filter(c => c.id !== id);
-    poSyncStrengthMatrix();
-    poAudit('CADRE_UPDATED', { prev: id, next: 'removed' });
     poSave();
     return true;
 }
@@ -802,11 +624,9 @@ function poSaveCategory(id, code, name, department, erstwhileCadre) {
     if (poState.categories.some(c => c.id === clean && c.id !== id)) { showToast('Category ID already exists', 'error'); return false; }
     const existing = poState.categories.find(c => c.id === id);
     if (existing) {
-        poAudit('CATEGORY_UPDATED', { prev: existing.code + ' / ' + existing.name, next: code + ' / ' + name });
         existing.code = code; existing.name = name; existing.department = department; existing.erstwhile_cadre = erstwhileCadre;
     } else {
         poState.categories.push({ id: clean, code: code, name: name, department: department, erstwhile_cadre: erstwhileCadre, status: 'ACTIVE', created_at: poNow() });
-        poAudit('CATEGORY_CREATED', { next: clean + ' - ' + name });
     }
     poSyncStrengthMatrix();
     poSave();
@@ -815,14 +635,13 @@ function poSaveCategory(id, code, name, department, erstwhileCadre) {
 
 function poRemoveCategory(id) {
     if (!poIsAdmin()) { showToast('Admin only', 'error'); return false; }
-    if (poState.dsl.some(r => r.category_id === id) || poState.fsl.some(r => r.category_id === id)) {
-        showToast('Cannot remove a category while it has personnel.', 'error');
+    if (poState.fsl.some(r => r.category_id === id)) {
+        showToast('Cannot remove a category while it has personnel on the seniority list.', 'error');
         return false;
     }
     poState.categories = poState.categories.filter(c => c.id !== id);
     poState.strengths = poState.strengths.filter(s => s.category_id !== id);
     poState.approved = poState.approved.filter(a => a.category_id !== id);
-    poAudit('CATEGORY_UPDATED', { prev: id, next: 'removed' });
     poSave();
     return true;
 }
@@ -834,11 +653,9 @@ function poSetApprovedStrength(categoryId, value) {
         return;
     }
     let row = poState.approved.find(a => a.category_id === categoryId);
-    const prev = row ? row.approved_working_strength : null;
     if (!row) { row = { category_id: categoryId, approved_working_strength: 0 }; poState.approved.push(row); }
     row.approved_working_strength = parseInt(value) || 0;
     const v = poBumpVersion('fws');
-    poAudit('APPROVED_STRENGTH_CHANGED', { prev: String(prev), next: String(row.approved_working_strength), reason: 'Approved working strength', version: poVersionLabel('fws') });
     poSave();
     return v;
 }
@@ -846,30 +663,24 @@ function poSetApprovedStrength(categoryId, value) {
 function poSetStrength(categoryId, cadreId, field, value) {
     if (!poIsAdmin()) { showToast('Admin only', 'error'); return; }
     if (poStageIdx(poStage()) > poStageIdx('WORKING_STRENGTH_FINALIZED')) {
-        showToast('Working strength is frozen once Finalized. FWS changes after DSL upload require a revision.', 'error');
+        showToast('Working strength is frozen once Finalized. Revise it before re-running allocation.', 'error');
         return;
     }
     let row = poState.strengths.find(s => s.category_id === categoryId && s.cadre_id === cadreId);
     if (!row) { row = { category_id: categoryId, cadre_id: cadreId, cadre_strength: 0, fws: 0, status: 'ACTIVE' }; poState.strengths.push(row); }
-    const prev = row[field];
     const n = parseInt(value);
     if (isNaN(n) || n < 0) { showToast('Strength must be a non-negative number', 'error'); return; }
     row[field] = n;
-    const v = poBumpVersion('fws');
-    poAudit(field === 'fws' ? 'FWS_CHANGED' : 'CADRE_UPDATED', {
-        prev: String(prev), next: String(n),
-        reason: (poCtx().categoryById[categoryId] || {}).name + ' / ' + (poCtx().cadreById[cadreId] || {}).name,
-        version: poVersionLabel('fws')
-    });
+    poBumpVersion('fws');
     poSave();
 }
 
 
 // ============================================================================
-// DSL  (para 5 - official entry; seniority is never manufactured)
+// SENIORITY LIST  (official entry - seniority is never manufactured)
 // ============================================================================
 
-const PO_DSL_COLUMNS = [
+const PO_SENIORITY_COLUMNS = [
     { key: 'seniority_no',                header: 'Seniority No',                      required: true },
     { key: 'name',                        header: 'Employee Name',                    required: true },
     { key: 'parentage',                   header: 'Parentage',                        required: false },
@@ -896,7 +707,7 @@ const PO_DSL_COLUMNS = [
 
 function poBlankRecord(categoryId) {
     return {
-        employee_id: 'PO-' + String(poState.dsl.length + 1).padStart(4, '0'),
+        employee_id: 'PO-' + String(poState.fsl.length + 1).padStart(4, '0'),
         category_id: categoryId || '',
         rank_code: '',
         seniority_no: null,
@@ -908,7 +719,7 @@ function poBlankRecord(categoryId) {
         erstwhile_cadre_id: '', present_local_cadre_id: '', present_working_place: '',
         service_status: 'PRESENT', deputation_unit: '',
         claims: poBlankClaims(),
-        dsl_version: 0,
+        fsl_version: 0,
         created_at: poNow(), modified_at: poNow()
     };
 }
@@ -931,47 +742,43 @@ function poEnsureClaims(rec) {
     return rec;
 }
 
-function poAssertDslEditable() {
-    if (poStageIdx(poStage()) > poStageIdx('DSL_UPLOADED')) {
-        showToast('The DSL is frozen at this stage. Use the FSL revision workflow instead.', 'error');
+/** The seniority list may only be edited while it is open, i.e. up to and
+ *  including FSL_UPLOADED. After that it is locked. */
+function poAssertSeniorityEditable() {
+    if (poStageIdx(poStage()) > poStageIdx('FSL_UPLOADED')) {
+        showToast('The seniority list is frozen at this stage. Use the revision workflow instead.', 'error');
         return false;
     }
     return true;
 }
 
-function poSaveDslRecord(rec, isNew) {
+function poSaveSeniorityRecord(rec, isNew) {
     if (!poIsAdmin()) { showToast('Admin only', 'error'); return false; }
-    if (!poAssertDslEditable()) return false;
+    if (!poAssertSeniorityEditable()) return false;
     poEnsureClaims(rec);
     rec.modified_at = poNow();
-    if (isNew) { rec.created_at = poNow(); poState.dsl.push(rec); }
-    const v = poBumpVersion('dsl');
-    rec.dsl_version = v;
-    poAudit(isNew ? 'DSL_UPLOADED' : 'DSL_RECORD_SAVED', {
-        prev: isNew ? '' : 'edited', next: rec.name + ' (' + rec.category_id + ')',
-        employee_id: rec.employee_id, version: poVersionLabel('dsl')
-    });
+    if (isNew) { rec.created_at = poNow(); poState.fsl.push(rec); }
+    const v = poBumpVersion('fsl');
+    rec.fsl_version = v;
     poSave();
     return true;
 }
 
-function poDeleteDslRecord(employeeId) {
+function poDeleteSeniorityRecord(employeeId) {
     if (!poIsAdmin()) { showToast('Admin only', 'error'); return false; }
-    if (!poAssertDslEditable()) return false;
-    const rec = poState.dsl.find(r => r.employee_id === employeeId);
-    poState.dsl = poState.dsl.filter(r => r.employee_id !== employeeId);
-    poAudit('DSL_RECORD_DELETED', { prev: rec ? rec.name : employeeId, next: '', employee_id: employeeId });
-    poBumpVersion('dsl');
+    if (!poAssertSeniorityEditable()) return false;
+    poState.fsl = poState.fsl.filter(r => r.employee_id !== employeeId);
+    poBumpVersion('fsl');
     poSave();
     return true;
 }
 
 /**
- * Normalise one uploaded row into a DSL record.
+ * Normalise one uploaded row into a seniority-list record.
  * Seniority is copied verbatim. If it is absent it stays absent and is reported
  * as MISSING_SENIORITY - the system never substitutes a row number.
  */
-function poRowToDslRecord(row, rowNo) {
+function poRowToSeniorityRecord(row, rowNo) {
     const catRaw = (row.category_id || row.rank_code || '').trim();
     const category = poState.categories.find(c =>
         c.id.toLowerCase() === catRaw.toLowerCase() ||
@@ -987,7 +794,7 @@ function poRowToDslRecord(row, rowNo) {
     const sen = /^\d+$/.test(senRaw) ? parseInt(senRaw, 10) : null;
 
     const rec = {
-        employee_id: 'PO-' + String(poState.dsl.length + 1).padStart(4, '0') + '-' + rowNo,
+        employee_id: 'PO-' + String(poState.fsl.length + 1).padStart(4, '0') + '-' + rowNo,
         category_id: category ? category.id : catRaw,
         rank_code: category ? category.code : (row.rank_code || '').trim(),
         seniority_no: sen,
@@ -1009,7 +816,7 @@ function poRowToDslRecord(row, rowNo) {
         service_status: poNormalizeStatus(row.service_status),
         deputation_unit: (row.deputation_unit || '').trim(),
         claims: poBlankClaims(),
-        dsl_version: 0,
+        fsl_version: 0,
         created_at: poNow(),
         modified_at: poNow()
     };
@@ -1026,51 +833,74 @@ function poRowToDslRecord(row, rowNo) {
                 claimed: true,
                 doc_present: poNormalizeYesNo(row.supporting_document_status),
                 cert_no: '', cert_date: '', disability_percent: '',
-                verification: 'PENDING', verified_by: '', verified_at: '', remark: 'Imported from DSL upload'
+                verification: 'PENDING', verified_by: '', verified_at: '',
+                remark: 'Imported from seniority list upload'
             };
         }
     }
     return rec;
 }
 
-function poImportDslRows(rows, replace) {
+/**
+ * Import uploaded rows into the seniority list.
+ *
+ * `replace` is how the DLC uploads one file PER CADRE: uploading the Krishna
+ * file REPLACES the Krishna rows and leaves the NTR and Eluru rows untouched.
+ * Uploading a file that names no known cadre is refused rather than silently
+ * appending duplicates - the per-cadre file must state Erstwhile or Present
+ * Local Cadre.
+ */
+function poImportSeniorityRows(rows, replace) {
     if (!poIsAdmin()) { showToast('Admin only', 'error'); return 0; }
-    if (!poAssertDslEditable()) return 0;
+    if (!poAssertSeniorityEditable()) return 0;
     if (replace) {
-        poState.dsl = [];
-        poAudit('DSL_UPLOADED', { prev: poState.dsl.length + ' records', next: 'replaced by upload' });
+        const fileCadres = {};
+        (rows || []).forEach(r => {
+            [r.erstwhile_cadre, r.present_local_cadre].filter(Boolean).forEach(x => {
+                const hit = poState.cadres.find(c => c.id.toLowerCase() === String(x).trim().toLowerCase() ||
+                    poKeyOf(c.name) === poKeyOf(x));
+                if (hit) fileCadres[hit.id] = true;
+            });
+        });
+        const ids = Object.keys(fileCadres);
+        if (!ids.length) {
+            showToast('The file does not name Krishna, NTR or Eluru in Erstwhile/Present Local Cadre. Each cadre must be uploaded as its own file.', 'error');
+            return 0;
+        }
+        poState.fsl = poState.fsl.filter(r =>
+            ids.indexOf(r.erstwhile_cadre_id) === -1 && ids.indexOf(r.present_local_cadre_id) === -1);
     }
     let n = 0;
-    rows.forEach((row, i) => {
-        const rec = poRowToDslRecord(row, i + 1);
-        poState.dsl.push(rec);
+    (rows || []).forEach((row, i) => {
+        poState.fsl.push(poRowToSeniorityRecord(row, i + 1));
         n++;
     });
     // re-key surrogates so they stay unique and stable after an import
-    poState.dsl.forEach((r, i) => { r.employee_id = 'PO-' + String(i + 1).padStart(4, '0'); });
-    const v = poBumpVersion('dsl');
-    poState.dsl.forEach(r => { r.dsl_version = v; });
-    poAudit('DSL_UPLOADED', { prev: '', next: n + ' records', reason: 'DSL upload', version: poVersionLabel('dsl') });
+    poState.fsl.forEach((r, i) => { r.employee_id = 'PO-' + String(i + 1).padStart(4, '0'); });
+    const v = poBumpVersion('fsl');
+    poState.fsl.forEach(r => { r.fsl_version = v; });
+    poState.fslCreatedAt = poState.fslCreatedAt || poNow();
+    poRecordEvent('seniority_uploaded_at', poNow());
     poSave();
     return n;
 }
 
-function poRunDslValidation() {
-    const r = POEngine.validateDSL(poState.dsl, { ctx: poCtx() });
-    poState.dslValidation = r;
+function poRunSeniorityValidation() {
+    const r = POEngine.validateSeniorityList(poState.fsl, { ctx: poCtx() });
+    poState.fslValidation = r;
     poSave();
     return r;
 }
 
-function poDslTemplateCsv() {
-    const headers = PO_DSL_COLUMNS.map(c => c.header);
+function poSeniorityTemplateCsv() {
+    const headers = PO_SENIORITY_COLUMNS.map(c => c.header);
     const sample = ['', 'Sample Name', 'S/o Sample', 'Male', '1234567', '9000000000', '01-01-1990', '01-01-2015', '', '', 'KRN PS', 'Police Constable', '', '', '', '', 'PRESENT', '', '', 'No', 'Provisional'];
     return headers.join(',') + '\n' + sample.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',') + '\n';
 }
 
-function poDslExportCsv() {
-    const headers = PO_DSL_COLUMNS.map(c => c.header);
-    const rows = poState.dsl.map(r => PO_DSL_COLUMNS.map(c => {
+function poSeniorityExportCsv() {
+    const headers = PO_SENIORITY_COLUMNS.map(c => c.header);
+    const rows = poState.fsl.map(r => PO_SENIORITY_COLUMNS.map(c => {
         let v = r[c.key];
         if (c.key === 'erstwhile_cadre') v = r.erstwhile_cadre_id;
         if (c.key === 'present_local_cadre') v = r.present_local_cadre_id;
@@ -1081,6 +911,7 @@ function poDslExportCsv() {
     return poToCsv(headers, rows);
 }
 
+/** Quote every cell so a comma or quote inside a name cannot break the file. */
 function poToCsv(headers, rows) {
     const q = v => '"' + String(v === undefined || v === null ? '' : v).replace(/"/g, '""') + '"';
     return headers.map(q).join(',') + '\n' + rows.map(r => r.map(q).join(',')).join('\n') + '\n';
@@ -1160,74 +991,46 @@ function poNormalizeSeniorityType(val) {
 
 
 // ============================================================================
-// FSL  (para 8 - authoritative, locked, versioned)
+// SENIORITY LIST LIFECYCLE  (lock -> publish -> revise)
+// The uploaded list IS the authoritative personnel dataset. There is no draft
+// list and no objection window.
 // ============================================================================
 
-function poBuildFslFromDsl() {
+/** Lock the uploaded seniority list. It may only be locked once it validates
+ *  cleanly, so the DLC cannot freeze a list that cannot be allocated from. */
+function poFinalizeSeniorityList() {
     if (!poIsAdmin()) { showToast('Admin only', 'error'); return 0; }
-    if (!poState.dsl.length) { showToast('DSL is empty', 'error'); return 0; }
-    if (poState.optionsLocked || poState.optionsOpenedAt || poStageIdx(poStage()) > poStageIdx('FSL_FINALIZED')) {
-        showToast('The option window has opened. An FSL change now needs the revision workflow.', 'error');
+    if (!poState.fsl.length) { showToast('The seniority list is empty', 'error'); return 0; }
+    if (poState.fslLocked) { showToast('The seniority list is already locked', 'error'); return 0; }
+    if (poState.optionsOpenedAt || poStageIdx(poStage()) > poStageIdx('FSL_UPLOADED')) {
+        showToast('The option window has opened. A seniority list change now needs the revision workflow.', 'error');
         return 0;
     }
-    // PART 4: the DSL objection process must be complete before the FSL can exist.
-    if (!poEvent('dsl_published_at')) {
-        showToast('The DSL has not been published. Objections can only follow publication of the DSL.', 'error');
+    const r = POEngine.validateSeniorityList(poState.fsl, { ctx: poCtx() });
+    poState.fslValidation = r;
+    if (!r.valid) {
+        showToast('The seniority list cannot be locked: ' + r.errors.length + ' validation error(s) remain.', 'error');
         return 0;
     }
-    const pending = poPendingObjections();
-    if (pending.length) {
-        showToast('FSL cannot be finalized: ' + pending.length + ' objection(s) are still pending or under review.', 'error');
-        return 0;
-    }
-    if (!poEvent('objections_disposed_at')) {
-        showToast('FSL cannot be finalized: the objection window has not been closed and disposed.', 'error');
-        return 0;
-    }
-    if (!poFslEligible()) {
-        showToast('FSL cannot be finalized before ' + poFslEligibilityDate().toISOString().slice(0, 10) +
-            ' (calculated: day ' + PO_FSL_ELIGIBILITY_DAYS + ' from publication of the DSL).', 'error');
-        return 0;
-    }
-    // The DSL is validated with the DSL validator here; the FSL validator needs the
-    // fsl_version stamp that is applied below, so it runs afterwards for the record.
-    const pre = POEngine.validateDSL(poState.dsl, { ctx: poCtx() });
-    if (!pre.valid) { showToast('FSL cannot be built: ' + pre.errors.length + ' validation errors remain in the DSL.', 'error'); return 0; }
 
-    // PART 25: retain the superseded FSL rather than destroying it.
-    if (poState.fsl.length) {
-        poState.history.fsl.push({
-            at: poNow(), version: poVersionLabel('fsl'),
-            records: JSON.parse(JSON.stringify(poState.fsl))
-        });
-    }
+    // Retain the superseded list rather than destroying it.
+    poState.history.fsl.push({
+        at: poNow(), version: poVersionLabel('fsl'),
+        records: JSON.parse(JSON.stringify(poState.fsl))
+    });
     const v = poBumpVersion('fsl');
-    poState.fsl = poState.dsl.map(rec => Object.assign({}, JSON.parse(JSON.stringify(rec)), {
+    poState.fsl = poState.fsl.map(rec => Object.assign({}, JSON.parse(JSON.stringify(rec)), {
         fsl_version: v,
-        finalized_at: poNow(),
-        objections: (poState.objections || []).filter(o => o.employee_id === rec.employee_id).map(o => ({
-            objection_id: o.objection_id, type: o.objection_type, status: o.status,
-            disposal_reason: o.disposal_reason, revised_value: o.revised_value
-        }))
+        finalized_at: poNow()
     }));
     poState.fslLocked = true;
     poState.fslCreatedAt = poState.fslCreatedAt || poNow();
     poState.fslFinalizedAt = poNow();
-    poState.fslValidation = POEngine.validateFSL(poState.fsl, { ctx: poCtx(), dsl: poState.dsl });
-    poRecordEvent('fsl_created_at', poState.fslCreatedAt, { action: 'FSL_CREATED', prev: '', next: 'v' + v });
-    poRecordEvent('fsl_finalized_at', poState.fslFinalizedAt, { action: 'FSL_FINALIZED', prev: '', next: poState.fsl.length + ' records' });
-    poAudit('FSL_LOCKED', { prev: '', next: 'FSL locked at ' + poVersionLabel('fsl') });
+    poState.fslValidation = POEngine.validateFSL(poState.fsl, { ctx: poCtx() });
+    poRecordEvent('fsl_created_at', poState.fslCreatedAt);
+    poRecordEvent('fsl_finalized_at', poState.fslFinalizedAt);
     poSave();
     return poState.fsl.length;
-}
-
-function poImportFslRows(rows) {
-    if (!poIsAdmin()) { showToast('Admin only', 'error'); return 0; }
-    if (poState.fslLocked) { showToast('FSL is locked. Unlock through the revision workflow before importing.', 'error'); return 0; }
-    const tmp = poState.dsl.slice();
-    const n = poImportDslRows(rows, true);
-    poState.dsl = tmp;                      // DSL is untouched by an FSL import
-    return n;
 }
 
 function poReviseFsl(reason) {
@@ -1235,7 +1038,7 @@ function poReviseFsl(reason) {
     if (!reason || !reason.trim()) { showToast('A reason is mandatory for an FSL revision', 'error'); return false; }
     const from = poVersionLabel('fsl');
     poState.fslRevisions.push({ at: poNow(), by: poUser(), reason: reason.trim(), from_version: from, to_version: 'v' + (poState.versions.fsl + 1), stage: poStage() });
-    // PART 25: retain the superseded FSL, options and run. Nothing is destroyed.
+    // Retain the superseded FSL and options. Nothing is destroyed.
     poState.history.fsl.push({ at: poNow(), version: from, superseded_by: 'v' + (poState.versions.fsl + 1), reason: reason.trim(), records: JSON.parse(JSON.stringify(poState.fsl)) });
     poState.history.options.push({ at: poNow(), version: poVersionLabel('options'), reason: 'FSL revised - options voided', options: JSON.parse(JSON.stringify(poState.options)) });
     poState.optionHistory = poState.optionHistory.concat(
@@ -1255,33 +1058,23 @@ function poReviseFsl(reason) {
     poState.events.options_closed_at = null;
     poBumpVersion('fsl');
     poState.fsl = [];
-    poAudit('FSL_REVISED', { prev: from, next: 'v' + poState.versions.fsl, reason: reason.trim() });
     poSave();
     return true;
 }
 
-/** Publish the FSL. PART 5: the eligibility date is CALCULATED from the actual
- *  DSL publication timestamp (GO: FSL on the 7th day from DSL publication).
- *  No date is hard-coded and publication cannot precede it. */
+/** Publish the locked seniority list. The option window opens from this
+ *  timestamp; nothing is hard-coded. */
 function poPublishFsl() {
     if (!poIsAdmin()) { showToast('Admin only', 'error'); return false; }
-    if (!poState.fsl.length) { showToast('The FSL is not finalized', 'error'); return false; }
-    if (!poState.fslLocked) { showToast('The FSL must be locked before publication', 'error'); return false; }
-    if (poState.fslPublishedAt) { showToast('The FSL is already published', 'error'); return false; }
-    const pending = poPendingObjections();
-    if (pending.length) { showToast('Cannot publish: ' + pending.length + ' objection(s) are not disposed', 'error'); return false; }
-    if (!poEvent('objections_disposed_at')) { showToast('Cannot publish: the objection period is not complete', 'error'); return false; }
-    if (!poFslEligible()) {
-        const d = poFslEligibilityDate();
-        showToast('The FSL becomes eligible for publication on ' + d.toISOString().slice(0, 10) +
-            ' (7th day from publication of the DSL on ' + String(poEvent('dsl_published_at')).slice(0, 10) + ').', 'error');
-        return false;
-    }
+    if (!poState.fsl.length) { showToast('The seniority list has not been uploaded', 'error'); return false; }
+    if (!poState.fslLocked) { showToast('The seniority list must be locked before publication', 'error'); return false; }
+    if (poState.fslPublishedAt) { showToast('The seniority list is already published', 'error'); return false; }
     poState.fslPublishedAt = poNow();
-    poRecordEvent('fsl_published_at', poState.fslPublishedAt, { action: 'FSL_PUBLISHED', prev: poVersionLabel('fsl'), next: 'published' });
+    poRecordEvent('fsl_published_at', poState.fslPublishedAt);
     poSave();
     return true;
 }
+
 
 function poFsAnalysis() {
     return POEngine.analyseFSL(poActiveFsl(), { ctx: poCtx(), options: poState.options });
@@ -1318,10 +1111,10 @@ function poApplicableCadreIds(categoryId) {
 }
 
 function poSaveOption(employeeId, pref1, pref2, pref3) {
-    if (!poIsAdmin()) { showToast('Admin only', 'error'); return { ok: false }; }
-    if (poState.optionsLocked) { showToast('Options are locked. Option once exercised is final and irrevocable.', 'error'); return { ok: false }; }
-    if (!poState.fslPublishedAt) { showToast('Options can only be submitted after the FSL is published.', 'error'); return { ok: false }; }
-    if (poOptionDeadlinePassed()) { showToast('The option period has closed.', 'error'); return { ok: false }; }
+    if (!poIsAdmin()) { showToast('Admin only', 'error'); return { ok: false, errors: ['Admin only'] }; }
+    if (poState.optionsLocked) { const m = 'Options are locked. Option once exercised is final and irrevocable.'; showToast(m, 'error'); return { ok: false, errors: [m] }; }
+    if (!poState.fslPublishedAt) { const m = 'Options can only be submitted after the FSL is published.'; showToast(m, 'error'); return { ok: false, errors: [m] }; }
+    if (poOptionDeadlinePassed()) { const m = 'The option period has closed.'; showToast(m, 'error'); return { ok: false, errors: [m] }; }
 
     const rec = poActiveFsl().find(r => r.employee_id === employeeId);
     if (!rec) return { ok: false, errors: ['Employee is not on the FSL'] };
@@ -1359,13 +1152,6 @@ function poSaveOption(employeeId, pref1, pref2, pref3) {
         note: 'Client-side capture only. Source IP is not observable from the browser; server-side capture required.',
         version: 'v' + v
     };
-    poAudit('OPTION_SUBMITTED', {
-        prev: prev ? (prev.pref1 + '/' + prev.pref2 + '/' + prev.pref3) : 'no option',
-        next: picked.join(' / '),
-        employee_id: employeeId,
-        reason: 'Option once exercised is final and irrevocable',
-        version: 'v' + v
-    });
     poSave();
     return { ok: true };
 }
@@ -1378,10 +1164,6 @@ function poCloseOptions() {
     poBumpVersion('options');
     poRecordEvent('options_closed_at', poState.optionsClosedAt, { action: 'OPTIONS_CLOSED', next: poVersionLabel('options') });
     const pending = poActiveFsl().filter(r => !(poState.options[r.employee_id] || {}).submitted);
-    poAudit('OPTION_LOCKED', {
-        prev: '', next: 'options closed; ' + pending.length + ' employee(s) recorded as NO OPTION',
-        reason: 'Option window closed'
-    });
     poSave();
     return true;
 }
@@ -1400,15 +1182,16 @@ function poNoOptionEmployees() {
  * the run snapshot freezes the options version it was computed against.
  */
 function poCorrectOption(employeeId, pref1, pref2, pref3, reason, authority) {
-    if (!poIsAdmin()) { showToast('Admin only', 'error'); return { ok: false }; }
-    if (!reason || !reason.trim()) { showToast('A correction reason is mandatory', 'error'); return { ok: false }; }
-    if (!authority || !authority.trim()) { showToast('The correcting authority is mandatory', 'error'); return { ok: false }; }
+    if (!poIsAdmin()) { showToast('Admin only', 'error'); return { ok: false, errors: ['Admin only'] }; }
+    if (!reason || !reason.trim()) { showToast('A correction reason is mandatory', 'error'); return { ok: false, errors: ['A correction reason is mandatory'] }; }
+    if (!authority || !authority.trim()) { showToast('The correcting authority is mandatory', 'error'); return { ok: false, errors: ['The correcting authority is mandatory'] }; }
 
     const prior = poState.options[employeeId];
-    if (!prior) { showToast('That employee has not submitted an option', 'error'); return { ok: false }; }
+    if (!prior) { showToast('That employee has not submitted an option', 'error'); return { ok: false, errors: ['That employee has not submitted an option'] }; }
     if (poStageIdx(poStage()) >= poStageIdx('ALLOCATION_RUNNING')) {
-        showToast('Allocation has begun. The options version is frozen in the run snapshot and cannot be changed.', 'error');
-        return { ok: false };
+        const m = 'Allocation has begun. The options version is frozen in the run snapshot and cannot be changed.';
+        showToast(m, 'error');
+        return { ok: false, errors: [m] };
     }
 
     const rec = poActiveFsl().find(r => r.employee_id === employeeId);
@@ -1457,13 +1240,6 @@ function poCorrectOption(employeeId, pref1, pref2, pref3, reason, authority) {
         corrected_by: poUser(),
         immutable: true
     });
-    poAudit('OPTION_CORRECTED', {
-        prev: prior.pref1 + '/' + prior.pref2 + '/' + prior.pref3 + ' (' + (prior.version || '') + ')',
-        next: picked.join(' / ') + ' (v' + v + ')',
-        reason: reason.trim() + ' | authority: ' + authority.trim(),
-        employee_id: employeeId,
-        version: 'v' + v
-    });
     poSave();
     return { ok: true, version: 'v' + v };
 }
@@ -1508,7 +1284,6 @@ function poSetPolicy(field, value) {
     const prev = pol[field];
     pol[field] = value;
     poBumpVersion('policy');
-    poAudit('POLICY_CHANGED', { prev: String(prev), next: String(value), reason: 'DLC policy decision (not a GO requirement)' });
     poSave();
     return true;
 }
@@ -1519,10 +1294,6 @@ function poFreezePolicy() {
     poState.policy.frozen_at = poNow();
     poState.policy.frozen_by = poUser();
     poBumpVersion('policy');
-    poAudit('POLICY_FROZEN', {
-        prev: '', next: poState.policy.compulsory_allocation_policy,
-        reason: 'Allocation policy frozen for ' + poState.exercise.exercise_id
-    });
     poSave();
     return true;
 }
@@ -1621,7 +1392,6 @@ function poSimulateAllocation() {
         allocations: r.allocations, unallocated: r.unallocated,
         exceptions: r.exceptions, scstReview: r.scstReview
     };
-    poAudit('ALLOCATION_SIMULATED', { prev: '', next: r.run.allocated + ' proposed allotments, ' + r.run.unallocated + ' not allocable', reason: 'Simulation only - no official state altered', version: POEngine.PO_ENGINE_VERSION });
     poSave();
     return r;
 }
@@ -1646,7 +1416,6 @@ function poConfirmAllocation() {
         // whole and the blocking exceptions are reported for DLC review.
         poState.allocationRun = null;
         poState.allocations = [];
-        poAudit('ALLOCATION_FAILED', { prev: '', next: r.exceptions.filter(e => e.severity === 'BLOCKING').map(e => e.code).join(', '), reason: 'Allocation run failed. No automatic correction applied; DLC review required.', version: POEngine.PO_ENGINE_VERSION });
         poSave();
         return r;
     }
@@ -1668,14 +1437,6 @@ function poConfirmAllocation() {
     poState.allocations = r.allocations;
     poRecordEvent('allocation_completed_at', poNow(), { action: 'ALLOCATION_COMPLETED', next: r.run.allocated + ' allotted, ' + r.run.unallocated + ' not allocable' });
     (r.scstReview.adjustments || []).forEach(a => {
-        poAudit('SC_ST_ADJUSTMENT', {
-            prev: (a.replaced_employee_name || a.replaced_employee_id) + ' allotted to ' + a.to_cadre +
-                  ' (allocation sequence ' + (a.replaced_allocation_sequence === null ? '-' : a.replaced_allocation_sequence) + ')',
-            next: (a.inserted_employee_name || a.inserted_employee_id) + ' allotted to ' + a.to_cadre +
-                  ' (allocation sequence ' + (a.inserted_allocation_sequence === null ? '-' : a.inserted_allocation_sequence) + ')',
-            reason: a.reason,
-            employee_id: a.inserted_employee_id
-        });
     });
     poSave();
     return r;
@@ -1725,7 +1486,6 @@ function poGenerateFal() {
         rows: JSON.parse(JSON.stringify(run.allocations)),
         validation: { blocking: v.blocking, warnings: v.warnings }
     };
-    poAudit('FAL_GENERATED', { prev: '', next: 'FAL ' + poState.fal.version + ' (' + run.allocations.length + ' rows)', version: 'v' + ver });
     poSave();
     return true;
 }
@@ -1740,7 +1500,6 @@ function poApproveFal() {
     poState.fal.approved_by = poUser();
     poState.fal.validation = { blocking: v.blocking, warnings: v.warnings };
     poRecordEvent('fal_approved_at', poState.fal.approved_at, { action: 'FAL_APPROVED', prev: 'DRAFT', next: 'APPROVED' });
-    poAudit('FAL_VALIDATED', { prev: '', next: v.warnings.length + ' warning(s), 0 blocking', version: poState.fal.version });
     poSave();
     return true;
 }
@@ -1779,7 +1538,6 @@ function poReviseFal(reason) {
     poState.allocations = [];
     poState.events.fal_published_at = null;
     poState.events.fal_approved_at = null;
-    poAudit('FAL_REVISED', { prev: prev, next: 'unlocked for revision', reason: reason.trim() });
     poSave();
     return true;
 }
@@ -1827,7 +1585,6 @@ function poGenerateOoa() {
         revision_of: '',
         revision_reason: ''
     }));
-    poAudit('OOA_GENERATED', { prev: '', next: poState.ooa.length + ' OOA draft(s)', version: 'v' + ver });
     poSave();
     return poState.ooa.length;
 }
@@ -1837,7 +1594,6 @@ function poApproveOoa() {
     const drafts = poState.ooa.filter(o => o.status === 'DRAFT');
     if (!drafts.length) { showToast('No OOA in DRAFT state.', 'error'); return 0; }
     drafts.forEach(o => { o.status = 'APPROVED'; });
-    poAudit('OOA_APPROVED', { prev: 'DRAFT', next: drafts.length + ' OOA approved' });
     poSave();
     return drafts.length;
 }
@@ -1869,7 +1625,6 @@ function poReviseOoa(ooaId, reason) {
     o.status = 'REVISED';
     o.revision_reason = reason.trim();
     o.revised_at = poNow();
-    poAudit('OOA_REVISED', { prev: 'ISSUED ' + o.order_no, next: 'REVISED', reason: reason.trim(), employee_id: o.employee_id });
     poSave();
     return true;
 }
@@ -1916,7 +1671,6 @@ function poGenerateOot() {
         };
     });
     const n = poState.oot.filter(o => o.transfer_required).length;
-    poAudit('OOT_GENERATED', { prev: '', next: n + ' transfer order(s) required out of ' + poState.oot.length + ' employee(s)', version: 'v' + ver });
     poSave();
     return n;
 }
@@ -1940,7 +1694,6 @@ function poIssueOot(prefix) {
     const latestDeadline = pending.map(o => o.joining_deadline).sort().pop() || null;
     poRecordEvent('oot_issued_at', poNow(), { action: 'OOT_ISSUED', prev: 'DRAFT', next: pending.length + ' OOT issued' });
     poRecordEvent('joining_deadline', latestDeadline ? latestDeadline + 'T23:59:59.000Z' : null, { action: 'JOINING_DEADLINE', next: latestDeadline || 'n/a' });
-    poAudit('OOT_ISSUED', { prev: 'DRAFT', next: pending.length + ' OOT issued; joining within ' + (poState.joiningWindowDays || 7) + ' days', reason: 'Latest joining deadline ' + (latestDeadline || 'n/a') });
     poSave();
     return pending.length;
 }
@@ -1958,13 +1711,6 @@ function poRecordJoining(ootId, reportDate, remark, statusOverride) {
     o.joining_status = next;
     o.joining_remark = remark || '';
     o.joining_within_deadline = o.joining_deadline ? (o.joining_report_date <= o.joining_deadline) : true;
-    poAudit('JOINING_RECORDED', {
-        prev: prev,
-        next: next + (o.joining_report_date ? ' on ' + o.joining_report_date : '') +
-              (o.joining_deadline ? (o.joining_within_deadline ? ' (within deadline)' : ' (after deadline)') : ''),
-        reason: remark || '',
-        employee_id: o.employee_id
-    });
     poSave();
     return true;
 }
@@ -1998,11 +1744,6 @@ function poOverrideJoiningClosure(reason, authority) {
         at: poNow(), by: poUser(), reason: reason.trim(), authority: authority.trim(),
         unresolved: open.map(o => ({ oot_id: o.oot_id, name: o.name, status: o.joining_status, deadline: o.joining_deadline }))
     };
-    poAudit('JOINING_CLOSURE_OVERRIDE', {
-        prev: open.length + ' unresolved joining record(s)',
-        next: 'closure authorised',
-        reason: reason.trim() + ' | authority: ' + authority.trim()
-    });
     poSave();
     return true;
 }
@@ -2011,108 +1752,6 @@ function poJoiningClosureOverridden() {
     return !!(poState.joiningClosureOverride && poState.joiningClosureOverride.at);
 }
 
-
-// ============================================================================
-// Dashboard counters (para 25)
-// ============================================================================
-
-function poDashboard() {
-    const fsl = poActiveFsl();
-    const prefs = fsl.filter(r => POEngine.poPreferredClaim(r));
-    const withOpt = fsl.filter(r => (poState.options[r.employee_id] || {}).submitted);
-    const alloc = poState.allocations || [];
-    const ctx = poCtx();
-    const segCount = id => fsl.filter(r => r.sc_group === id).length;
-
-    return {
-        exercise_status: poState.exercise.status,
-        stage: poStage(),
-        cadres: {
-            total: poState.cadres.length,
-            active: poState.cadres.filter(c => c.status !== 'INACTIVE').length,
-            fws: poState.strengths.reduce((n, s) => n + (parseInt(s.fws) || 0), 0)
-        },
-        personnel: {
-            fsl_total: fsl.length,
-            preferential_cases: prefs.length,
-            sc: segCount('SC_1') + segCount('SC_2') + segCount('SC_3'),
-            st: segCount('ST'),
-            deputation: fsl.filter(r => r.service_status === 'DEPUTATION').length,
-            no_option: fsl.length - withOpt.length
-        },
-        options: {
-            submitted: withOpt.length,
-            pending: fsl.length - withOpt.length,
-            locked: poState.optionsLocked
-        },
-        allocation: {
-            allocated: alloc.length,
-            pending: (poState.allocationRun ? poState.allocationRun.unallocated.length : 0),
-            exceptions: (poState.allocationRun ? poState.allocationRun.exceptions.length : 0),
-            fws_exhausted: (poState.allocationRun ? poState.allocationRun.exceptions.filter(e => e.code === 'FWS_EXHAUSTED').length : 0),
-            last_run: poState.allocationRun ? poState.allocationRun.run : null
-        },
-        fal: {
-            generated: !!poState.fal,
-            status: poState.fal ? poState.fal.status : 'NONE',
-            validated: !!(poState.fal && poState.fal.approved_at),
-            published: !!(poState.fal && poState.fal.published_at),
-            version: poState.fal ? poState.fal.version : '-'
-        },
-        orders: {
-            ooa_generated: poState.ooa.filter(o => o.status !== 'REVISED').length,
-            ooa_issued: poState.ooa.filter(o => o.status === 'ISSUED').length,
-            oot_generated: poState.oot.filter(o => o.transfer_required).length,
-            oot_issued: poState.oot.filter(o => o.status === 'ISSUED').length,
-            joining_completed: poState.oot.filter(o => o.joining_status === 'JOINED').length,
-            joining_overdue: poState.oot.filter(o => o.joining_status === 'OVERDUE').length,
-            joining_exception: poState.oot.filter(o => o.joining_status === 'EXCEPTION').length,
-            joining_unresolved: poUnresolvedJoining().length,
-            no_transfer_required: poState.oot.filter(o => !o.transfer_required).length
-        },
-        objections: {
-            total: (poState.objections || []).length,
-            pending: poPendingObjections().length,
-            disposed: poDisposedObjections().length,
-            window_open: poObjectionWindowOpen(),
-            closing_date: poObjectionClosingDate() ? poObjectionClosingDate().toISOString().slice(0, 10) : null,
-            processing_complete: poObjectionProcessingComplete()
-        },
-        timeline: poTimeline(),
-        policy: {
-            compulsory_allocation_policy: poState.policy.compulsory_allocation_policy,
-            compulsory_notice: POEngine.PO_POLICY_NOTICE_COMPULSORY,
-            prefer_existing_on_compulsory: !!poState.policy.prefer_existing_on_compulsory,
-            prefer_existing_notice: 'DLC policy decision, not a GO requirement.',
-            scst_rounding_policy: poState.policy.scst_rounding_policy,
-            scst_notice: POEngine.PO_POLICY_NOTICE_ROUNDING,
-            scst_basis: POEngine.PO_SEG_BASIS,
-            frozen: poPolicyFrozen(),
-            frozen_at: poState.policy.frozen_at
-        },
-        joining: {
-            pending: poState.oot.filter(o => o.transfer_required && o.joining_status === 'PENDING').length,
-            joined: poState.oot.filter(o => o.joining_status === 'JOINED').length,
-            overdue: poState.oot.filter(o => o.joining_status === 'OVERDUE').length,
-            exception: poState.oot.filter(o => o.joining_status === 'EXCEPTION').length,
-            unresolved: poUnresolvedJoining().length,
-            closure_overridden: poJoiningClosureOverridden()
-        },
-        storage: {
-            mode: 'LOCALSTORAGE',
-            authoritative: false,
-            notice: PO_STORAGE_MODE_NOTICE
-        },
-        disclaimer: POEngine.PO_GO_REFERENCE.disclaimer,
-        versions: {
-            fws: poVersionLabel('fws'), dsl: poVersionLabel('dsl'), fsl: poVersionLabel('fsl'),
-            options: poVersionLabel('options'), engine: POEngine.PO_ENGINE_VERSION,
-            engine_hash: POEngine.poEngineHash(),
-            claims: poVersionLabel('claims'), policy: poVersionLabel('policy'),
-            fal: poVersionLabel('fal'), ooa: poVersionLabel('ooa'), oot: poVersionLabel('oot')
-        }
-    };
-}
 
 /**
  * PART 29 — every critical condition is reported with the same shape:
@@ -2160,10 +1799,6 @@ function poAcceptScstException(reason, authority) {
             acknowledged_by: authority.trim(), acknowledged_at: poNow(), user: poUser()
         });
     });
-    poAudit('SC_ST_EXCEPTION_ACCEPTED', {
-        prev: '', next: critical.length + ' critical SC/ST shortfall(s) acknowledged',
-        reason: reason.trim() + ' | authority: ' + authority.trim()
-    });
     poSave();
     return true;
 }
@@ -2193,166 +1828,15 @@ function poExceptionReport() {
 
 
 // ============================================================================
-// DSL OBJECTION SUBSYSTEM (PART 4)
-// Every objection is its own record. Nothing is stored as a bare string, and
-// nothing is overwritten: the previous value is retained and any revised value
-// is recorded alongside it.
-// ============================================================================
-
-function poObjectionId() {
-    return 'OBJ-' + String((poState.objections || []).length + 1).padStart(4, '0');
-}
-
-/** Objection window. Only open while the DSL is published and the statutory
- *  5-day period has not expired. */
-function poObjectionWindowOpen() {
-    const published = poEvent('dsl_published_at');
-    if (!published) return false;
-    if (poEvent('objection_closed_at')) return false;
-    const close = new Date(new Date(published).getTime() + PO_OBJECTION_DAYS * 86400000);
-    return Date.now() <= close.getTime();
-}
-
-function poObjectionClosingDate() {
-    const published = poEvent('dsl_published_at');
-    return published ? new Date(new Date(published).getTime() + PO_OBJECTION_DAYS * 86400000) : null;
-}
-
-/** FSL may only be finalized after the objection period has completed and
- *  every objection has been disposed. */
-function poObjectionProcessingComplete() {
-    return poPendingObjections().length === 0 && !!poEvent('objections_disposed_at');
-}
-
-function poPendingObjections() {
-    return (poState.objections || []).filter(o => ['PENDING', 'UNDER_REVIEW'].indexOf(o.status) !== -1);
-}
-
-function poDisposedObjections() {
-    return (poState.objections || []).filter(o => ['ACCEPTED', 'PARTIALLY_ACCEPTED', 'REJECTED', 'DISPOSED'].indexOf(o.status) !== -1);
-}
-
-/** Register an objection against a DSL record. */
-function poRaiseObjection(employeeId, type, text, docs) {
-    if (!poIsAdmin()) { showToast('Admin only', 'error'); return { ok: false }; }
-    if (!poObjectionWindowOpen()) {
-        return { ok: false, errors: ['The objection window is not open. Objections may only be recorded during the period following publication of the DSL.'] };
-    }
-    const rec = poState.dsl.find(r => r.employee_id === employeeId);
-    if (!rec) return { ok: false, errors: ['Employee is not on the DSL'] };
-    if (!text || !text.trim()) return { ok: false, errors: ['Objection text is required'] };
-    if (PO_OBJECTION_TYPES.indexOf(type) === -1) return { ok: false, errors: ['Unknown objection type'] };
-
-    const rec0 = {
-        objection_id: poObjectionId(),
-        employee_id: employeeId,
-        employee_name: rec.name,
-        exercise_id: poState.exercise.exercise_id || '',
-        submitted_at: poNow(),
-        objection_type: type,
-        objection_text: text.trim(),
-        supporting_documents: (docs || '').trim(),
-        status: 'PENDING',
-        disposed_at: null,
-        disposal_reason: '',
-        disposed_by: '',
-        previous_value: '',
-        revised_value: ''
-    };
-    poState.objections.push(rec0);
-    poAudit('OBJECTION_RECORDED', {
-        prev: '', next: rec0.objection_id + ' ' + type + ' [' + rec0.status + ']',
-        reason: rec0.objection_text, employee_id: employeeId
-    });
-    poSave();
-    return { ok: true, objection: rec0 };
-}
-
-/** Move an objection through its lifecycle. A required revision to the DSL is
- *  captured as previous_value -> revised_value and is audited. */
-function poDisposeObjection(objectionId, status, disposalReason, revisedValue) {
-    if (!poIsAdmin()) { showToast('Admin only', 'error'); return false; }
-    if (['ACCEPTED', 'PARTIALLY_ACCEPTED', 'REJECTED', 'DISPOSED'].indexOf(status) === -1) {
-        showToast('Unknown objection status', 'error');
-        return false;
-    }
-    if (!disposalReason || !disposalReason.trim()) { showToast('A disposal reason is mandatory', 'error'); return false; }
-    const o = (poState.objections || []).find(x => x.objection_id === objectionId);
-    if (!o) { showToast('Objection not found', 'error'); return false; }
-    if (o.status !== 'PENDING' && o.status !== 'UNDER_REVIEW') {
-        showToast('That objection has already been disposed.', 'error');
-        return false;
-    }
-    const prev = o.status;
-    o.status = status;
-    o.disposed_at = poNow();
-    o.disposal_reason = disposalReason.trim();
-    o.disposed_by = poUser();
-    if (revisedValue !== undefined && revisedValue !== null && String(revisedValue).trim() !== '') {
-        o.revised_value = String(revisedValue).trim();
-    }
-    poAudit('OBJECTION_DISPOSED', {
-        prev: prev, next: status, reason: o.disposal_reason, employee_id: o.employee_id
-    });
-    if (o.revised_value) {
-        poAudit('DSL_CORRECTED', {
-            prev: o.previous_value || '(as uploaded)', next: o.revised_value,
-            reason: 'Revision arising from objection ' + o.objection_id,
-            employee_id: o.employee_id
-        });
-        // Retain the pre-revision value so nothing is silently destroyed (PART 25).
-        poState.history.dsl = poState.history.dsl || [];
-        poState.history.dsl.push({
-            at: poNow(), employee_id: o.employee_id, objection_id: o.objection_id,
-            before: JSON.parse(JSON.stringify(poState.dsl.find(r => r.employee_id === o.employee_id) || {})),
-            after: o.revised_value, reason: o.disposal_reason
-        });
-    }
-    poSave();
-    return true;
-}
-
-/** Close the objection window. Only the DLC may do this and only once every
- *  objection has been disposed. */
-function poCloseObjectionWindow(reason) {
-    if (!poIsAdmin()) { showToast('Admin only', 'error'); return false; }
-    if (poEvent('objection_closed_at')) { showToast('The objection window is already closed', 'error'); return false; }
-    const pending = poPendingObjections();
-    if (pending.length) {
-        showToast('Cannot close: ' + pending.length + ' objection(s) are still pending.', 'error');
-        return false;
-    }
-    poRecordEvent('objection_closed_at', poNow(), { action: 'OBJECTION_WINDOW_CLOSED', reason: reason || '' });
-    poRecordEvent('objections_disposed_at', poNow(), { action: 'OBJECTIONS_DISPOSED', prev: String(pending.length) });
-    poSave();
-    return true;
-}
-
-/** FSL is eligible for publication only from the calculated date derived from
- *  the actual DSL publication timestamp. No date is hard-coded. */
-function poFslEligibilityDate() {
-    const published = poEvent('dsl_published_at');
-    return published ? new Date(new Date(published).getTime() + PO_FSL_ELIGIBILITY_DAYS * 86400000) : null;
-}
-
-function poFslEligible() {
-    const d = poFslEligibilityDate();
-    return !!(d && Date.now() >= d.getTime());
-}
-
-
-// ============================================================================
-// Reset (guarded, audited)
+// Reset (guarded)
 // ============================================================================
 
 function poResetAll() {
     if (!poIsAdmin()) { showToast('Admin only', 'error'); return false; }
-    if (!confirm('Reset the whole Presidential Order module? Every stage, list, order and audit record will be destroyed. This cannot be undone.')) return false;
-    if (!confirm('Second confirmation: all FSL, options, allocations, FAL, OOA and OOT data will be lost.')) return false;
-    const old = poState.audit.slice(-1)[0];
+    if (!confirm('Reset the whole Presidential Order module? Every stage, list, order and record will be destroyed. This cannot be undone.')) return false;
+    if (!confirm('Second confirmation: all seniority list, options, allocations, FAL, OOA and OOT data will be lost.')) return false;
     poState = poFreshState();
     poSeedMasters();
-    poAudit('PO_RESET', { prev: old ? old.action : '', next: 'module reset' });
     poSave();
     return true;
 }

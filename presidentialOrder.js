@@ -93,7 +93,6 @@ function renderPOModule() {
     const container = document.getElementById('poMainContent');
     if (!container) { console.error('poMainContent not found'); return; }
     try {
-        const d = poDashboard();
         const stepIdx = poCurrentStepIndex();
         poCurrentStep = stepIdx;
 
@@ -116,16 +115,13 @@ function renderPOModule() {
                         '<span class="po-chip">Department: ' + poDash(poState.exercise.department || '-') + '</span>' +
                         '<span class="po-chip po-chip-strong">Stage: ' + escapeHtml(poStage()) + '</span>' +
                         '<span class="po-chip">Engine ' + escapeHtml(POEngine.PO_ENGINE_VERSION) + '</span>' +
-                        '<span class="po-chip">FWS ' + escapeHtml(d.versions.fws) + '</span>' +
-                        '<span class="po-chip">DSL ' + escapeHtml(d.versions.dsl) + '</span>' +
-                        '<span class="po-chip">FSL ' + escapeHtml(d.versions.fsl) + '</span>' +
-                        '<span class="po-chip">Options ' + escapeHtml(d.versions.options) + '</span>' +
-                        '<span class="po-chip">FAL ' + escapeHtml(d.versions.fal) + '</span>' +
+                        '<span class="po-chip">FWS ' + escapeHtml(poVersionLabel('fws')) + '</span>' +
+                        '<span class="po-chip">Seniority list ' + escapeHtml(poVersionLabel('fsl')) + '</span>' +
+                        '<span class="po-chip">Options ' + escapeHtml(poVersionLabel('options')) + '</span>' +
+                        '<span class="po-chip">FAL ' + escapeHtml(poVersionLabel('fal')) + '</span>' +
                     '</div>' +
                 '</div>' +
                 '<div class="po-actions">' +
-                    '<button class="btn btn-secondary btn-sm" onclick="poShowAudit()">Audit Trail (' + poState.audit.length + ')</button>' +
-                    '<button class="btn btn-secondary btn-sm" onclick="poShowDashboard()">DLC Dashboard</button>' +
                     (poIsAdmin() ? '<button class="btn btn-danger btn-sm" onclick="poResetAll()">Reset Module</button>' : '') +
                 '</div>' +
             '</div>' +
@@ -166,8 +162,7 @@ function renderCurrentPOTab() {
         switch (PO_STEPS[i].key) {
             case 'ranks': renderStepRanks(content); break;
             case 'strength': renderStepStrength(content); break;
-            case 'dsl': renderStepDsl(content); break;
-            case 'fsl': renderStepFsl(content); break;
+            case 'seniority': renderStepSeniority(content); break;
             case 'options': renderStepOptions(content); break;
             case 'allocation': renderStepAllocation(content); break;
             case 'fal': renderStepFal(content); break;
@@ -189,7 +184,7 @@ function poRenderAdvance(content) {
 
     const blocks = [];
     if (locked) blocks.push('<div class="po-note po-note-info">This step is complete and locked. It is shown for the record. ' +
-        'Any change now requires a revision workflow with a reason and an audit entry.</div>');
+        'Any change now requires a revision workflow with a reason.</div>');
     if (closed) blocks.push('<div class="po-note po-note-info">The exercise is closed. The whole record is retained read-only.</div>');
 
     const guardHtml =
@@ -220,7 +215,7 @@ function poRenderAdvance(content) {
 }
 
 function poAdvanceStage() {
-    const reason = prompt('Reason / remark for advancing the workflow stage (recorded in the audit trail):', '');
+    const reason = prompt('Reason / remark for advancing the workflow stage:', '');
     if (reason === null) return;
     const r = poAdvance(reason || '');
     if (!r.ok) { showToast('Stage not advanced: ' + (r.guard.errors[0] || 'guard failed'), 'error'); return; }
@@ -243,7 +238,6 @@ function poAdvanceStage() {
 function renderExerciseCards() {
     const ex = poState.exercise;
     const editable = poIsAdmin() && poStageIdx(poStage()) <= poStageIdx('CADRE_CONFIGURED');
-    const d = poDashboard();
 
     const composition = [
         { role: 'Chairman', desc: 'District Collector of the erstwhile district', who: ex.chairman_name, desig: ex.chairman_designation },
@@ -299,12 +293,11 @@ function renderExerciseCards() {
                 : (ex.other_members ? '<div class="po-readonly-block"><strong>Other members</strong><br>' + escapeHtml(ex.other_members) + '</div>' : '')),
             '') +
         poCard('Exercise status summary', poStats([
-            { value: d.cadres.total, label: 'Cadres' },
-            { value: d.cadres.fws, label: 'Total FWS' },
+            { value: poState.cadres.length, label: 'Cadres' },
+            { value: poState.strengths.reduce((n, s) => n + (parseInt(s.fws) || 0), 0), label: 'Total FWS' },
             { value: poState.categories.length, label: 'Rank categories' },
-            { value: d.personnel.fsl_total, label: 'FSL records' },
-            { value: d.personnel.preferential_cases, label: 'Preferential' },
-            { value: d.personnel.no_option, label: 'No option' }
+            { value: poState.fsl.length, label: 'Seniority list records' },
+            { value: poState.fsl.filter(r => POEngine.poPreferredClaim(r)).length, label: 'Preferential' }
         ]), '');
 }
 
@@ -356,15 +349,11 @@ function renderStepRanks(content) {
     const cadreRows = poState.cadres.map(c => {
         const fws = poState.strengths.filter(s => s.cadre_id === c.id).reduce((n, s) => n + (parseInt(s.fws) || 0), 0);
         const type = POEngine.PO_CADRE_TYPES.find(t => t.id === c.cadre_type);
+        const loaded = poState.fsl.filter(r => r.erstwhile_cadre_id === c.id || r.present_local_cadre_id === c.id).length;
         return '<tr>' +
             poTd(c.id, 'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px') + poTd(c.name) +
-            poTd(type ? type.label : c.cadre_type) + poTd(c.level) + poTd(String(fws)) +
-            '<td><span class="po-badge po-badge-' + (c.status === 'ACTIVE' ? 'success' : 'info') + '">' + escapeHtml(c.status) + '</span></td>' +
-            '<td>' + (editable
-                ? '<button class="action-btn btn-primary" onclick="poEditCadre(\'' + poQs(c.id) + '\')">Edit</button> ' +
-                  '<button class="action-btn btn-danger" onclick="poDeleteCadre(\'' + poQs(c.id) + '\')">Del</button>'
-                : '<span style="color:var(--text-subtle)">locked</span>') + '</td>' +
-        '</tr>';
+            poTd(type ? type.label : c.cadre_type) + poTd(String(fws)) + poTd(String(loaded)) +
+            '</tr>';
     });
 
     content.innerHTML =
@@ -380,12 +369,11 @@ function renderStepRanks(content) {
                 : '') +
             poTable(['Category ID', 'Code', 'Category name', 'Department', 'Erstwhile cadre', 'Cadres configured', 'Status', ''], catRows), '') +
 
-        poCard('Step 1d &middot; Cadre configuration',
-            '<p class="po-hint">Cadres are not hard-coded. The three district cadres are seeded for convenience and can be renamed, retyped or added.</p>' +
-            (editable
-                ? '<div class="po-actions" style="margin-bottom:12px;"><button class="btn btn-primary" onclick="poEditCadre(\'\')">+ Add cadre</button></div>'
-                : '') +
-            poTable(['Cadre ID', 'Cadre name', 'Cadre type', 'Level', 'Total FWS', 'Status', ''], cadreRows), '') +
+        poCard('Step 1d &middot; The three district cadres',
+            '<div class="po-note po-note-info">The cadre set is <strong>fixed by the module</strong>: Krishna, NTR and Eluru. ' +
+            'It cannot be added to, renamed or retyped, so a rank&rsquo;s working strength is always entered against these three. ' +
+            'The seniority list for each cadre is uploaded separately in Step 3.</div>' +
+            poTable(['Cadre ID', 'Cadre name', 'Cadre type', 'Total FWS', 'List records'], cadreRows), '') +
 
         poCard('Scope declaration',
             '<div class="po-readonly-block"><strong>' + escapeHtml(POEngine.PO_GO_REFERENCE.scope) + '</strong><br>' +
@@ -520,46 +508,10 @@ function poLoadRankMaster() {
     renderPOModule();
 }
 
-function poEditCadre(id) {
-    if (!poIsAdmin()) { showToast('Admin only', 'error'); return; }
-    const c = id ? poState.cadres.find(x => x.id === id) : null;
-    const typeOpts = POEngine.PO_CADRE_TYPES.map(t =>
-        '<option value="' + t.id + '"' + (c && c.cadre_type === t.id ? ' selected' : '') + '>' + escapeHtml(t.label) + '</option>').join('');
-    const dlg = document.createElement('div');
-    dlg.className = 'modal-overlay';
-    dlg.style.display = 'flex';
-    dlg.innerHTML =
-        '<div class="modal" style="max-width:560px;">' +
-            '<div class="modal-header"><h3>' + (c ? 'Edit' : 'Add') + ' local cadre</h3>' +
-            '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button></div>' +
-            '<div class="modal-body"><div class="form-grid">' +
-                '<div class="form-group"><label>Cadre ID *</label><input id="poCadId" value="' + escapeHtml(c ? c.id : '') + '"></div>' +
-                '<div class="form-group"><label>Cadre name *</label><input id="poCadName" value="' + escapeHtml(c ? c.name : '') + '"></div>' +
-                '<div class="form-group"><label>Cadre type *</label><select id="poCadType">' + typeOpts + '</select></div>' +
-                '<div class="form-group"><label>Level</label><input id="poCadLevel" value="DISTRICT" readonly></div>' +
-            '</div></div>' +
-            '<div class="modal-footer"><button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">Cancel</button>' +
-            '<button class="btn btn-primary" onclick="poSaveCadreForm()">Save</button></div>' +
-        '</div>';
-    document.body.appendChild(dlg);
-}
-
-function poSaveCadreForm() {
-    const g = id => (document.getElementById(id) || {}).value || '';
-    if (!poSaveCadre(g('poCadId').trim(), g('poCadName').trim(), g('poCadType'))) return;
-    document.querySelector('.modal-overlay').remove();
-    showToast('Cadre saved', 'success');
-    renderPOModule();
-}
-
-function poDeleteCadre(id) {
-    if (!confirm('Delete cadre ' + id + '?')) return;
-    if (poRemoveCadre(id)) { showToast('Cadre removed', 'success'); renderPOModule(); }
-}
 
 
 // ============================================================================
-// STEP 3 - Cadre + working strength definition and validation (para 3 & 4)
+// STEP 2 - Working strength for Krishna, NTR and Eluru
 // ============================================================================
 
 function renderStepStrength(content) {
@@ -624,15 +576,24 @@ function poSetApprovedFromForm(categoryId, value) {
 
 
 // ============================================================================
-// STEP 4 - DSL (para 5, 6, 7)
+// STEP 3 - Seniority List: upload per cadre, lock, publish, analyse
+// ----------------------------------------------------------------------------
+// This is the ONLY personnel dataset the module accepts. The DLC uploads one
+// file per cadre (Krishna, NTR, Eluru); uploading a cadre's file replaces that
+// cadre's rows and leaves the other two untouched.
 // ============================================================================
 
-function poDslEditable() { return poIsAdmin() && poStageIdx(poStage()) <= poStageIdx('DSL_UPLOADED'); }
+function poSeniorityEditable() { return poIsAdmin() && poStageIdx(poStage()) <= poStageIdx('FSL_UPLOADED'); }
 
-function renderStepDsl(content) {
-    const editable = poDslEditable();
+function renderStepSeniority(content) {
+    const editable = poSeniorityEditable();
     const ctx = poCtx();
-    const report = poState.dslValidation;
+    const list = poState.fsl;
+    const report = poState.fslValidation;
+    const tl = poTimeline();
+    const a = poFsAnalysis();
+    const published = !!poState.fslPublishedAt;
+
     const issues = {};
     if (report) {
         report.errors.concat(report.warnings).forEach(i => {
@@ -643,7 +604,7 @@ function renderStepDsl(content) {
         });
     }
 
-    const rows = poState.dsl.map(r => {
+    const rows = list.map(r => {
         const pref = POEngine.poPreferredClaim(r);
         const pending = poPendingClaims(r);
         const flag = issues[r.employee_id];
@@ -662,132 +623,113 @@ function renderStepDsl(content) {
                 : (pending ? '<span class="po-badge po-badge-warn">' + pending.length + ' claim(s) pending verification</span>' : '-')) + '</td>' +
             '<td>' + (flag ? flag.map(f => '<span class="po-badge po-badge-' + (f.indexOf('ERROR') === 0 ? 'danger' : 'warn') + '">' + escapeHtml(f.split(':')[1]) + '</span>').join(' ') : '-') + '</td>' +
             '<td>' + (editable
-                ? '<button class="action-btn btn-primary" onclick="poEditDslRecord(\'' + poQs(r.employee_id) + '\')">Edit</button> ' +
+                ? '<button class="action-btn btn-primary" onclick="poEditSeniorityRecord(\'' + poQs(r.employee_id) + '\')">Edit</button> ' +
                   '<button class="action-btn btn-secondary" onclick="poOpenClaimPanel(\'' + poQs(r.employee_id) + '\')">Claims</button> ' +
-                  '<button class="action-btn btn-danger" onclick="poDeleteDslRecord(\'' + poQs(r.employee_id) + '\')">Del</button>'
+                  '<button class="action-btn btn-danger" onclick="poDeleteSeniorityRecord(\'' + poQs(r.employee_id) + '\')">Del</button>'
                 : '<span style="color:var(--text-subtle)">locked</span>') + '</td>' +
         '</tr>';
     });
 
+    // per-cadre upload state, so the DLC can see which of the three is loaded
+    const cadreCards = poState.cadres.map(c => {
+        const n = list.filter(r => r.erstwhile_cadre_id === c.id || r.present_local_cadre_id === c.id).length;
+        const total = poState.strengths.filter(s => s.cadre_id === c.id).reduce((x, s) => x + (parseInt(s.fws) || 0), 0);
+        return '<div class="po-stat">' +
+            '<div class="po-stat-num">' + n + '</div>' +
+            '<div class="po-stat-label">' + escapeHtml(c.name) + ' &middot; FWS ' + total + '</div>' +
+            '<div><span class="po-badge po-badge-' + (n ? 'success' : 'warn') + '">' + (n ? 'UPLOADED' : 'NOT UPLOADED') + '</span></div>' +
+        '</div>';
+    }).join('');
+
+    const segRows = a.N_strength.map(n => '<tr>' +
+        poTd(n.category) +
+        poTd(String(n.approved_working_strength === null ? '-' : n.approved_working_strength)) +
+        poTd(String(n.fws_total)) +
+        poTd(String(n.current_working_strength)) +
+        poTd(String(n.fsl_employee_count)) +
+        poTd(String(n.allocable_strength)) +
+        '</tr>');
+
     content.innerHTML =
-        poCard('Step 3 &middot; Draft Seniority List',
-            '<p class="po-hint">The DSL is the single source of personnel data. Seniority numbers are official: they are copied exactly as supplied and ' +
-            'are never generated from row order. Employees on deputation, leave, probation, training, suspension or absence remain in the DSL.</p>' +
+        poCard('Step 3 &middot; Upload the Seniority List, cadre by cadre',
+            '<p class="po-hint">Upload <strong>one file per cadre</strong>: Krishna, NTR and Eluru. Uploading a cadre&rsquo;s file replaces that ' +
+            'cadre&rsquo;s rows and leaves the other two untouched. Seniority numbers are official: they are copied exactly as supplied and are never ' +
+            'generated from row order. Employees on deputation, leave, probation, training, suspension or absence all remain on the list.</p>' +
             (editable
                 ? '<div class="po-actions" style="margin-bottom:12px;">' +
-                    '<button class="btn btn-primary" onclick="poEditDslRecord(\'\')">+ Add record</button>' +
-                    '<button class="btn btn-secondary" onclick="poDownloadDslTemplate()">Download CSV template</button>' +
-                    '<button class="btn btn-secondary" onclick="document.getElementById(\'poDslFile\').click()">Upload CSV / Excel</button>' +
-                    '<input type="file" id="poDslFile" accept=".csv,.xlsx,.xls" style="display:none" onchange="poImportDslFile(this)">' +
-                    '<button class="btn btn-secondary" onclick="poExportDslCsv()">Export DSL</button>' +
-                    '<button class="btn btn-primary" onclick="poValidateDslNow()">Run DSL validation</button>' +
+                    '<button class="btn btn-primary" onclick="poEditSeniorityRecord(\'\')">+ Add record</button>' +
+                    '<button class="btn btn-secondary" onclick="poDownloadSeniorityTemplate()">Download CSV template</button>' +
+                    '<button class="btn btn-primary" onclick="document.getElementById(\'poSeniorityFile\').click()">Upload CSV / Excel for this cadre</button>' +
+                    '<input type="file" id="poSeniorityFile" accept=".csv,.xlsx,.xls" style="display:none" onchange="poImportSeniorityFile(this)">' +
+                    '<button class="btn btn-secondary" onclick="poExportSeniorityCsv()">Export</button>' +
+                    '<button class="btn btn-primary" onclick="poValidateSeniorityNow()">Run validation</button>' +
                   '</div>'
-                : '<div class="po-note po-note-info">The DSL is frozen at this stage.</div>') +
+                : '<div class="po-note po-note-info">The seniority list is frozen at this stage.</div>') +
+            '<div class="po-stat-grid">' + cadreCards + '</div>' +
             poStats([
-                { value: poState.dsl.length, label: 'DSL records' },
+                { value: list.length, label: 'Records loaded' },
                 { value: (report ? report.errors.length : '-'), label: 'Errors' },
                 { value: (report ? report.warnings.length : '-'), label: 'Warnings' },
-                { value: poState.dsl.filter(r => r.service_status === 'DEPUTATION').length, label: 'On deputation' },
-                { value: poVersionLabel('dsl'), label: 'DSL version' }
+                { value: list.filter(r => r.service_status === 'DEPUTATION').length, label: 'On deputation' },
+                { value: poVersionLabel('fsl'), label: 'List version' }
             ]) +
             poTable(['Seniority No', 'Employee Name', 'Category', 'Gender', 'CFMS ID', 'Mobile', 'Date of Birth',
                      'Date of Joining in Category', 'Social Category', 'SC/ST Group', 'Erstwhile Cadre',
                      'Present Local Cadre', 'Present Working Place', 'Status', 'Preferential', 'Validation', ''], rows), '') +
 
-        poCard('DSL validation (para 7)', report ? poValidationPanel('DSL', report) :
+        poCard('Lock and publish the Seniority List',
+            '<div class="po-hint">Once locked the list becomes the authoritative dataset for the allocation engine. A later change requires an ' +
+            'authorised revision with a reason and creates a new version; superseded versions are retained, never destroyed.</div>' +
+            '<div class="po-actions" style="margin-bottom:12px;">' +
+                (editable && !poState.fslLocked && list.length
+                    ? '<button class="btn btn-primary" onclick="poFinalizeSeniorityFlow()">Lock the seniority list</button>' : '') +
+                (poIsAdmin() && poState.fslLocked && !published
+                    ? '<button class="btn btn-primary" onclick="poPublishFslFlow()">Publish seniority list (opens the option window)</button>' : '') +
+                (poState.fslLocked && published
+                    ? '<button class="btn btn-secondary" onclick="poReviseFslFlow()">Start a revision</button>' : '') +
+            '</div>' +
+            (list.length ? '' : '<div class="po-note po-note-warn">No seniority list has been uploaded yet. Allocation is blocked until a list is uploaded, validated and locked.</div>') +
+            (poState.fslLocked ? '' : (list.length ? '<div class="po-note po-note-warn">The list is not locked yet. Allocation is blocked until it is.</div>' : '')) +
+            '<div class="po-window">' +
+                '<div><span class="po-window-l">Uploaded</span><span class="po-window-v">' + poDash(tl.seniority_uploaded_at || '-') + '</span></div>' +
+                '<div><span class="po-window-l">Locked</span><span class="po-window-v">' + poDash(tl.fsl_finalized_at || '-') + '</span></div>' +
+                '<div><span class="po-window-l">Published</span><span class="po-window-v">' + poDash(tl.fsl_published_at || '-') + '</span></div>' +
+                '<div><span class="po-window-l">State</span><span class="po-window-v">' + (poState.fslLocked ? (published ? 'PUBLISHED' : 'LOCKED') : (list.length ? 'OPEN' : 'EMPTY')) + '</span></div>' +
+            '</div>', '') +
+
+        poCard('Validation', report ? poValidationPanel('Seniority list', report) :
             '<div class="empty-state">Validation has not been run yet.</div>', '') +
 
-        renderObjectionPanel();
-}
-
-/**
- * PART 4 - the DSL objection subsystem. The order allows a period for objections
- * after publication of the DSL, and the FSL follows on a later calculated date.
- * Both are derived from the actual publication timestamp; nothing is hard-coded.
- * The FAL cannot be finalized until every objection is disposed and the window
- * has been closed.
- */
-function renderObjectionPanel() {
-    const tl = poTimeline();
-    const rows = (poState.objections || []).map(o => '<tr>' +
-        poTd(o.objection_id, 'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px') +
-        poTd((o.submitted_at || '').slice(0, 16).replace('T', ' ')) +
-        poTd(o.employee_name || o.employee_id) +
-        poTd(o.objection_type) + poTd(o.objection_text) + poTd(o.supporting_documents) +
-        '<td><span class="po-badge po-badge-' + poObjectionTone(o.status) + '">' + escapeHtml(o.status) + '</span></td>' +
-        poTd(o.disposed_at ? String(o.disposed_at).slice(0, 16).replace('T', ' ') : '-') +
-        poTd(o.disposal_reason) + poTd(o.disposed_by) + poTd(o.revised_value) +
-        '<td>' + (poIsAdmin() && ['PENDING', 'UNDER_REVIEW'].indexOf(o.status) !== -1
-            ? '<button class="action-btn btn-primary" onclick="poDisposeObjectionFlow(\'' + poQs(o.objection_id) + '\')">Dispose</button>'
-            : '') + '</td></tr>');
-
-    const dslRecs = (poState.dsl || []).filter(r => !poState.objections.some(o => o.employee_id === r.employee_id));
-    const raise = '<div class="po-raise"><div class="po-raise-row">' +
-        '<select id="poObjEmp">' + dslRecs.map(r => '<option value="' + escapeHtml(r.employee_id) + '">' +
-            escapeHtml(r.name) + ' (' + escapeHtml(r.seniority_no === null ? 'no seniority' : r.seniority_no) + ')</option>').join('') + '</select>' +
-        '<select id="poObjType">' + PO_OBJECTION_TYPES.map(t => '<option value="' + t + '">' + escapeHtml(t) + '</option>').join('') + '</select>' +
-        '<input id="poObjText" placeholder="Objection" style="flex:2 1 240px">' +
-        '<input id="poObjDocs" placeholder="Supporting document ref" style="flex:1 1 160px">' +
-        '<button class="btn btn-primary" onclick="poRaiseObjectionFlow()">Record objection</button>' +
-        '</div></div>';
-
-    return poCard('DSL objection process',
-        '<div class="po-window">' +
-            '<div><span class="po-window-l">DSL publication date</span><span class="po-window-v">' + poDash(tl.dsl_published_at ? String(tl.dsl_published_at).slice(0, 10) : '-') + '</span></div>' +
-            '<div><span class="po-window-l">Objection closing date</span><span class="po-window-v">' + poDash(tl.objection_closing_date) + '</span></div>' +
-            '<div><span class="po-window-l">Objection window</span><span class="po-window-v">' + (poObjectionWindowOpen() ? 'OPEN' : (tl.objection_closed_at ? 'CLOSED' : 'NOT OPEN')) + '</span></div>' +
-            '<div><span class="po-window-l">Objections</span><span class="po-window-v">' + tl.objections_pending + ' pending / ' + tl.objections_disposed + ' disposed</span></div>' +
-            '<div><span class="po-window-l">FSL eligibility date</span><span class="po-window-v">' + poDash(tl.fsl_eligibility_date) + '</span></div>' +
-        '</div>' +
-        '<div class="po-note po-note-info"><span class="po-tag po-tag-go">GO REQUIREMENT</span> Objections may be recorded for ' +
-            PO_OBJECTION_DAYS + ' days following publication of the DSL. The FSL is published on the ' + PO_FSL_ELIGIBILITY_DAYS +
-            'th day from publication of the DSL. Both dates are calculated from the actual publication timestamp.</div>' +
-        (poIsAdmin() && poObjectionWindowOpen()
-            ? raise
-            : '<div class="po-note po-note-warn">The objection window is not open. Objections may only be recorded during the period following publication of the DSL.</div>') +
-        poTable(['Objection ID', 'Submitted', 'Employee', 'Type', 'Objection', 'Supporting documents',
-                 'Status', 'Disposed at', 'Disposal reason', 'Disposed by', 'Revised value', ''], rows) +
-        (poIsAdmin() && poObjectionWindowOpen() && !poPendingObjections().length
-            ? '<div class="po-actions"><button class="btn btn-primary" onclick="poCloseObjectionWindowFlow()">Close objection window</button></div>'
-            : '') +
-        (poPendingObjections().length
-            ? '<div class="po-note po-note-danger">The FAL cannot be finalized: ' + poPendingObjections().length +
-              ' objection(s) must be disposed and the window closed first.</div>'
-            : (tl.objections_disposed_at
-                ? '<div class="po-note po-note-info">Objection process complete at ' + escapeHtml(tl.objections_disposed_at) + '.</div>'
-                : '')), '');
-}
-
-function poObjectionTone(v) {
-    if (v === 'ACCEPTED' || v === 'PARTIALLY_ACCEPTED' || v === 'DISPOSED') return 'success';
-    if (v === 'REJECTED') return 'danger';
-    if (v === 'UNDER_REVIEW') return 'info';
-    return 'warn';
-}
-
-function poRaiseObjectionFlow() {
-    const g = id => (document.getElementById(id) || {}).value || '';
-    const r = poRaiseObjection(g('poObjEmp'), g('poObjType'), g('poObjText'), g('poObjDocs'));
-    if (!r.ok) { showToast((r.errors || [])[0] || 'Objection not recorded', 'error'); return; }
-    showToast('Objection ' + r.objection.objection_id + ' recorded', 'success');
-    renderPOModule();
-}
-
-function poDisposeObjectionFlow(objectionId) {
-    const status = prompt('Disposition (ACCEPTED / PARTIALLY_ACCEPTED / REJECTED / DISPOSED):', 'ACCEPTED');
-    if (!status) return;
-    const reason = prompt('Disposal reason (mandatory, recorded in the audit trail):', '');
-    if (reason === null) return;
-    const revised = prompt('Revised value if the objection requires a DSL correction (optional):', '') || '';
-    if (!poDisposeObjection(objectionId, status.trim().toUpperCase(), reason, revised)) return;
-    showToast('Objection disposed', 'success');
-    renderPOModule();
-}
-
-function poCloseObjectionWindowFlow() {
-    const reason = prompt('Reason for closing the objection window (recorded in the audit trail):', '');
-    if (reason === null) return;
-    if (poCloseObjectionWindow(reason)) { showToast('Objection window closed', 'success'); renderPOModule(); }
+        poCard('Seniority list analysis &mdash; the four strengths are NOT interchangeable',
+            '<div class="po-hint">FWS = sanctioned posts. Current Working Strength = employees presently borne on the category. ' +
+            'List Employee Count = rows in the seniority list. Available / Allocable Strength = FWS less those already borne.</div>' +
+            poTable(['Category', 'Approved WS', 'FWS', 'Current Working Strength', 'List Employee Count', 'Available / Allocable'], segRows) +
+            '<div class="po-analysis-grid">' +
+                '<div><h4>A. Cadre-wise (present local cadre)</h4>' + poTally(a.A_cadreWise) + '</div>' +
+                '<div><h4>B. Rank-wise</h4>' + poTally(a.B_rankWise) + '</div>' +
+                '<div><h4>C. Erstwhile cadre distribution</h4>' + poTally(a.C_erstwhileCadre) + '</div>' +
+                '<div><h4>D. Present working location</h4>' + poTally(a.D_workingLocation) + '</div>' +
+                '<div><h4>J. Gender</h4>' + poTally(a.J_gender) + '</div>' +
+                '<div><h4>K. Deputation / other status</h4>' + poTally(a.K_deputation.by_status) + '</div>' +
+            '</div>' +
+            '<div class="po-analysis-grid">' +
+                '<div><h4>E. Preferential categories</h4><table class="po-mini"><thead><tr><th>Category</th><th>Claimed</th><th>Verified</th></tr></thead><tbody>' +
+                    a.E_preferential.map(e => '<tr><td>' + escapeHtml(e.label) + '</td><td>' + e.claimed + '</td><td><strong>' + e.verified + '</strong></td></tr>').join('') +
+                '</tbody></table></div>' +
+                '<div><h4>F-I. Reserved groups</h4>' +
+                    '<div class="po-chip">SC Group-I: ' + a.F_sc_group_1 + '</div>' +
+                    '<div class="po-chip">SC Group-II: ' + a.G_sc_group_2 + '</div>' +
+                    '<div class="po-chip">SC Group-III: ' + a.H_sc_group_3 + '</div>' +
+                    '<div class="po-chip">ST: ' + a.I_st + '</div>' +
+                    '<div class="po-chip">Total reserved: ' + (a.F_sc_group_1 + a.G_sc_group_2 + a.H_sc_group_3 + a.I_st) + '</div>' +
+                '</div>' +
+                '<div><h4>L / M. Option coverage</h4>' +
+                    '<div class="po-chip">With valid options: ' + a.M_withOptions + '</div>' +
+                    '<div class="po-chip">NO OPTION: ' + a.L_noOptionCount + '</div>' +
+                    (a.L_noOptions.length ? '<details><summary>List of employees without options</summary><ul>' +
+                        a.L_noOptions.slice(0, 100).map(e => '<li>' + escapeHtml((e.seniority_no || '-') + ' - ' + e.name) + '</li>').join('') + '</ul></details>' : '') +
+                '</div>' +
+            '</div>', '');
 }
 
 function poServiceLabel(id) {
@@ -803,22 +745,45 @@ function poPendingClaims(rec) {
     });
 }
 
-function poValidateDslNow() {
-    const r = poRunDslValidation();
-    showToast(r.valid ? 'DSL validation passed with ' + r.warnings.length + ' warning(s)' : 'DSL validation failed: ' + r.errors.length + ' error(s)',
+function poValidateSeniorityNow() {
+    const r = poRunSeniorityValidation();
+    showToast(r.valid ? 'Validation passed with ' + r.warnings.length + ' warning(s)' : 'Validation failed: ' + r.errors.length + ' error(s)',
         r.valid ? 'success' : 'error');
     renderPOModule();
 }
 
-function poDownloadDslTemplate() {
-    downloadFile(poDslTemplateCsv(), 'PO_DSL_Template.csv', 'text/csv');
-    showToast('DSL template downloaded', 'success');
+function poFinalizeSeniorityFlow() {
+    if (!confirm('Lock the seniority list?\n\nIt becomes the authoritative dataset for allocation and can no longer be edited.')) return;
+    const n = poFinalizeSeniorityList();
+    if (n) { showToast('Seniority list locked with ' + n + ' records', 'success'); renderPOModule(); }
 }
 
-function poExportDslCsv() {
-    if (!poState.dsl.length) { showToast('DSL is empty', 'error'); return; }
-    downloadFile(poDslExportCsv(), 'PO_DSL_' + poState.exercise.exercise_id + '.csv', 'text/csv');
+function poPublishFslFlow() {
+    if (!confirm('Publish the seniority list?\n\nThis opens the option window for the employees.')) return;
+    if (poPublishFsl()) { showToast('Seniority list published', 'success'); renderPOModule(); }
 }
+
+function poReviseFslFlow() {
+    const reason = prompt('Revision reason (mandatory - a new version is created and the superseded list is retained):', '');
+    if (reason === null) return;
+    if (!confirm('This unlocks the list, clears its records, voids all submitted options and requires a fresh upload. Continue?')) return;
+    if (poReviseFsl(reason)) { showToast('Revision started at ' + poVersionLabel('fsl'), 'success'); renderPOModule(); }
+}
+
+function poDownloadSeniorityTemplate() {
+    downloadFile(poSeniorityTemplateCsv(), 'PO_SeniorityList_Template.csv', 'text/csv');
+    showToast('Template downloaded', 'success');
+}
+
+function poExportSeniorityCsv() {
+    if (!poState.fsl.length) { showToast('The seniority list is empty', 'error'); return; }
+    downloadFile(poSeniorityExportCsv(), 'PO_SeniorityList_' + poState.exercise.exercise_id + '.csv', 'text/csv');
+}
+
+// --- CSV / Excel ingestion ---------------------------------------------------
+// Header matching is case- and punctuation-insensitive, so 'Date of Joining in
+// Category', 'date_of_joining_in_category' and 'dateofjoiningincategory' all
+// map to the same field.
 
 function poReadSpreadsheet(file, done) {
     const reader = new FileReader();
@@ -840,7 +805,6 @@ function poReadSpreadsheet(file, done) {
     reader.readAsText(file);
 }
 
-/** Header-driven CSV reader. Header matching is case- and punctuation-insensitive. */
 function poCsvToRows(text) {
     const lines = poSplitCsvLines(text);
     if (lines.length < 2) return [];
@@ -874,7 +838,7 @@ function poSplitCsvLines(text) {
 function poParseCsvLine(line) {
     const out = []; let cur = ''; let q = false;
     for (let i = 0; i < line.length; i++) {
-        const ch = line[i], nx = line[i + 1];
+        const ch = line[i], nx = text1(line, i);
         if (ch === '"') {
             if (q && nx === '"') { cur += '"'; i++; } else { q = !q; }
         } else if (ch === ',') {
@@ -884,28 +848,34 @@ function poParseCsvLine(line) {
     out.push(cur.trim());
     return out;
 }
+function text1(s, i) { return s[i + 1]; }
 
-function poImportDslFile(input) {
+/**
+ * Upload one cadre's seniority list. The file must name Krishna, NTR or Eluru in
+ * Erstwhile / Present Local Cadre; that cadre's existing rows are replaced and
+ * the other two are left alone.
+ */
+function poImportSeniorityFile(input) {
     const file = input.files && input.files[0];
+    input.value = '';
     if (!file) return;
-    if (!confirm('Import this file into the DSL? Existing DSL records will be replaced.')) { input.value = ''; return; }
+    if (!confirm('Upload this file as a cadre seniority list?\n\nThe rows of the cadre named in the file will be REPLACED. Rows of the other two cadres are untouched.')) return;
     poReadSpreadsheet(file, rows => {
-        if (!rows.length) { showToast('No usable rows found in the file', 'error'); input.value = ''; return; }
-        const n = poImportDslRows(rows, true);
-        poAudit('DSL_UPLOADED', { prev: '', next: file.name + ' -> ' + n + ' records', reason: 'DSL upload' });
-        poSave();
-        showToast(n + ' DSL records imported. Run DSL validation to see blocking errors.', 'success');
-        input.value = '';
+        if (!rows.length) { showToast('No usable rows found in the file', 'error'); return; }
+        const n = poImportSeniorityRows(rows, true);
+        if (!n) { renderPOModule(); return; }
+        showToast(n + ' record(s) imported for ' + file.name + '. Run validation to see blocking errors.', 'success');
         renderPOModule();
     });
-    input.value = '';
 }
 
-function poEditDslRecord(employeeId) {
+// --- manual record entry -----------------------------------------------------
+
+function poEditSeniorityRecord(employeeId) {
     if (!poIsAdmin()) { showToast('Admin only', 'error'); return; }
-    if (!poDslEditable()) { showToast('The DSL is frozen at this stage', 'error'); return; }
+    if (!poSeniorityEditable()) { showToast('The seniority list is frozen at this stage', 'error'); return; }
     const rec = employeeId
-        ? poState.dsl.find(r => r.employee_id === employeeId)
+        ? poState.fsl.find(r => r.employee_id === employeeId)
         : poBlankRecord(poState.categories.length ? poState.categories[0].id : '');
     if (!rec) return;
 
@@ -923,7 +893,7 @@ function poEditDslRecord(employeeId) {
     dlg.style.display = 'flex';
     dlg.innerHTML =
         '<div class="modal" style="max-width:820px;">' +
-        '<div class="modal-header"><h3>' + (employeeId ? 'Edit' : 'Add') + ' DSL record</h3>' +
+        '<div class="modal-header"><h3>' + (employeeId ? 'Edit' : 'Add') + ' seniority list record</h3>' +
         '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button></div>' +
         '<div class="modal-body"><div class="po-note po-note-info">Date of joining means <strong>date of joining in the category</strong>. ' +
         'Appointment, promotion and present-office joining dates are never substituted.</div>' +
@@ -951,12 +921,12 @@ function poEditDslRecord(employeeId) {
             '<div class="form-group"><label>Deputation unit</label><input id="poR_dunit" value="' + escapeHtml(rec.deputation_unit) + '"></div>' +
         '</div></div>' +
         '<div class="modal-footer"><button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">Cancel</button>' +
-        '<button class="btn btn-primary" onclick="poSaveDslForm(' + (employeeId ? '\'' + poQs(employeeId) + '\'' : 'null') + ')">Save</button></div>' +
+        '<button class="btn btn-primary" onclick="poSaveSeniorityForm(' + (employeeId ? '\'' + poQs(employeeId) + '\'' : 'null') + ')">Save</button></div>' +
         '</div>';
     document.body.appendChild(dlg);
 }
 
-function poSaveDslForm(employeeId) {
+function poSaveSeniorityForm(employeeId) {
     const g = id => (document.getElementById(id) || {}).value;
     const catId = g('poR_cat') || '';
     const cat = poState.categories.find(c => c.id === catId);
@@ -964,7 +934,7 @@ function poSaveDslForm(employeeId) {
     const sen = /^\d+$/.test(senRaw) ? parseInt(senRaw, 10) : null;
 
     const rec = employeeId
-        ? poState.dsl.find(r => r.employee_id === employeeId)
+        ? poState.fsl.find(r => r.employee_id === employeeId)
         : poBlankRecord(catId);
     if (!rec) return;
     if (!rec.claims) rec.claims = poBlankClaims();
@@ -991,44 +961,32 @@ function poSaveDslForm(employeeId) {
     rec.deputation_unit = (g('poR_dunit') || '').trim();
 
     const isNew = !employeeId;
-    if (!poSaveDslRecord(rec, isNew)) return;
+    if (!poSaveSeniorityRecord(rec, isNew)) return;
     document.querySelector('.modal-overlay').remove();
-    showToast(isNew ? 'DSL record added' : 'DSL record saved', 'success');
+    showToast(isNew ? 'Record added' : 'Record saved', 'success');
     renderPOModule();
 }
 
-function poDeleteDslRecord(employeeId) {
-    const rec = poState.dsl.find(r => r.employee_id === employeeId);
-    if (!confirm('Delete DSL record for ' + (rec ? rec.name : employeeId) + '?')) return;
-    if (poDeleteDslRecord(employeeId)) { showToast('DSL record deleted', 'success'); renderPOModule(); }
+function poDeleteSeniorityRecord(employeeId) {
+    const rec = poState.fsl.find(r => r.employee_id === employeeId);
+    if (!confirm('Delete seniority list record for ' + (rec ? rec.name : employeeId) + '?')) return;
+    if (poDeleteSeniorityRecord(employeeId)) { showToast('Record deleted', 'success'); renderPOModule(); }
 }
 
-/** Convenience: raise an objection for one employee from the DSL table. */
-function poRecordDslObjection(employeeId) {
-    const type = prompt('Objection type (' + PO_OBJECTION_TYPES.join(' / ') + '):', 'SENIORITY_NUMBER');
-    if (!type) return;
-    const text = prompt('Objection:');
-    if (!text) return;
-    const docs = prompt('Supporting document reference (optional):', '') || '';
-    const r = poRaiseObjection(employeeId, type.trim().toUpperCase(), text, docs);
-    if (!r.ok) { showToast((r.errors || [])[0] || 'Objection not recorded', 'error'); return; }
-    showToast('Objection ' + r.objection.objection_id + ' recorded', 'success');
-    renderPOModule();
-}
-
-
-// --- preferential claim certification & verification (para 10) --------------
+// --- preferential claim certification & verification -------------------------
+// A claim is not preferential merely because a flag was ticked. Claim ->
+// supporting document -> verification -> eligible / not eligible. Only a
+// VERIFIED claim is processed in the preferential phase.
 
 function poOpenClaimPanel(employeeId) {
     if (!poIsAdmin()) { showToast('Admin only', 'error'); return; }
-    const rec = poState.dsl.find(r => r.employee_id === employeeId) || poState.fsl.find(r => r.employee_id === employeeId);
+    const rec = poState.fsl.find(r => r.employee_id === employeeId);
     if (!rec) { showToast('Record not found', 'error'); return; }
     poEnsureClaims(rec);
-    const readOnly = !poDslEditable() && poStageIdx(poStage()) < poStageIdx('DSL_UPLOADED');
+    const canEdit = poSeniorityEditable();
 
     const rowsHtml = POEngine.PO_PREF_CLAIMS.map(def => {
         const c = rec.claims[def.id];
-        const canEdit = !readOnly;
         return '<tr>' +
             '<td>' + def.priority + '</td>' +
             '<td><strong>' + escapeHtml(def.label) + '</strong><br><span class="po-hint">' +
@@ -1062,13 +1020,11 @@ function poOpenClaimPanel(employeeId) {
         '<div class="modal-header"><h3>Preferential claim certification - ' + escapeHtml(rec.name) + '</h3>' +
         '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button></div>' +
         '<div class="modal-body">' +
-        '<div class="po-note po-note-info">A claim is <strong>not</strong> preferential merely because a flag was ticked. ' +
-        'Claim &rarr; supporting document &rarr; verification &rarr; eligible / not eligible. Only VERIFIED claims are processed in the preferential phase.</div>' +
         '<div class="po-table-wrap"><table><thead><tr><th>Priority</th><th>Category</th><th>Claimed</th><th>Disability %</th>' +
         '<th>Certification no.</th><th>Document</th><th>Verification</th><th>Action</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>' +
         '</div>' +
         '<div class="modal-footer">' +
-            (readOnly ? '' : '<button class="btn btn-primary" onclick="poSaveClaims(\'' + poQs(employeeId) + '\')">Save claims</button>') +
+            (canEdit ? '<button class="btn btn-primary" onclick="poSaveClaims(\'' + poQs(employeeId) + '\')">Save claims</button>' : '') +
             '<button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">Close</button>' +
         '</div></div>';
     document.body.appendChild(dlg);
@@ -1082,7 +1038,7 @@ function poVerifyTone(v) {
 }
 
 function poSaveClaims(employeeId) {
-    const rec = poState.dsl.find(r => r.employee_id === employeeId) || poState.fsl.find(r => r.employee_id === employeeId);
+    const rec = poState.fsl.find(r => r.employee_id === employeeId);
     if (!rec) return;
     poEnsureClaims(rec);
     POEngine.PO_PREF_CLAIMS.forEach(def => {
@@ -1101,187 +1057,36 @@ function poSaveClaims(employeeId) {
             c.verified_by = ''; c.verified_at = '';
         }
     });
-    if (!poDslEditable()) { showToast('DSL is frozen; claim edits are not permitted at this stage', 'error'); return; }
-    poSaveDslRecord(rec, false);
+    if (!poSaveSeniorityRecord(rec, false)) return;
     document.querySelector('.modal-overlay').remove();
-    showToast('Claims saved. Verification is still required before the claim is preferential.', 'success');
+    showToast('Claims saved. Verification is still required before a claim is preferential.', 'success');
     renderPOModule();
 }
 
 function poVerifyClaim(employeeId, claimId, status) {
-    const rec = poState.dsl.find(r => r.employee_id === employeeId) || poState.fsl.find(r => r.employee_id === employeeId);
+    const rec = poState.fsl.find(r => r.employee_id === employeeId);
     if (!rec) return;
     poEnsureClaims(rec);
     const c = rec.claims[claimId];
     if (!c) return;
-    const remark = prompt('Verification remark (recorded in the audit trail):', '') ;
+    const remark = prompt('Verification remark:', '');
     if (remark === null) return;
-    const prev = c.verification;
+    if (!poSeniorityEditable()) { showToast('The seniority list is frozen; verification is not permitted at this stage', 'error'); return; }
     c.verification = status;
     c.verified_by = poUser();
     c.verified_at = poNow();
     c.remark = remark;
-    if (!poDslEditable()) { showToast('DSL is frozen; verification is not permitted at this stage', 'error'); return; }
-    poSaveDslRecord(rec, false);
-    poAudit(status === 'VERIFIED' ? 'CLAIM_VERIFIED' : 'CLAIM_REJECTED', {
-        prev: prev, next: status + ' (' + claimId + ')', reason: remark, employee_id: employeeId
-    });
-    poSave();
+    poSaveSeniorityRecord(rec, false);
     document.querySelector('.modal-overlay').remove();
     showToast('Claim ' + status.toLowerCase(), 'success');
     renderPOModule();
 }
 
 
-// ============================================================================
-// STEP 5 - FSL + analysis (para 8 & 9)
-// ============================================================================
-
-function renderStepFsl(content) {
-    const editableDsl = poDslEditable();
-    const ctx = poCtx();
-    const fsl = poState.fsl;
-    const a = poFsAnalysis();
-    const tl = poTimeline();
-    const canFinalize = poIsAdmin() && poStageIdx(poStage()) <= poStageIdx('FSL_FINALIZED') && !poState.optionsLocked;
-    const published = !!poState.fslPublishedAt;
-
-    const rows = fsl.map(r => '<tr>' +
-        poTd(r.seniority_no) + poTd(r.name) +
-        poTd((ctx.categoryById[r.category_id] || {}).name || r.rank_code) +
-        poTd(r.cfms_id) + poTd(r.mobile) + poTd(r.date_of_joining_category) +
-        poTd(r.social_category) + poTd(r.sc_group) +
-        poTd((ctx.cadreById[r.erstwhile_cadre_id] || {}).name) +
-        poTd((ctx.cadreById[r.present_local_cadre_id] || {}).name) +
-        poTd(r.service_status) +
-        poTd(POEngine.poPreferredClaim(r) ? POEngine.poPreferredClaim(r).label : '-') +
-        poTd(r.fsl_version, 'font-size:11px') +
-        poTd((poState.objections[r.employee_id] || {}).reason || '-') +
-        '</tr>');
-
-    const segRows = a.N_strength.map(n => '<tr>' +
-        poTd(n.category) +
-        poTd(String(n.approved_working_strength === null ? '-' : n.approved_working_strength)) +
-        poTd(String(n.fws_total)) +
-        poTd(String(n.current_working_strength)) +
-        poTd(String(n.fsl_employee_count)) +
-        poTd(String(n.allocable_strength)) +
-        '</tr>');
-
-    content.innerHTML =
-        poCard('Step 4 &middot; FSL timeline',
-            '<div class="po-note po-note-info"><span class="po-tag po-tag-go">GO REQUIREMENT</span> The FSL is published on the ' +
-                PO_FSL_ELIGIBILITY_DAYS + 'th day from publication of the DSL. Every date below is calculated from the actual ' +
-                'DSL publication timestamp &mdash; no date is hard-coded and publication cannot precede eligibility.</div>' +
-            '<div class="po-window">' +
-                '<div><span class="po-window-l">DSL publication date</span><span class="po-window-v">' + poDash(tl.dsl_published_at ? String(tl.dsl_published_at).slice(0, 10) : '-') + '</span></div>' +
-                '<div><span class="po-window-l">Objection closing date</span><span class="po-window-v">' + poDash(tl.objection_closing_date) + '</span></div>' +
-                '<div><span class="po-window-l">Objections disposed</span><span class="po-window-v">' + (tl.objections_disposed_at ? escapeHtml(tl.objections_disposed_at) : tl.objections_pending + ' pending') + '</span></div>' +
-                '<div><span class="po-window-l">FSL eligibility date</span><span class="po-window-v">' + poDash(tl.fsl_eligibility_date) +
-                    (tl.fsl_eligible_reached ? ' <span class="po-badge po-badge-success">REACHED</span>' : ' <span class="po-badge po-badge-warn">NOT YET</span>') + '</span></div>' +
-                '<div><span class="po-window-l">FSL created</span><span class="po-window-v">' + poDash(tl.fsl_created_at || '-') + '</span></div>' +
-                '<div><span class="po-window-l">FSL finalized</span><span class="po-window-v">' + poDash(tl.fsl_finalized_at || '-') + '</span></div>' +
-                '<div><span class="po-window-l">FSL publication date</span><span class="po-window-v">' + poDash(tl.fsl_published_at || '-') + '</span></div>' +
-            '</div>' +
-            (poPendingObjections().length
-                ? '<div class="po-note po-note-danger">' + poPendingObjections().length + ' objection(s) not disposed. The FSL cannot be finalized.</div>'
-                : ''), '') +
-
-        poCard('Step 4 &middot; Final Seniority List',
-            '<p class="po-hint">The FSL is the authoritative personnel dataset for the allocation engine. Once finalized it is locked; ' +
-            'any later change requires an authorized revision with a reason and creates a new version. Superseded versions are retained, never destroyed.</p>' +
-            '<div class="po-actions" style="margin-bottom:12px;">' +
-                (canFinalize ? '<button class="btn btn-primary" onclick="poFinalizeFsl()">Build &amp; finalize FSL from DSL</button>' : '') +
-                (poIsAdmin() && poState.fsl.length && !published ? '<button class="btn btn-primary" onclick="poPublishFslFlow()">Publish FSL</button>' : '') +
-                '<button class="btn btn-secondary" onclick="poExportFslCsv()">Export FSL</button>' +
-                (poIsAdmin() && poState.fslLocked ? '<button class="btn btn-secondary" onclick="poReviseFslFlow()">Start FSL revision</button>' : '') +
-            '</div>' +
-            poStats([
-                { value: fsl.length, label: 'FSL records' },
-                { value: poVersionLabel('fsl'), label: 'FSL version' },
-                { value: poState.fslLocked ? 'LOCKED' : 'OPEN', label: 'FSL state' },
-                { value: poState.fslPublishedAt ? (poState.fslPublishedAt.slice(0, 10)) : '-', label: 'Published' },
-                { value: Object.keys(poState.objections || {}).length, label: 'DSL objections' }
-            ]) +
-            (poState.fslLocked ? '' : '<div class="po-note po-note-warn">FSL is not locked yet. Allocation is blocked until it is.</div>') +
-            poTable(['Seniority No', 'Employee Name', 'Category', 'CFMS ID', 'Mobile', 'DOJ in Category',
-                     'Social Category', 'SC/ST Group', 'Erstwhile Cadre', 'Present Cadre', 'Status',
-                     'Verified Preferential Claim', 'FSL Ver', 'DSL Objection'], rows), '') +
-
-        poCard('FSL analysis (para 9) - the four strengths are NOT interchangeable',
-            '<div class="po-hint">FWS = sanctioned posts. Current Working Strength = employees presently borne on the category. ' +
-            'FSL Employee Count = rows in the FSL. Available / Allocable Strength = FWS less those already borne.</div>' +
-            poTable(['Category', 'Approved WS', 'FWS', 'Current Working Strength', 'FSL Employee Count', 'Available / Allocable'], segRows) +
-            '<div class="po-analysis-grid">' +
-                '<div><h4>A. Cadre-wise (present local cadre)</h4>' + poTally(a.A_cadreWise) + '</div>' +
-                '<div><h4>B. Rank-wise</h4>' + poTally(a.B_rankWise) + '</div>' +
-                '<div><h4>C. Erstwhile cadre distribution</h4>' + poTally(a.C_erstwhileCadre) + '</div>' +
-                '<div><h4>D. Present working location</h4>' + poTally(a.D_workingLocation) + '</div>' +
-                '<div><h4>J. Gender</h4>' + poTally(a.J_gender) + '</div>' +
-                '<div><h4>K. Deputation / other status</h4>' + poTally(a.K_deputation.by_status) + '</div>' +
-            '</div>' +
-            '<div class="po-analysis-grid">' +
-                '<div><h4>E. Preferential categories</h4><table class="po-mini"><thead><tr><th>Category</th><th>Claimed</th><th>Verified</th></tr></thead><tbody>' +
-                    a.E_preferential.map(e => '<tr><td>' + escapeHtml(e.label) + '</td><td>' + e.claimed + '</td><td><strong>' + e.verified + '</strong></td></tr>').join('') +
-                '</tbody></table></div>' +
-                '<div><h4>F-I. Reserved groups</h4>' +
-                    '<div class="po-chip">SC Group-I: ' + a.F_sc_group_1 + '</div>' +
-                    '<div class="po-chip">SC Group-II: ' + a.G_sc_group_2 + '</div>' +
-                    '<div class="po-chip">SC Group-III: ' + a.H_sc_group_3 + '</div>' +
-                    '<div class="po-chip">ST: ' + a.I_st + '</div>' +
-                    '<div class="po-chip">Total reserved: ' + (a.F_sc_group_1 + a.G_sc_group_2 + a.H_sc_group_3 + a.I_st) + '</div>' +
-                '</div>' +
-                '<div><h4>L / M. Option coverage</h4>' +
-                    '<div class="po-chip">With valid options: ' + a.M_withOptions + '</div>' +
-                    '<div class="po-chip">NO OPTION: ' + a.L_noOptionCount + '</div>' +
-                    (a.L_noOptions.length ? '<details><summary>List of employees without options</summary><ul>' +
-                        a.L_noOptions.slice(0, 100).map(e => '<li>' + escapeHtml((e.seniority_no || '-') + ' - ' + e.name) + '</li>').join('') + '</ul></details>' : '') +
-                '</div>' +
-            '</div>', '');
-}
-
-function poFinalizeFsl() {
-    if (!confirm('Finalize the FSL from the DSL? The FSL will be locked and becomes the authoritative dataset for allocation.')) return;
-    const n = poBuildFslFromDsl();
-    if (n) { showToast('FSL finalized and locked with ' + n + ' records', 'success'); renderPOModule(); }
-}
-
-function poPublishFslFlow() {
-    if (!confirm('Publish the FSL?\n\nPublication is permitted only after the objection period is complete, every objection is disposed, and the eligibility date has been reached.')) return;
-    if (poPublishFsl()) { showToast('FSL published', 'success'); renderPOModule(); }
-}
-
-function poExportFslCsv() {
-    const fsl = poState.fsl;
-    if (!fsl.length) { showToast('FSL is empty', 'error'); return; }
-    const headers = ['FSL Version', 'Seniority No', 'Employee Name', 'Parentage', 'Gender', 'CFMS ID', 'Mobile',
-        'Date of Birth', 'Date of Joining in Category', 'Category', 'Office', 'Designation', 'Social Category',
-        'SC/ST Group', 'Erstwhile Cadre', 'Present Local Cadre', 'Present Working Place', 'Status',
-        'Deputation Unit', 'Verified Preferential Claim', 'DSL Objection', 'Objection Resolution'];
-    const ctx = poCtx();
-    const rows = fsl.map(r => [
-        r.fsl_version, r.seniority_no, r.name, r.parentage, r.gender, r.cfms_id, r.mobile,
-        r.date_of_birth, r.date_of_joining_category, (ctx.categoryById[r.category_id] || {}).name || r.rank_code,
-        r.office, r.designation, r.social_category, r.sc_group,
-        (ctx.cadreById[r.erstwhile_cadre_id] || {}).name, (ctx.cadreById[r.present_local_cadre_id] || {}).name,
-        r.present_working_place, r.service_status, r.deputation_unit,
-        POEngine.poPreferredClaim(r) ? POEngine.poPreferredClaim(r).label : '',
-        (poState.objections[r.employee_id] || {}).reason || '',
-        (poState.objections[r.employee_id] || {}).resolution || ''
-    ]);
-    downloadFile(poToCsv(headers, rows), 'PO_FSL_' + poState.exercise.exercise_id + '_' + poVersionLabel('fsl') + '.csv', 'text/csv');
-}
-
-function poReviseFslFlow() {
-    const reason = prompt('FSL revision reason (mandatory - recorded in the audit trail and a new FSL version is created):', '');
-    if (reason === null) return;
-    if (!confirm('This unlocks the FSL, clears the FSL records, voids all submitted options and requires a fresh FSL build. Continue?')) return;
-    if (poReviseFsl(reason)) { showToast('FSL revision started at ' + poVersionLabel('fsl'), 'success'); renderPOModule(); }
-}
 
 
 // ============================================================================
-// STEP 6 - Option filling (para 12 & 13)
+// STEP 4 - Option filling (para 12 & 13)
 // ============================================================================
 
 function renderStepOptions(content) {
@@ -1332,7 +1137,7 @@ function renderStepOptions(content) {
           (poState.optionWindowDays || 5) + ' days from FSL publication.</div>';
 
     content.innerHTML =
-        poCard('Step 5 &middot; Option filling', window_, '') +
+        poCard('Step 4 &middot; Option filling', window_, '') +
         poCard('Employee options',
             '<div class="po-note po-note-warn"><strong>Option once exercised is final and irrevocable.</strong> ' +
             'Only cadres configured for that employee&rsquo;s rank/category are selectable. Options are never generated by the system.</div>' +
@@ -1365,7 +1170,6 @@ function poSaveOptionWindow() {
     const n = parseInt((document.getElementById('poOptWindow') || {}).value, 10);
     if (!n || n < 1) { showToast('Enter a valid number of days', 'error'); return; }
     poState.optionWindowDays = n;
-    poAudit('OPTION_LOCKED', { prev: '', next: 'option window set to ' + n + ' days' });
     poSave();
     showToast('Option window saved', 'success');
     renderPOModule();
@@ -1411,7 +1215,7 @@ function poCloseOptionsFlow() {
 
 
 // ============================================================================
-// STEP 7 - Allocation (para 14, 15, 16, 17, 29)
+// STEP 5 - Allocation (para 14, 15, 16, 17, 29)
 // ============================================================================
 
 function renderStepAllocation(content) {
@@ -1536,16 +1340,18 @@ function renderStepAllocation(content) {
     }
 
     content.innerHTML =
-        poCard('Step 6 &middot; Allocation engine',
-            '<p class="po-hint">The engine is deterministic and repeatable: FWS + FSL + preferential claims + FSL seniority + options + vacancy + SC/ST review. ' +
+        poCard('Step 5 &middot; Allocation engine',
+            '<p class="po-hint">The engine is deterministic and repeatable: FWS + seniority list + preferential claims + seniority + options + vacancy + SC/ST review. ' +
             'Every allotment carries a reason and can be explained.</p>' +
             '<div class="po-phases">' +
-                '<div><b>Phase 1</b> Preferential categories (verified claims, priority order)</div>' +
-                '<div><b>Phase 2-4</b> Remaining employees by FSL seniority: preference 1, then 2, then 3</div>' +
-                '<div><b>Phase 5</b> Compulsory allotment to an available clear post, only where a shortfall exists</div>' +
-                '<div><b>Phase 6</b> Employees with no option - processed at the end, only onto shortfall posts</div>' +
-                '<div><b>Phase 7</b> SC/ST proportionate review and documented adjustment</div>' +
-                '<div><b>Phase 8</b> Final result; allocation beyond FWS fails the run</div>' +
+                '<div><b>1. Physically handicapped</b> PwBD (70%+) and employees with a dependent disabled child &mdash; verified claims</div>' +
+                '<div><b>2. Widow</b> widow who remained unmarried &mdash; verified claims</div>' +
+                '<div><b>3. Health problems</b> cancer, major neurosurgery, kidney, liver, open-heart &mdash; verified claims</div>' +
+                '<div><b>4. SC/ST reserved share</b> each cadre&rsquo;s own reserved posts are allotted first, by seniority</div>' +
+                '<div><b>5. General category</b> remaining employees by seniority list: preference 1, then 2, then 3</div>' +
+                '<div><b>Compulsory</b> where every stated preference is unavailable, only where a shortfall exists</div>' +
+                '<div><b>No option</b> employees with no option &mdash; processed last, only onto shortfall posts</div>' +
+                '<div><b>Final check</b> SC/ST proportions verified; allocation beyond FWS fails the run</div>' +
             '</div>' +
             (canRun
                 ? '<div class="po-actions">' +
@@ -1613,7 +1419,7 @@ function poExplainAllocation(employeeId) {
 
 
 // ============================================================================
-// STEP 8 - FAL (para 18 & 19)
+// STEP 6 - FAL (para 18 & 19)
 // ============================================================================
 
 function renderStepFal(content) {
@@ -1670,7 +1476,7 @@ function renderStepFal(content) {
     }
 
     content.innerHTML =
-        poCard('Step 7 &middot; Final Allocation List',
+        poCard('Step 6 &middot; Final Allocation List',
             '<p class="po-hint">The FAL is generated by the allocation engine. It cannot be hand-edited: a change after publication requires the revision workflow with a reason and an audit entry.</p>' +
             '<div class="po-actions" style="margin-bottom:12px;">' +
                 (admin && !fal ? '<button class="btn btn-primary" onclick="poGenerateFalFlow()">Generate FAL from the confirmed run</button>' : '') +
@@ -1771,7 +1577,7 @@ function poPrintFal() {
 
 
 // ============================================================================
-// STEP 9 - OOA / OOT / joining (para 20 & 21)
+// STEP 7 - OOA / OOT / joining (para 20 & 21)
 // ============================================================================
 
 function renderStepOrders(content) {
@@ -1801,7 +1607,7 @@ function renderStepOrders(content) {
             : '') + '</td></tr>');
 
     content.innerHTML =
-        poCard('Step 8a &middot; Order of Allotment (OOA)',
+        poCard('Step 7a &middot; Order of Allotment (OOA)',
             '<p class="po-hint">Status DRAFT &rarr; APPROVED &rarr; ISSUED. An issued OOA is never deleted; it is superseded by a recorded revision.</p>' +
             '<div class="po-actions" style="margin-bottom:12px;">' +
                 (admin ? '<button class="btn btn-primary" onclick="poGenerateOoaFlow()">Generate OOA</button>' +
@@ -1812,7 +1618,7 @@ function renderStepOrders(content) {
             poTable(['OOA ID', 'Employee', 'Parentage', 'CFMS ID', 'Mobile', 'Designation',
                      'Erstwhile Local Cadre', 'New Allotted Local Cadre', 'Order No', 'Order Date', 'Status', ''], ooaRows), '') +
 
-        poCard('Step 8b &middot; Order of Transfer (OOT) and joining',
+        poCard('Step 7b &middot; Order of Transfer (OOT) and joining',
             '<p class="po-hint">If the allotted cadre equals the present local cadre, no transfer order is required and the employee continues in the existing post. ' +
             'Otherwise an OOT is generated. Joining is to be reported within ' + (poState.joiningWindowDays || 7) + ' days of issue.</p>' +
             '<div class="po-actions" style="margin-bottom:12px;">' +
@@ -1966,71 +1772,6 @@ function poPrintDocument(title, bodyHtml) {
 }
 
 
-// ============================================================================
-// DLC dashboard + audit trail (para 23 & 25)
-// ============================================================================
-
-function poShowDashboard() {
-    const d = poDashboard();
-    const dlg = document.createElement('div');
-    dlg.className = 'modal-overlay';
-    dlg.style.display = 'flex';
-    const block = (title, rows) => '<div class="po-block"><h4>' + title + '</h4>' +
-        rows.map(r => '<div class="po-dash-row"><span>' + escapeHtml(r[0]) + '</span><strong>' + escapeHtml(r[1]) + '</strong></div>').join('') + '</div>';
-
-    dlg.innerHTML = '<div class="modal" style="max-width:900px;">' +
-        '<div class="modal-header"><h3>DLC dashboard</h3>' +
-        '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button></div>' +
-        '<div class="modal-body">' +
-        block('Exercise status', [['Status', d.exercise_status], ['Stage', d.stage],
-            ['Exercise ID', poState.exercise.exercise_id || '-'], ['Department', poState.exercise.department || '-']]) +
-        block('Cadres', [['Total', d.cadres.total], ['Active', d.cadres.active], ['Total FWS', d.cadres.fws]]) +
-        block('Personnel', [['FSL total', d.personnel.fsl_total], ['Preferential cases', d.personnel.preferential_cases],
-            ['SC', d.personnel.sc], ['ST', d.personnel.st], ['Deputation', d.personnel.deputation], ['No option', d.personnel.no_option]]) +
-        block('Options', [['Submitted', d.options.submitted], ['Pending', d.options.pending], ['Locked', d.options.locked ? 'YES' : 'NO']]) +
-        block('Allocation', [['Allocated', d.allocation.allocated], ['Pending', d.allocation.pending],
-            ['Exceptions', d.allocation.exceptions], ['FWS exhausted', d.allocation.fws_exhausted],
-            ['Last run', d.allocation.last_run ? d.allocation.last_run.run_id + ' (' + d.allocation.last_run.status + ')' : '-']]) +
-        block('FAL', [['Generated', d.fal.generated ? 'YES' : 'NO'], ['Status', d.fal.status],
-            ['Validated', d.fal.validated ? 'YES' : 'NO'], ['Published', d.fal.published ? 'YES' : 'NO'], ['Version', d.fal.version]]) +
-        block('Orders', [['OOA generated', d.orders.ooa_generated], ['OOA issued', d.orders.ooa_issued],
-            ['OOT generated', d.orders.oot_generated], ['OOT issued', d.orders.oot_issued],
-            ['Joining completed', d.orders.joining_completed], ['No transfer required', d.orders.no_transfer_required]]) +
-        block('Versions', Object.keys(d.versions).map(k => [k, d.versions[k]])) +
-        '</div><div class="modal-footer"><button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">Close</button></div></div>';
-    document.body.appendChild(dlg);
-}
-
-function poShowAudit() {
-    const list = poState.audit.slice().reverse();
-    const dlg = document.createElement('div');
-    dlg.className = 'modal-overlay';
-    dlg.style.display = 'flex';
-    dlg.innerHTML = '<div class="modal" style="max-width:1180px;">' +
-        '<div class="modal-header"><h3>Audit trail (' + list.length + ' events)</h3>' +
-        '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button></div>' +
-        '<div class="modal-body">' +
-        (list.length
-            ? '<div class="po-table-wrap" style="max-height:62vh;overflow:auto"><table><thead><tr>' +
-              '<th>#</th><th>When</th><th>User</th><th>Action</th><th>Previous</th><th>New</th><th>Reason</th>' +
-              '<th>Exercise</th><th>Employee</th><th>Stage</th><th>Version</th></tr></thead><tbody>' +
-              list.map(e => '<tr><td>' + escapeHtml(e.id) + '</td><td style="font-size:10px">' + escapeHtml((e.ts || '').slice(0, 19).replace('T', ' ')) + '</td>' +
-                  '<td>' + poDash(e.user) + '</td><td>' + escapeHtml(e.label) + '</td>' + poTd(e.prev_value) + poTd(e.new_value) +
-                  poTd(e.reason) + poTd(e.exercise_id) + poTd(e.employee_id) + poTd(e.stage) + poTd(e.version) + '</tr>').join('') +
-              '</tbody></table></div>'
-            : '<div class="empty-state">No audit events yet.</div>') +
-        '<div class="po-actions" style="margin-top:12px;"><button class="btn btn-secondary" onclick="poExportAudit()">Export audit CSV</button></div>' +
-        '</div><div class="modal-footer"><button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">Close</button></div></div>';
-    document.body.appendChild(dlg);
-}
-
-function poExportAudit() {
-    const headers = ['Event ID', 'Timestamp', 'User', 'Action', 'Label', 'Previous Value', 'New Value', 'Reason', 'Exercise ID', 'Employee ID', 'Stage', 'Version'];
-    const rows = poState.audit.map(e => [e.id, e.ts, e.user, e.action, e.label, e.prev_value, e.new_value, e.reason, e.exercise_id, e.employee_id, e.stage, e.version]);
-    downloadFile(poToCsv(headers, rows), 'PO_Audit_' + poState.exercise.exercise_id + '.csv', 'text/csv');
-    showToast('Audit trail exported', 'success');
-}
-
 
 // ============================================================================
 // Wiring into the existing page navigation
@@ -2067,22 +1808,18 @@ showPage = function (pageId) {
     'initPOModule', 'showPOPage', 'renderPOModule', 'renderCurrentPOTab', 'switchPOTab', 'poGotoStep',
     'poAdvanceStage', 'poSaveExerciseFromForm', 'poSaveMembersFromForm',
     'poEditCategory', 'poSaveCategoryForm', 'poDeleteCategory', 'poLoadRankMaster',
-    'poEditCadre', 'poSaveCadreForm', 'poDeleteCadre',
     'poSetStrengthField', 'poSetApprovedFromForm',
-    'poValidateDslNow', 'poDownloadDslTemplate', 'poExportDslCsv', 'poImportDslFile',
-    'poEditDslRecord', 'poSaveDslForm', 'poDeleteDslRecord', 'poRecordDslObjection',
+    'poValidateSeniorityNow', 'poDownloadSeniorityTemplate', 'poExportSeniorityCsv', 'poImportSeniorityFile',
+    'poEditSeniorityRecord', 'poSaveSeniorityForm', 'poDeleteSeniorityRecord',
     'poOpenClaimPanel', 'poSaveClaims', 'poVerifyClaim',
-    'poFinalizeFsl', 'poExportFslCsv', 'poReviseFslFlow',
-    'poSubmitOption', 'poSaveOptionWindow', 'poCloseOptionsFlow',
+    'poFinalizeSeniorityFlow', 'poPublishFslFlow', 'poReviseFslFlow',
+    'poSubmitOption', 'poSaveOptionWindow', 'poCloseOptionsFlow', 'poCorrectOptionFlow',
     'poRunSimulation', 'poConfirmAllocationFlow', 'poExplainAllocation',
     'poFalViewChanged', 'poFalSearchChanged', 'poGenerateFalFlow', 'poApproveFalFlow',
     'poPublishFalFlow', 'poReviseFalFlow', 'poExportFalCsv', 'poPrintFal',
     'poGenerateOoaFlow', 'poApproveOoaFlow', 'poIssueOoaFlow', 'poReviseOoaFlow', 'poPrintOoa',
     'poGenerateOotFlow', 'poIssueOotFlow', 'poRecordJoiningFlow', 'poPrintAllOoa', 'poPrintAllOot',
-    'poSetPolicyFromUi', 'poFreezePolicyFlow', 'poRaiseObjectionFlow', 'poDisposeObjectionFlow',
-    'poCloseObjectionWindowFlow', 'poPublishFslFlow', 'poCorrectOptionFlow',
-    'poJoiningClosureOverrideFlow', 'poRecordDslObjection',
-    'poShowAudit', 'poExportAudit', 'poShowDashboard'
+    'poSetPolicyFromUi', 'poFreezePolicyFlow', 'poJoiningClosureOverrideFlow'
 ].forEach(name => {
     try { window[name] = window[name] || eval(name); } catch (e) { /* not a function - ignore */ }
 });

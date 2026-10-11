@@ -125,61 +125,61 @@ test('working strength: FWS is never modified by the validator', () => {
 // 2. DSL validation - official data is never manufactured
 // ---------------------------------------------------------------------------
 
-test('DSL: a missing seniority number is a blocking error and is not filled in', () => {
+test('seniority list: a missing seniority number is a blocking error and is not filled in', () => {
     const rec = emp('01', null);
-    const r = E.validateDSL([rec], { ctx: ctx() });
+    const r = E.validateSeniorityList([rec], { ctx: ctx() });
     assert.strictEqual(r.valid, false);
     const err = r.errors.find(e => e.code === 'MISSING_SENIORITY');
     assert.ok(err, 'MISSING_SENIORITY expected');
     assert.strictEqual(rec.seniority_no, null, 'seniority must stay null');
 });
 
-test('DSL: duplicate seniority inside one category is a blocking error', () => {
-    const r = E.validateDSL([emp('01', 5), emp('02', 5)], { ctx: ctx() });
+test('seniority list: duplicate seniority inside one category is a blocking error', () => {
+    const r = E.validateSeniorityList([emp('01', 5), emp('02', 5)], { ctx: ctx() });
     assert.ok(r.errors.some(e => e.code === 'DUPLICATE_SENIORITY'));
 });
 
-test('DSL: the same seniority may repeat across two different categories', () => {
-    const r = E.validateDSL([
+test('seniority list: the same seniority may repeat across two different categories', () => {
+    const r = E.validateSeniorityList([
         emp('01', 5),
         emp('02', 5, { category_id: 'CAT_PC', rank_code: 'PC' })
     ], { ctx: ctx() });
     assert.ok(!r.errors.some(e => e.code === 'DUPLICATE_SENIORITY'));
 });
 
-test('DSL: duplicate CFMS inside one category is a blocking error', () => {
-    const r = E.validateDSL([emp('01', 1), emp('02', 2, { cfms_id: 'C01' })], { ctx: ctx() });
+test('seniority list: duplicate CFMS inside one category is a blocking error', () => {
+    const r = E.validateSeniorityList([emp('01', 1), emp('02', 2, { cfms_id: 'C01' })], { ctx: ctx() });
     assert.ok(r.errors.some(e => e.code === 'DUPLICATE_CFMS'));
 });
 
-test('DSL: an employee duplicated across ranks is a blocking error', () => {
-    const r = E.validateDSL([
+test('seniority list: an employee duplicated across ranks is a blocking error', () => {
+    const r = E.validateSeniorityList([
         emp('01', 1),
         emp('02', 9, { category_id: 'CAT_PC', rank_code: 'PC', cfms_id: 'C01' })
     ], { ctx: ctx() });
     assert.ok(r.errors.some(e => e.code === 'DUPLICATE_ACROSS_RANKS'));
 });
 
-test('DSL: date of joining in the category is required', () => {
-    const r = E.validateDSL([emp('01', 1, { date_of_joining_category: '' })], { ctx: ctx() });
+test('seniority list: date of joining in the category is required', () => {
+    const r = E.validateSeniorityList([emp('01', 1, { date_of_joining_category: '' })], { ctx: ctx() });
     assert.ok(r.errors.some(e => e.code === 'MISSING_DOJ_CATEGORY'));
 });
 
-test('DSL: an unknown cadre is a blocking error', () => {
-    const r = E.validateDSL([emp('01', 1, { erstwhile_cadre_id: 'DC_ATLANTIS' })], { ctx: ctx() });
+test('seniority list: an unknown cadre is a blocking error', () => {
+    const r = E.validateSeniorityList([emp('01', 1, { erstwhile_cadre_id: 'DC_ATLANTIS' })], { ctx: ctx() });
     assert.ok(r.errors.some(e => e.code === 'INVALID_ERSTWHILE_CADRE'));
 });
 
-test('DSL: an employee borne on a cadre the category does not use is flagged', () => {
+test('seniority list: an employee borne on a cadre the category does not use is flagged', () => {
     // Eluru has no PC post (FWS 0), so a PC borne there is outside the category.
-    const r = E.validateDSL([emp('01', 1, { category_id: 'CAT_PC', rank_code: 'PC', erstwhile_cadre_id: 'DC_ELURU' })], { ctx: ctx() });
+    const r = E.validateSeniorityList([emp('01', 1, { category_id: 'CAT_PC', rank_code: 'PC', erstwhile_cadre_id: 'DC_ELURU' })], { ctx: ctx() });
     assert.ok(r.errors.some(e => e.code === 'EMPLOYEE_MISSING_FROM_CADRE'));
 });
 
-test('DSL: employees on deputation, leave, suspension and absence stay in the list', () => {
+test('seniority list: employees on deputation, leave, suspension and absence stay in the list', () => {
     const statuses = ['DEPUTATION', 'LEAVE', 'PROBATION', 'TRAINING', 'SUSPENSION', 'ABSENT', 'UNABSENT', 'ABSCONDING'];
     const fsl = statuses.map((s, i) => emp('0' + (i + 1), i + 1, { service_status: s }));
-    const r = E.validateDSL(fsl, { ctx: ctx() });
+    const r = E.validateSeniorityList(fsl, { ctx: ctx() });
     assert.strictEqual(r.stats.total, statuses.length, 'no employee may be dropped for their status');
     const res = run(fsl, {});
     assert.strictEqual(res.allocations.length + res.unallocated.length, statuses.length);
@@ -190,7 +190,7 @@ test('DSL: employees on deputation, leave, suspension and absence stay in the li
 // ---------------------------------------------------------------------------
 
 test('preferential: a manually ticked but unverified claim carries no preference', () => {
-    const r = E.validateDSL([emp('01', 1, { claims: { widow: { claimed: true, verification: 'PENDING' } } })], { ctx: ctx() });
+    const r = E.validateSeniorityList([emp('01', 1, { claims: { widow: { claimed: true, verification: 'PENDING' } } })], { ctx: ctx() });
     assert.ok(r.warnings.some(w => w.code === 'CLAIM_NOT_VERIFIED'));
     assert.strictEqual(E.poPreferredClaim(emp('02', 2, { claims: { widow: { claimed: true, verification: 'PENDING' } } })), null);
 });
@@ -203,7 +203,7 @@ test('preferential: a verified claim is honoured', () => {
 test('preferential: PwBD below 70% certified is not preferential', () => {
     const rec = emp('01', 1, { claims: { pwbd: { claimed: true, verification: 'VERIFIED', disability_percent: 60 } } });
     assert.strictEqual(E.poPreferredClaim(rec), null);
-    const r = E.validateDSL([rec], { ctx: ctx() });
+    const r = E.validateSeniorityList([rec], { ctx: ctx() });
     assert.ok(r.errors.some(e => e.code === 'CLAIM_PERCENT_BELOW_MIN'));
 });
 
@@ -428,9 +428,84 @@ test('no mixing: allocation for one category never consumes another category\'s 
 // 8. SC/ST proportionate review
 // ---------------------------------------------------------------------------
 
-test('SC/ST: reserved posts are reviewed after allocation, not reserved up front', () => {
-    // Eluru has 1 SI post. The review runs after normal allocation and surfaces
-    // any residual shortfall rather than reserving the post up front.
+test('SC/ST: the reserved share is allotted FIRST, before the general category', () => {
+    // NTR's SC Group-II share is 6.5% of its FWS. An SC Group-II employee must
+    // take that post ahead of a more senior general-category employee, and the
+    // recorded reason must be the reserved allotment, not a seniority preference.
+    const strengths = [
+        { category_id: 'CAT_SI', cadre_id: 'DC_KRISHNA', cadre_strength: 60, fws: 60, status: 'ACTIVE' },
+        { category_id: 'CAT_SI', cadre_id: 'DC_NTR',    cadre_strength: 60, fws: 60, status: 'ACTIVE' }
+    ];
+    const approved = [{ category_id: 'CAT_SI', approved_working_strength: 120 }];
+    const c = E.poBuildContext({ categories: CATEGORIES, cadres: CADRES, strengths: strengths, approved: approved });
+
+    const fsl = [
+        emp('01', 1),                                            // senior-most, general
+        emp('02', 2, { sc_group: 'SC_2' }),                     // junior, reserved
+        emp('03', 3)
+    ];
+    const options = {
+        '01': { submitted: true, pref1: 'DC_NTR' },
+        '02': { submitted: true, pref1: 'DC_NTR' },
+        '03': { submitted: true, pref1: 'DC_NTR' }
+    };
+
+    const res = E.runAllocation({ ctx: c, fsl: fsl, options: options });
+
+    const reserved = res.allocations.find(a => a.employee_id === '02');
+    assert.strictEqual(reserved.allocation_reason, 'SC_ST_RESERVED_ALLOTMENT');
+    assert.ok(reserved.allocation_sequence < res.allocations.find(a => a.employee_id === '01').allocation_sequence,
+        'the reserved allotment must be sequenced before the more senior general-category allotment');
+
+    const scstSeqs = res.allocations.filter(a => a.allocation_reason === 'SC_ST_RESERVED_ALLOTMENT').map(a => a.allocation_sequence);
+    const generalSeqs = res.allocations.filter(a => a.allocation_reason.indexOf('SENIORITY_') === 0).map(a => a.allocation_sequence);
+    assert.ok(Math.max.apply(null, scstSeqs) < Math.min.apply(null, generalSeqs),
+        'every reserved allotment precedes every general-category allotment');
+});
+
+test('SC/ST: a reserved employee moves past a cadre whose quota is already used', () => {
+    // FWS 10 per cadre, so SC Group-II (6.5%) rounds to 1 reserved post each.
+    // Three SC Group-II employees all want Eluru first: only the first can take
+    // Eluru's single reserved post, the rest must fall through to their second
+    // preference, and the reported preference stays the employee's own.
+    const strengths = [
+        { category_id: 'CAT_SI', cadre_id: 'DC_KRISHNA', cadre_strength: 10, fws: 10, status: 'ACTIVE' },
+        { category_id: 'CAT_SI', cadre_id: 'DC_NTR',    cadre_strength: 10, fws: 10, status: 'ACTIVE' },
+        { category_id: 'CAT_SI', cadre_id: 'DC_ELURU',  cadre_strength: 10, fws: 10, status: 'ACTIVE' }
+    ];
+    const approved = [{ category_id: 'CAT_SI', approved_working_strength: 30 }];
+    const c = E.poBuildContext({ categories: CATEGORIES, cadres: CADRES, strengths: strengths, approved: approved });
+
+    const fsl = [
+        emp('01', 1, { sc_group: 'SC_2' }),
+        emp('02', 2, { sc_group: 'SC_2' }),
+        emp('03', 3, { sc_group: 'SC_2' })
+    ];
+    const options = {
+        '01': { submitted: true, pref1: 'DC_ELURU', pref2: 'DC_NTR' },
+        '02': { submitted: true, pref1: 'DC_ELURU', pref2: 'DC_NTR' },
+        '03': { submitted: true, pref1: 'DC_ELURU', pref2: 'DC_NTR' }
+    };
+
+    const res = E.runAllocation({ ctx: c, fsl: fsl, options: options });
+    const byId = {};
+    res.allocations.forEach(a => { byId[a.employee_id] = a; });
+
+    assert.strictEqual(byId['01'].cadre_id, 'DC_ELURU', 'first reserved employee takes the only Eluru reserved post');
+    assert.strictEqual(byId['01'].preference_rank, 1);
+    assert.strictEqual(byId['02'].cadre_id, 'DC_NTR', 'the next falls through to the second preference');
+    assert.strictEqual(byId['02'].preference_rank, 2, 'the reported preference is the employee\'s own, not the reordered one');
+    assert.strictEqual(byId['03'].cadre_id, 'DC_ELURU',
+        'once every quota is spent the normal preference order resumes - the quota is a preference, never a hard cap');
+
+    res.allocations.forEach(a => {
+        assert.strictEqual(a.allocation_reason, 'SC_ST_RESERVED_ALLOTMENT');
+        assert.ok(typeof a.reserved_quota === 'number', 'the cadre\'s own reserved share is recorded on every allotment');
+    });
+    assert.strictEqual(byId['01'].reserved_quota, 1, '6.5% of FWS 10 rounds to one reserved post');
+});
+
+test('SC/ST: proportional review still runs and reports on the working-strength basis', () => {
     const fsl = [];
     for (let i = 1; i <= 7; i++) fsl.push(emp(String(i).padStart(2, '0'), i));
     const res = run(fsl, {});
@@ -637,19 +712,33 @@ test('analysis: reserved groups and deputation counts are reported', () => {
 // 11. Stage machine shape
 // ---------------------------------------------------------------------------
 
-test('stages: 21 states, strictly ordered, with no gaps', () => {
-    assert.strictEqual(E.PO_STAGES.length, 21);
+test('stages: 19 states, strictly ordered, with no gaps', () => {
+    assert.strictEqual(E.PO_STAGES.length, 19);
     assert.strictEqual(E.PO_STAGES[0], 'DRAFT');
     assert.strictEqual(E.PO_STAGES[E.PO_STAGES.length - 1], 'EXERCISE_CLOSED');
     E.PO_STAGES.forEach((s, i) => assert.strictEqual(E.PO_STAGE_INDEX[s], i));
 });
 
-test('stages: the workflow order matches para 22', () => {
-    const expected = ['DRAFT', 'CADRE_CONFIGURED', 'WORKING_STRENGTH_FINALIZED', 'DSL_UPLOADED', 'DSL_VALIDATED',
-        'DSL_PUBLISHED', 'FSL_FINALIZED', 'FSL_PUBLISHED', 'OPTIONS_OPEN', 'OPTIONS_CLOSED',
-        'ALLOCATION_RUNNING', 'ALLOCATION_VALIDATED', 'FAL_GENERATED', 'FAL_APPROVED', 'FAL_PUBLISHED',
-        'OOA_GENERATED', 'OOA_ISSUED', 'OOT_GENERATED', 'OOT_ISSUED', 'JOINING_COMPLETED', 'EXERCISE_CLOSED'];
+test('stages: the DSL stages and the objection window are not part of the workflow', () => {
+    const expected = ['DRAFT', 'CADRE_CONFIGURED', 'WORKING_STRENGTH_FINALIZED',
+        'FSL_UPLOADED', 'FSL_FINALIZED', 'FSL_PUBLISHED',
+        'OPTIONS_OPEN', 'OPTIONS_CLOSED', 'ALLOCATION_RUNNING', 'ALLOCATION_VALIDATED',
+        'FAL_GENERATED', 'FAL_APPROVED', 'FAL_PUBLISHED',
+        'OOA_GENERATED', 'OOA_ISSUED', 'OOT_GENERATED', 'OOT_ISSUED',
+        'JOINING_COMPLETED', 'EXERCISE_CLOSED'];
     assert.deepStrictEqual(E.PO_STAGES, expected);
+    assert.ok(!E.PO_STAGES.some(s => s.indexOf('DSL') === 0), 'no DSL stage survives');
+});
+
+test('scope: exactly three districts, and they are not configurable', () => {
+    assert.deepStrictEqual(E.PO_DISTRICTS.map(d => d.id), ['DC_KRISHNA', 'DC_NTR', 'DC_ELURU']);
+    assert.deepStrictEqual(E.PO_DISTRICTS.map(d => d.cadre_type),
+        ['RESIDUARY_ERSTWHILE', 'NEWLY_FORMED_DISTRICT', 'CONTIGUOUS_DISTRICT']);
+    assert.deepStrictEqual(E.PO_DISTRICTS.map(d => d.order), [1, 2, 3]);
+});
+
+test('allocation tiers run PH, widow, health problems, SC/ST, then seniority', () => {
+    assert.deepStrictEqual(E.PO_ALLOC_TIERS.map(t => t.order), [1, 2, 3, 4, 5]);
 });
 
 test('reserved percentages default to the values prescribed by the order', () => {
@@ -667,4 +756,13 @@ test('preferential priorities are strictly increasing', () => {
     E.PO_PREF_CLAIMS.forEach((c, i) => {
         if (i > 0) assert.ok(c.priority > E.PO_PREF_CLAIMS[i - 1].priority);
     });
+});
+
+test('SC/ST reserved share is an allocation reason in its own right', () => {
+    assert.ok(E.PO_ALLOC_REASON_IDS.includes('SC_ST_RESERVED_ALLOTMENT'));
+});
+
+test('validateDSL is gone; the seniority-list validator replaces it', () => {
+    assert.strictEqual(E.validateDSL, undefined);
+    assert.strictEqual(typeof E.validateSeniorityList, 'function');
 });

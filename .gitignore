@@ -13,5 +13,10 @@ personnel.xlsx
 *.xlsx
 *.xls
 nul
-.smoke/
+# Browser verification drivers are tracked; the rest of .smoke/ is scratch.
+# `.smoke/*` (not `.smoke/`) is required: git cannot re-include a file whose
+# parent directory is excluded.
+.smoke/*
+!.smoke/po-flow.cjs
+!.smoke/ui-verify.cjs
 .backups/

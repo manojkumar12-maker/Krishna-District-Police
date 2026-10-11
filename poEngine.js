@@ -10,7 +10,8 @@
 //
 // OFFICIAL INPUTS  (supplied by the DLC - never invented here)
 //   categories / cadres / strengths / approvedStrength
-//   fsl      - the Final Seniority List (authoritative personnel dataset)
+//   fsl      - the Seniority List uploaded per cadre (the ONLY personnel dataset;
+//              nothing in this module is derived from the district database)
 //   options  - employee preference 1/2/3 as submitted and locked
 //   claims   - preferential-category claims with certification + verification
 //
@@ -19,16 +20,17 @@
 //   compulsory allotment, no-option allotment, SC/ST review, FAL validation
 // ============================================================================
 
-const PO_ENGINE_VERSION = '1.0.0';
+const PO_ENGINE_VERSION = '2.0.0';
 
 // --- Workflow stages (strict, non-skippable) --------------------------------
+// The DSL stage and the DSL objection period are NOT part of this workflow.
+// The Seniority List is uploaded directly by the DLC, per cadre, and IS the
+// authoritative personnel dataset. 18 states, strictly ordered.
 const PO_STAGES = [
     'DRAFT',
     'CADRE_CONFIGURED',
     'WORKING_STRENGTH_FINALIZED',
-    'DSL_UPLOADED',
-    'DSL_VALIDATED',
-    'DSL_PUBLISHED',
+    'FSL_UPLOADED',
     'FSL_FINALIZED',
     'FSL_PUBLISHED',
     'OPTIONS_OPEN',
@@ -72,8 +74,8 @@ const PO_SEG_GROUPS = [
 ];
 
 // --- Employee service status -----------------------------------------------
-// NONE of these statuses removes an employee from the DSL/FSL. An employee borne
-// on a cadre stays represented regardless of where they are physically posted.
+// NONE of these statuses removes an employee from the seniority list. An employee
+// borne on a cadre stays represented regardless of where they are physically posted.
 const PO_SERVICE_STATUS = [
     { id: 'PRESENT',          label: 'Present' },
     { id: 'DEPUTATION',       label: 'On Deputation' },
@@ -97,15 +99,39 @@ const PO_CADRE_TYPES = [
 
 const PO_CADRE_TYPE_IDS = PO_CADRE_TYPES.map(c => c.id);
 
+// --- The exercise districts (fixed scope) ------------------------------------
+// This module is scoped to exactly three districts. The list is NOT configurable:
+// the cadre id, its order and its cadre type are part of the module contract, so
+// a rank's working strength is always entered for Krishna, NTR and Eluru.
+const PO_DISTRICTS = [
+    { id: 'DC_KRISHNA', name: 'Krishna District', cadre_type: 'RESIDUARY_ERSTWHILE',   order: 1 },
+    { id: 'DC_NTR',    name: 'NTR District',     cadre_type: 'NEWLY_FORMED_DISTRICT', order: 2 },
+    { id: 'DC_ELURU',  name: 'Eluru District',   cadre_type: 'CONTIGUOUS_DISTRICT',   order: 3 }
+];
+
+const PO_DISTRICT_IDS = PO_DISTRICTS.map(d => d.id);
+
+// --- Allocation order tiers (GO REQUIREMENT) --------------------------------
+// Every employee is allotted within exactly one tier. Tiers run in this order
+// and a lower tier never takes a post that a higher tier could have filled.
+const PO_ALLOC_TIERS = [
+    { id: 'T1', label: 'Physically handicapped (PwBD / dependent disabled child)', order: 1 },
+    { id: 'T2', label: 'Widow who remained unmarried',                            order: 2 },
+    { id: 'T3', label: 'Health problems (cancer / neurosurgery / kidney / liver / heart)', order: 3 },
+    { id: 'T4', label: 'SC / ST reserved share',                                  order: 4 },
+    { id: 'T5', label: 'General category by seniority',                           order: 5 }
+];
+
 // --- Allocation reasons -----------------------------------------------------
 const PO_ALLOC_REASONS = [
-    { id: 'PREFERENTIAL_CATEGORY',         label: 'Preferential Category' },
-    { id: 'SENIORITY_FIRST_PREFERENCE',    label: 'Seniority - First Preference' },
-    { id: 'SENIORITY_SECOND_PREFERENCE',   label: 'Seniority - Second Preference' },
-    { id: 'SENIORITY_THIRD_PREFERENCE',    label: 'Seniority - Third Preference' },
-    { id: 'COMPULSORY_ALLOTMENT',         label: 'Compulsory Allotment' },
-    { id: 'NO_OPTION_ALLOTMENT',           label: 'No Option - Allotment on Shortfall' },
-    { id: 'SC_ST_ADJUSTMENT',              label: 'SC/ST Proportionate Adjustment' }
+    { id: 'PREFERENTIAL_CATEGORY',         label: 'Preferential Category',              tier: 'T1' },
+    { id: 'SC_ST_RESERVED_ALLOTMENT',      label: 'SC/ST Reserved Share',               tier: 'T4' },
+    { id: 'SENIORITY_FIRST_PREFERENCE',    label: 'Seniority - First Preference',       tier: 'T5' },
+    { id: 'SENIORITY_SECOND_PREFERENCE',   label: 'Seniority - Second Preference',      tier: 'T5' },
+    { id: 'SENIORITY_THIRD_PREFERENCE',    label: 'Seniority - Third Preference',       tier: 'T5' },
+    { id: 'COMPULSORY_ALLOTMENT',         label: 'Compulsory Allotment',               tier: null },
+    { id: 'NO_OPTION_ALLOTMENT',           label: 'No Option - Allotment on Shortfall', tier: null },
+    { id: 'SC_ST_ADJUSTMENT',              label: 'SC/ST Proportionate Adjustment',     tier: 'T4' }
 ];
 
 const PO_ALLOC_REASON_IDS = PO_ALLOC_REASONS.map(r => r.id);
@@ -163,12 +189,12 @@ const PO_ERROR_CATALOGUE = {
     FWS_EXCEEDED:              { description: 'Allotted count exceeds the Final Working Strength for a rank and cadre', recommended: 'Correct the working strength configuration or re-run allocation. Never force an allotment beyond FWS.' },
     FWS_EXHAUSTED:             { description: 'No post remains within Final Working Strength', recommended: 'Review whether the approved working strength requires amendment by the DLC.' },
     MISSING_SENIORITY:         { description: 'Seniority number is missing; it is official data and is never generated', recommended: 'Obtain the official seniority number and enter it. The record cannot be finalized without it.' },
-    DUPLICATE_SENIORITY:       { description: 'Seniority number is duplicated within the same rank/category', recommended: 'Correct the duplicate in the DSL before finalizing.' },
+    DUPLICATE_SENIORITY:       { description: 'Seniority number is duplicated within the same rank/category', recommended: 'Correct the duplicate in the uploaded seniority list before finalizing it.' },
     DUPLICATE_CFMS:            { description: 'CFMS ID is duplicated within the same rank/category', recommended: 'Verify the CFMS IDs and correct the duplicate.' },
     DUPLICATE_ACROSS_RANKS:    { description: 'The same employee appears under more than one rank/category', recommended: 'Remove the erroneous entry. Rank/category mixing is not permitted.' },
     MISSING_DOJ_CATEGORY:      { description: 'Date of joining in the category is missing', recommended: 'Enter the date of joining in the category. Appointment or promotion dates are not substituted.' },
     MISSING_SOCIAL_CATEGORY:   { description: 'Social category is missing', recommended: 'Enter the social category from the official records.' },
-    INVALID_CADRE:             { description: 'A cadre referenced by the record is not configured for the exercise', recommended: 'Configure the cadre in Step 2 or correct the record.' },
+    INVALID_CADRE:             { description: 'A cadre referenced by the record is not one of the three exercise districts', recommended: 'Correct the record. The only cadres are Krishna, NTR and Eluru.' },
     CATEGORY_MISMATCH:         { description: 'An employee was processed under a rank/category other than the one on the FSL', recommended: 'Allocation must run independently per rank. Re-run the allocation.' },
     EMPLOYEE_NOT_ALLOTTED:     { description: 'An eligible FSL employee has no allotment in the FAL', recommended: 'Confirm the shortfall position. The FAL cannot be published while an employee is unallotted.' },
     INVALID_OPTION:            { description: 'A preference names a cadre not configured for that rank/category or is repeated', recommended: 'Have the employee submit a corrected option through the audited correction process.' },
@@ -197,9 +223,10 @@ function poEngineHash() {
     const parts = [
         PO_ENGINE_VERSION,
         String(PO_PREF_CLAIMS), String(PO_SEG_GROUPS), String(PO_SEG_BASIS),
+        String(PO_DISTRICTS), String(PO_ALLOC_TIERS),
         String(PO_COMPULSORY_POLICIES), String(PO_ROUNDING_POLICIES),
         String(PO_ALLOC_REASONS), String(PO_STAGES),
-        String(poBuildContext), String(validateWorkingStrength), String(validateDSL),
+        String(poBuildContext), String(validateWorkingStrength), String(validateSeniorityList),
         String(validateFSL), String(analyseFSL), String(runAllocation),
         String(reviewSegProportion), String(validateFAL),
         String(poPreferredClaim), String(poApplicableCadres), String(poApplyRounding)
@@ -434,10 +461,12 @@ function validateWorkingStrength(input) {
 
 
 // ============================================================================
-// 2. DSL VALIDATION
+// 2. SENIORITY LIST VALIDATION
+//    The list the DLC uploads per cadre. This is the ONLY personnel dataset the
+//    module accepts; nothing is inferred from the district database.
 // ============================================================================
 
-function validateDSL(records, input) {
+function validateSeniorityList(records, input) {
     const cfg = input || {};
     const ctx = cfg.ctx || poBuildContext(cfg);
     const errors = [];
@@ -660,48 +689,34 @@ function validateDSL(records, input) {
 
 // ============================================================================
 // 3. FSL VALIDATION
-//    The FSL is the authoritative personnel dataset. It may not invent or
+//    The uploaded Seniority List, locked as the FSL. It may not invent or
 //    reconstruct seniority from row order.
 // ============================================================================
 
 function validateFSL(fsl, input) {
     const cfg = input || {};
-    const base = validateDSL(fsl, cfg);
+    const base = validateSeniorityList(fsl, cfg);
     const errors = base.errors.slice();
     const warnings = base.warnings.slice();
 
     const recs = fsl || [];
-    const dsl = cfg.dsl || [];
-    const dslById = poIndexBy(dsl, 'employee_id');
     const seen = {};
 
     recs.forEach(r => {
         if (!r.fsl_version) {
-            poIssue(errors, 'ERROR', 'FSL_VERSION_MISSING', 'FSL record ' + (r.name || r.employee_id) + ' carries no FSL version stamp', { employee_id: r.employee_id });
+            poIssue(errors, 'ERROR', 'FSL_VERSION_MISSING', 'Seniority list record ' + (r.name || r.employee_id) + ' carries no version stamp', { employee_id: r.employee_id });
         }
         if (seen[r.employee_id]) {
-            poIssue(errors, 'ERROR', 'FSL_DUPLICATE_EMPLOYEE', 'Employee ' + (r.name || r.employee_id) + ' appears more than once in the FSL', { employee_id: r.employee_id });
+            poIssue(errors, 'ERROR', 'FSL_DUPLICATE_EMPLOYEE', 'Employee ' + (r.name || r.employee_id) + ' appears more than once in the seniority list', { employee_id: r.employee_id });
         }
         seen[r.employee_id] = true;
-    });
-
-    // An employee dropped between DSL and FSL must be explainable, not silent.
-    recs.forEach(r => {
-        if (dsl.length && !dslById[r.employee_id]) {
-            poIssue(warnings, 'WARNING', 'FSL_NOT_IN_DSL', 'FSL contains ' + (r.name || r.employee_id) + ' who is not in the DSL', { employee_id: r.employee_id });
-        }
-    });
-    dsl.forEach(r => {
-        if (recs.length && !seen[r.employee_id]) {
-            poIssue(warnings, 'WARNING', 'DSL_DROPPED_FROM_FSL', (r.name || r.employee_id) + ' is in the DSL but not in the FSL', { employee_id: r.employee_id });
-        }
     });
 
     return {
         valid: errors.length === 0,
         errors: errors,
         warnings: warnings,
-        stats: Object.assign({}, base.stats, { dropped_from_fsl: dsl.filter(r => !seen[r.employee_id]).length })
+        stats: base.stats
     };
 }
 
@@ -861,11 +876,34 @@ function runAllocation(input) {
         allotted[key(s.category_id, s.cadre_id)] = 0;
     });
 
+    // -- reserved-share ledger (GO REQUIREMENT) ------------------------------
+    // T4: each cadre's SC/ST share is that cadre's OWN working strength times
+    // the prescribed percentage, on the fixed GO basis. The quota is a target
+    // the reserved tier is allotted against first; it is never a hard cap, and
+    // an unmet quota is reported as a shortfall rather than forced.
+    const reservedQuota = {};   // 'cat|cadre|group' -> posts reserved
+    const reservedUsed = {};    // 'cat|cadre|group' -> posts consumed by the tier
+    ctx.segGroups.forEach(g => {
+        ctx.strengths.forEach(s => {
+            if (s.status === 'INACTIVE') return;
+            reservedQuota[key(s.category_id, s.cadre_id) + '|' + g.id] =
+                poApplyRounding(((poInt(s.fws) || 0) * g.percent) / 100, roundingPolicy);
+        });
+    });
+
+    function reservedRemaining(catId, cadreId, groupId) {
+        if (!groupId) return 0;
+        const kk = key(catId, cadreId) + '|' + groupId;
+        return Math.max(0, (reservedQuota[kk] || 0) - (reservedUsed[kk] || 0));
+    }
+
     let sequence = 0;
 
     /**
      * Try to give `rec` a post.
      *  - preferences 1 -> 2 -> 3, restricted to cadres configured for the category
+     *  - a reserved-category employee first takes a cadre that still has its own
+     *    SC/ST share unconsumed (T4), then falls back to the normal order
      *  - then compulsory / no-option allotment, ONLY where a shortfall exists
      * Never allocates beyond FWS and never invents a cadre.
      */
@@ -873,25 +911,41 @@ function runAllocation(input) {
         const catId = rec.category_id;
         const applicable = poApplicableCadres(catId, ctx.strengths, ctx.cadres);
         const prefs = [rec._pref1, rec._pref2, rec._pref3].filter(Boolean);
-        const considered = [];
+        const considered = prefs.slice();
 
-        for (let i = 0; i < prefs.length; i++) {
-            const cid = prefs[i];
-            considered.push(cid);
+        // T4 ordering: cadres whose reserved share for this employee's group is
+        // still unconsumed are considered before the rest. The employee's own
+        // preference order is preserved within each group of candidates.
+        let candidates = prefs;
+        if (opts.reserved && rec.sc_group) {
+            const withQuota = [], withoutQuota = [];
+            prefs.forEach(cid => {
+                (reservedRemaining(catId, cid, rec.sc_group) > 0 ? withQuota : withoutQuota).push(cid);
+            });
+            candidates = withQuota.concat(withoutQuota);
+        }
+
+        for (let i = 0; i < candidates.length; i++) {
+            const cid = candidates[i];
             if (applicable.indexOf(cid) === -1) continue;
             if (getVac(catId, cid) <= 0) continue;
 
-            const prefRank = i + 1;
+            const prefRank = prefs.indexOf(cid) + 1;
             const reason = opts.preferential
                 ? 'PREFERENTIAL_CATEGORY'
-                : 'SENIORITY_' + ['FIRST', 'SECOND', 'THIRD'][prefRank - 1] + '_PREFERENCE';
+                : opts.reserved
+                    ? 'SC_ST_RESERVED_ALLOTMENT'
+                    : 'SENIORITY_' + ['FIRST', 'SECOND', 'THIRD'][prefRank - 1] + '_PREFERENCE';
             commit(rec, cid, reason, {
                 preference_selected: cid,
                 preference_rank: prefRank,
-                preference_considered: considered.slice(),
+                preference_considered: considered,
                 reason_detail: opts.preferential
                     ? 'Preferential category #' + rec._prefClaim.priority + ' (' + rec._prefClaim.label + '); allotted to preference ' + prefRank
-                    : 'FSL seniority ' + rec.seniority_no + '; allotted to preference ' + prefRank
+                    : opts.reserved
+                        ? 'Reserved share (' + rec.sc_group + ') allotted first, by FSL seniority ' + rec.seniority_no +
+                          '; allotted to preference ' + prefRank
+                        : 'FSL seniority ' + rec.seniority_no + '; allotted to preference ' + prefRank
             });
             return true;
         }
@@ -971,6 +1025,10 @@ function runAllocation(input) {
         if (before <= 0) return;                       // absolute guard: never over-allocate
         vacancy[k] = before - 1;
         allotted[k] = (allotted[k] || 0) + 1;
+        if (rec.sc_group) {
+            const rk = k + '|' + rec.sc_group;
+            reservedUsed[rk] = (reservedUsed[rk] || 0) + 1;
+        }
         sequence += 1;
         allocations.push(Object.assign({
             run_id: runId,
@@ -1000,6 +1058,8 @@ function runAllocation(input) {
             option_pref2: rec._pref2 || '',
             option_pref3: rec._pref3 || '',
             sc_group: rec.sc_group || '',
+            reserved_quota: rec.sc_group ? (reservedQuota[k + '|' + rec.sc_group] || 0) : 0,
+            reserved_used_after: rec.sc_group ? (reservedUsed[k + '|' + rec.sc_group] || 0) : 0,
             vacancy_before: before,
             vacancy_after: vacancy[k],
             sc_st_adjustment: null,
@@ -1010,13 +1070,14 @@ function runAllocation(input) {
         }, extra || {}));
     }
 
-    // -- PHASE 1..6, strictly per category (categories are never mixed) ------
+    // -- T1..T5, strictly per category (categories are never mixed) ----------
     ctx.categoryOrder.forEach(catId => {
         const catRecs = fsl.filter(r => r.category_id === catId);
 
         // annotate
         catRecs.forEach(r => {
             r._prefClaim = poPreferredClaim(r);
+            r._isReserved = !!r.sc_group;
             const o = options[r.employee_id];
             r._pref1 = (o && o.submitted) ? (o.pref1 || '') : '';
             r._pref2 = (o && o.submitted) ? (o.pref2 || '') : '';
@@ -1024,21 +1085,30 @@ function runAllocation(input) {
             r._hasOption = !!(r._pref1 || r._pref2 || r._pref3);
         });
 
-        // PHASE 1 - preferential categories, priority order then FSL seniority
+        // T1-T3 - physically handicapped, widow, then health problems, in the
+        // priority order of PO_PREF_CLAIMS, FSL seniority breaking a tie.
         const prefRecs = catRecs.filter(r => r._prefClaim).sort((a, b) =>
             a._prefClaim.priority - b._prefClaim.priority || poSeniorityCompare(a, b));
-        prefRecs.forEach(r => place(r, { preferential: true, noOption: false }));
+        prefRecs.forEach(r => place(r, { preferential: true, reserved: false, noOption: false }));
 
-        // PHASE 2..5 - remaining employees by FSL seniority, then compulsory
-        const rest = catRecs.filter(r => !r._prefClaim && r._hasOption).sort(poSeniorityCompare);
-        rest.forEach(r => place(r, { preferential: false, noOption: false }));
+        // T4 - SC/ST reserved share, allotted BEFORE the general category
+        const scstRecs = catRecs.filter(r => !r._prefClaim && r._isReserved && r._hasOption).sort(poSeniorityCompare);
+        scstRecs.forEach(r => place(r, { preferential: false, reserved: true, noOption: false }));
 
-        // PHASE 6 - employees who submitted no option, processed at the end
-        const noOpt = catRecs.filter(r => !r._prefClaim && !r._hasOption).sort(poSeniorityCompare);
-        noOpt.forEach(r => place(r, { preferential: false, noOption: true }));
+        // T5 - general category by FSL seniority, then compulsory
+        const rest = catRecs.filter(r => !r._prefClaim && !r._isReserved && r._hasOption).sort(poSeniorityCompare);
+        rest.forEach(r => place(r, { preferential: false, reserved: false, noOption: false }));
+
+        // employees who submitted no option, processed at the end. Reserved
+        // category first so they still take any reserved share left unconsumed.
+        const noOpt = catRecs.filter(r => !r._prefClaim && !r._hasOption).sort((a, b) =>
+            (b._isReserved ? 1 : 0) - (a._isReserved ? 1 : 0) || poSeniorityCompare(a, b));
+        noOpt.forEach(r => place(r, { preferential: false, reserved: r._isReserved, noOption: true }));
     });
 
-    // -- PHASE 7 - SC/ST proportionate review on the WORKING STRENGTH basis ---
+    // -- VERIFICATION - SC/ST proportionate review on the WORKING STRENGTH ----
+    // The reserved tier has already been allotted first, so this pass confirms the
+    // proportions were met and only substitutes where a genuine deficit remains.
     const scstReview = doScst
         ? reviewSegProportion({
             ctx, allocations, fsl,
@@ -1059,7 +1129,7 @@ function runAllocation(input) {
         adj.replaced_allocation_sequence = replaced ? replaced.allocation_sequence : null;
     });
 
-    // -- PHASE 8 - final result + ABSOLUTE over-allocation check --------------
+    // -- FINAL - result + ABSOLUTE over-allocation check ---------------------
     const breach = [];
     ctx.strengths.forEach(s => {
         if (s.status === 'INACTIVE') return;
@@ -1137,16 +1207,17 @@ function runAllocation(input) {
 
 
 /**
- * SC/ST proportionate review.
+ * SC/ST proportionate review (verification pass).
  *
- * Order of operations (para 11): preferential allocation -> seniority+preference
- * allocation -> SC/ST proportional review -> adjustment for shortfall -> final FAL.
- * Reserved posts are therefore NOT carved out before normal allocation.
+ * The reserved share is allotted FIRST, in the T4 tier, before the general
+ * category is processed by seniority. This review therefore normally confirms
+ * the prescribed proportions have already been met.
  *
- * Adjustment is vacancy-neutral: one reserved-category employee moves into the
- * short cadre and one non-reserved, non-preferential employee of the SAME
- * category moves out. Categories are never mixed and FWS is never breached.
- * Every swap records employee_inserted / employee_replaced / reason.
+ * Where a cadre is nonetheless short - because too few reserved-category
+ * employees of that category exist, or their options did not point at that
+ * cadre - the adjustment substitutes the LAST ALLOTTED GENERAL CATEGORY
+ * employee with the relevant SC/ST employee. Categories are never mixed,
+ * FWS is never breached, and every swap records who went in and who came out.
  */
 
 /**
@@ -1560,15 +1631,39 @@ function validateFAL(result, input) {
         }
     });
 
-    // preferential processed before the rest
+    // ---- TIER ORDERING: preferential -> SC/ST reserved -> general ------------
+    // T1..T3 (preferential) must be sequenced before T4 (SC/ST reserved), which
+    // must be sequenced before T5 (general seniority), within every category.
+    const TIER_OF = {
+        PREFERENTIAL_CATEGORY: 1,
+        SC_ST_RESERVED_ALLOTMENT: 2,
+        SC_ST_ADJUSTMENT: 2,
+        SENIORITY_FIRST_PREFERENCE: 3,
+        SENIORITY_SECOND_PREFERENCE: 3,
+        SENIORITY_THIRD_PREFERENCE: 3,
+        COMPULSORY_ALLOTMENT: 4,
+        NO_OPTION_ALLOTMENT: 5
+    };
     ctx.categoryOrder.forEach(catId => {
-        const inCat = allocations.filter(a => a.category_id === catId);
-        const prefSeqs = inCat.filter(a => a.allocation_reason === 'PREFERENTIAL_CATEGORY').map(a => a.allocation_sequence);
-        const restSeqs = inCat.filter(a => a.allocation_reason !== 'PREFERENTIAL_CATEGORY').map(a => a.allocation_sequence);
-        if (prefSeqs.length && restSeqs.length && Math.max.apply(null, prefSeqs) > Math.min.apply(null, restSeqs)) {
-            warnings.push({ code: 'PREFERENTIAL_ORDER', message: 'In ' + (ctx.categoryById[catId] || {}).name + ' at least one preferential allotment was sequenced after a non-preferential allotment' });
-        } else if (prefSeqs.length) {
-            passed.push('Preferential processed first in ' + (ctx.categoryById[catId] || {}).name);
+        const inCat = allocations.filter(a => a.category_id === catId && TIER_OF[a.allocation_reason])
+            .sort((a, b) => a.allocation_sequence - b.allocation_sequence);
+        let prevTier = 0, prev = null;
+        inCat.forEach(a => {
+            const t = TIER_OF[a.allocation_reason];
+            if (t < prevTier && prev) {
+                warnings.push({
+                    code: 'TIER_ORDER',
+                    message: 'In ' + (ctx.categoryById[catId] || {}).name + ', ' + (a.name || a.employee_id) +
+                        ' was allotted at tier ' + t + ' after a tier ' + prevTier + ' allotment (' +
+                        (prev.name || prev.employee_id) + ')'
+                });
+            }
+            if (t > prevTier) { prevTier = t; prev = a; }
+            else if (t === prevTier) prev = a;
+        });
+        if (inCat.length) {
+            passed.push('Tier order verified in ' + (ctx.categoryById[catId] || {}).name +
+                ': preferential, then SC/ST reserved share, then general seniority');
         }
     });
 
@@ -1684,7 +1779,13 @@ function validateFAL(result, input) {
         blocking: blocking,
         warnings: warnings,
         passed: passed,
-        counts: { allocated: allocations.length, compulsory: compulsory.length, no_option: noOption.length, preferential: allocations.filter(a => a.allocation_reason === 'PREFERENTIAL_CATEGORY').length }
+        counts: {
+            allocated: allocations.length,
+            compulsory: compulsory.length,
+            no_option: noOption.length,
+            preferential: allocations.filter(a => a.allocation_reason === 'PREFERENTIAL_CATEGORY').length,
+            reserved: allocations.filter(a => a.allocation_reason === 'SC_ST_RESERVED_ALLOTMENT').length
+        }
     };
 }
 
@@ -1702,6 +1803,9 @@ const POEngine = {
     PO_SEG_GROUPS: PO_SEG_GROUPS,
     PO_SERVICE_STATUS: PO_SERVICE_STATUS,
     PO_CADRE_TYPES: PO_CADRE_TYPES,
+    PO_DISTRICTS: PO_DISTRICTS,
+    PO_DISTRICT_IDS: PO_DISTRICT_IDS,
+    PO_ALLOC_TIERS: PO_ALLOC_TIERS,
     PO_ALLOC_REASONS: PO_ALLOC_REASONS,
     PO_ALLOC_REASON_IDS: PO_ALLOC_REASON_IDS,
     PO_SERVICE_STATUS_IDS: PO_SERVICE_STATUS_IDS,
@@ -1726,7 +1830,7 @@ const POEngine = {
     poSeniorityCompare: poSeniorityCompare,
     poJuniorFirst: poJuniorFirst,
     validateWorkingStrength: validateWorkingStrength,
-    validateDSL: validateDSL,
+    validateSeniorityList: validateSeniorityList,
     validateFSL: validateFSL,
     analyseFSL: analyseFSL,
     runAllocation: runAllocation,
