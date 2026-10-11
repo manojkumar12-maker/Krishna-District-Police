@@ -22,7 +22,7 @@ Static HTML/CSS/JS           Hono.js + JOSE JWT           5GB free tier
 | `deputation.js` | 19 deputation units management | `renderDepTiles()`, `showDepUnit()`, `updateDepConsolidated()` |
 | `export.js` | CSV/PDF export utilities | `exportCSV()`, `exportAllPDF()`, **`downloadFile()`** |
 | `auditlog.js` | Search/filter, Excel import, audit log viewer | `applySearchFilter()`, `handleExcelUpload()`, `loadAuditLogs()` |
-| `presidentialOrder.js` | PO-2025 module (see below) | Full 5-stage allocation workflow |
+| `presidentialOrder.js` | PO-2025 module (see below) | Seven-step workflow: ranks/cadres, working strength, seniority list, options, allocation, FAL, orders |
 | `styles.css` | All CSS | `.page`, `.card`, `.sub-tile`, `.rank-tile`, `.po-*` classes |
 
 ### Backend (`workers/`)
@@ -99,7 +99,7 @@ It writes screenshots to `.smoke/shots/` and exits non-zero on regression.
 ```
 config.js → api.js → auth.js → dashboard.js → personnel.js → deputation.js
 → policeStation.js → export.js → auditlog.js
-→ poEngine.js → poCore.js → presidentialOrder.js → app.js
+→ poEngine.js → poRepository.js → poCore.js → presidentialOrder.js → app.js
 ```
 Each file depends on the previous. `presidentialOrder.js` overrides `dashboard.js`'s `showPage()`.
 
@@ -108,11 +108,12 @@ The three Presidential Order files are strictly layered and must not be reordere
 | File | Layer | May depend on | Must never |
 |------|-------|---------------|------------|
 | `poEngine.js` | pure logic | nothing | touch `DOM`, `localStorage`, `window` state or `userRole` |
+| `poRepository.js` | persistence boundary | nothing | contain allocation logic |
 | `poCore.js` | state + official inputs | `poEngine.js` | render anything |
-| `presidentialOrder.js` | rendering + handlers | both above | mutate official data directly (must go through `poCore.js`) |
+| `presidentialOrder.js` | rendering + handlers | all above | mutate official data directly (must go through `poCore.js`) |
 
-`poEngine.js` is the only file that may be `require()`d from Node, which is what
-makes the allocation engine unit-testable outside a browser.
+`poEngine.js` and `poRepository.js` are the only files that may be `require()`d from
+Node, which is what makes the allocation engine unit-testable outside a browser.
 
 ---
 
@@ -160,68 +161,63 @@ Every rule below is labelled with its authority. **Do not mix these three.**
 G.O.Ms.No.129; final procedural/legal validation is subject to the competent
 authority/DLC. `POEngine.PO_GO_REFERENCE.disclaimer` is rendered in the module header.
 
+### The module is deliberately minimal
+
+Three things that used to exist **do not exist any more**. Do not reintroduce them
+without an explicit instruction:
+
+| Removed | Consequence |
+|---------|-------------|
+| The DSL stage and the DSL objection period | The Seniority List the DLC uploads **is** the authoritative personnel dataset. There is no draft list and no 5-day/7-day clock. |
+| The audit trail (`poAudit`, `poState.audit`, the viewer modal) | There is no event log. **Versions, the procedural event register and `poState.history` are what remain** — see below. |
+| The DLC dashboard (`poDashboard`, `poShowDashboard`) | Removed entirely. |
+
+The cadre set is **fixed** to Krishna, NTR and Eluru (`POEngine.PO_DISTRICTS`). It
+cannot be added to, renamed or retyped; `poLoad()` restores exactly that set even if
+storage says otherwise, and there is no `poSaveCadre` / `poRemoveCadre`.
+
 ### Architecture
 
 | File | Layer | Role |
 |------|-------|------|
 | `poEngine.js` | pure | Validators + allocation engine + SC/ST review. No DOM, no storage, no network, no knowledge of persistence. |
-| `poRepository.js` | persistence boundary | `PORepository` contract + `LocalStoragePORepository` + `BackendPORepository`. |
-| `poCore.js` | state | Official inputs, persistence, versioning, audit trail, procedural events, policy, 21-state machine. |
-| `presidentialOrder.js` | UI | Nine stage-based screens, modals, print. Never writes `poState` directly. |
+| `poRepository.js` | persistence boundary | `PORepository` contract (9 methods) + `LocalStoragePORepository` + `BackendPORepository`. |
+| `poCore.js` | state | Working strength, the seniority list, options, versioning, the procedural event register, the 19-state machine. |
+| `presidentialOrder.js` | UI | Seven stage-based screens, modals, print. Never writes `poState` directly. |
 
 `poEngine.js` and `poRepository.js` are Node-`require`-able; that is what makes the
 engine unit-testable and lets the same engine run server-side later.
 
-### Current storage limitation (PART 24)
+### Current storage limitation
 
 PO exercise data lives in `localStorage.po_state` in the browser that produced it.
 The module header says **"LOCAL DEVELOPMENT MODE - NOT AN AUTHORITATIVE OFFICIAL
 RECORD"**. It is not a shared DLC register, has no central backup and is lost with
 browser data. `BackendPORepository` is declared but **not wired**: switching to it
-requires the D1 schema and append-only audit endpoints first.
+requires the D1 schema and append-only endpoints first.
 
-### Workflow
-
-### Stage-based UI — eight steps
+### Stage-based UI — seven steps
 
 | # | Step | Key | Renderer |
 |---|------|-----|----------|
-| 1 | Ranks & Cadres — exercise, DLC composition, rank master, cadre master, allocation policy | `ranks` | `renderStepRanks` |
-| 2 | Working Strength | `strength` | `renderStepStrength` |
-| 3 | DSL | `dsl` | `renderStepDsl` |
-| 4 | FSL | `fsl` | `renderStepFsl` |
-| 5 | Option Filling | `options` | `renderStepOptions` |
-| 6 | Allocation | `allocation` | `renderStepAllocation` |
-| 7 | FAL | `fal` | `renderStepFal` |
-| 8 | OOA / OOT | `orders` | `renderStepOrders` |
+| 1 | Ranks & Cadres — exercise, DLC composition, rank master, the fixed three districts, allocation policy | `ranks` | `renderStepRanks` |
+| 2 | Working Strength — FWS entered for Krishna, NTR and Eluru, reconciled against the approved strength | `strength` | `renderStepStrength` |
+| 3 | Seniority List — uploaded per cadre, validated, locked, published, analysed | `seniority` | `renderStepSeniority` |
+| 4 | Option Filling | `options` | `renderStepOptions` |
+| 5 | Allocation | `allocation` | `renderStepAllocation` |
+| 6 | FAL | `fal` | `renderStepFal` |
+| 7 | OOA / OOT | `orders` | `renderStepOrders` |
 
-There is deliberately **no separate DLC Configuration screen**. The exercise reference
-data and the DLC composition are rendered by `renderExerciseCards()` inside step 1,
-because those values (cadre scope, competent authority, exercise identity) are needed by
-the rank/cadre masters and appear on every downstream document. The underlying fields are
-unchanged and still gate the `DRAFT` stage. Step 1 therefore opens at `DRAFT` and stays
-open through `CADRE_CONFIGURED`.
+There is deliberately **no separate DLC Configuration screen**: `renderExerciseCards()`
+renders inside step 1, because the same values (cadre scope, competent authority,
+exercise identity) are needed by the rank master and appear on every downstream
+document. The underlying fields still gate the `DRAFT` stage.
 
-The state machine is the workflow; the **procedural event register** (`poState.events`)
-is the statutory process behind it. `PO_EVENT_KEYS` is a whitelist, so only these
-can be recorded, and every write is audited:
-
-```
-dsl_published_at      objection_opened_at     objection_closed_at    objections_disposed_at
-fsl_created_at        fsl_finalized_at        fsl_published_at
-options_opened_at     options_closed_at
-allocation_started_at allocation_completed_at
-fal_generated_at      fal_approved_at         fal_published_at
-ooa_generated_at      ooa_issued_at
-oot_generated_at      oot_issued_at           joining_deadline
-```
-
-### State machine (21 states, no skipping)
+### State machine (19 states, no skipping)
 
 ```
 DRAFT → CADRE_CONFIGURED → WORKING_STRENGTH_FINALIZED
-→ DSL_UPLOADED → DSL_VALIDATED → DSL_PUBLISHED
-→ FSL_FINALIZED → FSL_PUBLISHED
+→ FSL_UPLOADED → FSL_FINALIZED → FSL_PUBLISHED
 → OPTIONS_OPEN → OPTIONS_CLOSED
 → ALLOCATION_RUNNING → ALLOCATION_VALIDATED
 → FAL_GENERATED → FAL_APPROVED → FAL_PUBLISHED
@@ -230,62 +226,73 @@ DRAFT → CADRE_CONFIGURED → WORKING_STRENGTH_FINALIZED
 ```
 
 - `poAdvance(reason)` is the only mover; there is deliberately no stage setter.
-- Guard semantics: leaving a stage asserts that stage's own work is done.
-- `CADRE_CONFIGURED` requires strength data *entered*; reconciliation is enforced
-  when leaving `WORKING_STRENGTH_FINALIZED`, so the screen needed to fix a
-  mismatch is always reachable.
-- `DSLFINALIZED` (i.e. `FSL_FINALIZED`) additionally requires: the objection period
-  complete, every objection disposed, and the calculated FSL eligibility date reached.
+- **Guard semantics: leaving a stage asserts that stage's own work is done.** This is
+  the single most important rule when editing the guards, and it fixes the ORDER of
+  actions in the UI:
+  - lock the Seniority List **while at** `FSL_UPLOADED`, then advance;
+  - publish it **while at** `FSL_FINALIZED`, then advance;
+  - close and lock the options **while at** `OPTIONS_OPEN`, then advance;
+  - generate → approve → publish the FAL in that order, advancing between each;
+  - generate → approve → issue each OOA and OOT in that order.
+- `CADRE_CONFIGURED` requires strength data *entered*; reconciliation is enforced when
+  leaving `WORKING_STRENGTH_FINALIZED`, so the screen needed to fix a mismatch is
+  always reachable.
+- `FSL_UPLOADED` requires a non-empty, valid list. `FSL_FINALIZED` requires it locked.
+- `FAL_APPROVED` requires the FAL **published** (not merely approved).
 - `JOINING_COMPLETED` refuses closure while a mandatory joining record is unresolved
-  unless `poOverrideJoiningClosure(reason, authority)` has been used (audited).
+  unless `poOverrideJoiningClosure(reason, authority)` has been used.
 
-### DSL objection workflow (`GO REQUIREMENT`)
+### The Seniority List (per cadre)
 
-| Value | Meaning |
-|-------|---------|
-| `PO_OBJECTION_DAYS = 5` | period for objections after DSL publication |
-| `PO_FSL_ELIGIBILITY_DAYS = 7` | FSL is published on the 7th day from DSL publication |
+The DLC uploads **one file per cadre**. `poImportSeniorityRows(rows, true)` replaces
+only the rows of the cadre the file names and leaves the other two untouched; a file
+naming none of Krishna / NTR / Eluru is **refused**, never silently appended.
 
-Both are **calculated from the actual `dsl_published_at` timestamp**; no date is
-hard-coded and neither can be bypassed. Each objection is a full record:
-`objection_id, employee_id, exercise_id, submitted_at, objection_type,
-objection_text, supporting_documents, status, disposed_at, disposal_reason,
-disposed_by, previous_value, revised_value`. Statuses are
-`PENDING | UNDER_REVIEW | ACCEPTED | PARTIALLY_ACCEPTED | REJECTED | DISPOSED`.
+`poFinalizeSeniorityList()` locks the list, and refuses if it does not validate. After
+that the list can only change through `poReviseFsl(reason)`, which voids the options
+and creates a new version while retaining the superseded list in `poState.history.fsl`.
 
-| Function | Purpose |
-|----------|---------|
-| `poRaiseObjection(empId, type, text, docs)` | only while the window is open |
-| `poDisposeObjection(id, status, reason, revised)` | reason mandatory; retains the previous value |
-| `poCloseObjectionWindow(reason)` | only when nothing is pending |
-| `poObjectionProcessingComplete()` | gates FSL finalization |
+CSV/Excel header matching is punctuation-insensitive, so `Date of Joining in Category`,
+`date_of_joining_in_category` and `dateofjoiningincategory` all map to one field.
 
-### FSL timeline
+### Allocation tiers (`GO REQUIREMENT`)
 
-`poTimeline()` returns DSL publication, objection closing date, FSL eligibility date,
-and `fsl_created_at / fsl_finalized_at / fsl_published_at`. `poPublishFsl()` refuses
-publication before the eligibility date.
+Every employee is allotted within exactly one tier, and tiers run in this order. A
+lower tier never takes a post a higher tier could have filled. Tiers are processed
+**strictly per category**, so sequence numbers interleave across ranks.
 
-### Allocation phases
+| Tier | Rule |
+|------|------|
+| T1 | Physically handicapped — PwBD certified ≥70% and employees with a dependent disabled child |
+| T2 | Widow who remained unmarried |
+| T3 | Health problems — cancer, major neurosurgery, kidney, liver, open-heart |
+| T4 | **SC/ST reserved share** — each cadre's own reserved posts are allotted first, by FSL seniority |
+| T5 | General category by FSL seniority |
 
-Runs strictly **per category**, in configured order, so ranks are never mixed.
+Then, within each category:
 
-| Phase | Rule | Authority |
-|-------|------|-----------|
-| 1 | Verified preferential claims, priority order then FSL seniority | `GO REQUIREMENT` |
-| 2-4 | Remaining employees by FSL seniority; preference 1 → 2 → 3, restricted to that category's cadres | `GO REQUIREMENT` |
-| 5 | Compulsory allotment, **only where a shortfall exists** | `GO REQUIREMENT` (permission) + `DLC POLICY DECISION` (which post) |
-| 6 | No-option employees, last, only onto shortfall posts | `GO REQUIREMENT` |
-| 7 | SC/ST proportionate review and substitution | `GO REQUIREMENT` + `SYSTEM IMPLEMENTATION RULE` |
-| 8 | Final result + absolute over-allocation check | `SYSTEM IMPLEMENTATION RULE` |
+| Step | Rule | Authority |
+|------|------|-----------|
+| compulsory | to an available clear post, **only where a shortfall exists** | `GO REQUIREMENT` (permission) + `DLC POLICY DECISION` (which post) |
+| no-option | employees with no option, processed last, onto shortfall posts only | `GO REQUIREMENT` |
+| verify | SC/ST proportions confirmed; absolute over-allocation check fails the run | `SYSTEM IMPLEMENTATION RULE` |
+
+**T4 detail.** `runAllocation` builds a reserved ledger where each cadre's quota is its
+own FWS times the prescribed percentage. A reserved employee considers cadres whose
+quota is still unconsumed *before* the rest of their preference order; the reported
+`preference_rank` stays the employee's own preference number, not the reordered
+position. The quota is a **preference, never a hard cap** — once every quota is spent,
+normal preference order resumes and `reserved_used_after` may exceed `reserved_quota`.
+Allocation reason: `SC_ST_RESERVED_ALLOTMENT`.
 
 Determinism: every sort is total (`seniority_no`, then `employee_id`), so identical
-inputs and policy always produce byte-identical output (TEST 23, PART 18).
+inputs and policy always produce byte-identical output.
 
 ### Compulsory allocation policy (`DLC CONFIGURATION / POLICY DECISION`)
 
-The order permits allotment to any available clear post within working strength. It
-does **not** prescribe which post, so `PO_COMPULSORY_POLICIES` is a DLC choice:
+The order permits compulsory allotment to any available clear post within working
+strength. It does **not** prescribe which post, so `PO_COMPULSORY_POLICIES` is a DLC
+choice:
 
 ```
 LARGEST_REMAINING_VACANCY   (default) largest remaining vacancy, cadre order breaks ties
@@ -302,9 +309,10 @@ and are frozen by `poFreezePolicy()`. After that `poSetPolicy()` returns `false`
 `1 pwbd (>=70%)  2 disabled_children  3 widow  4 cancer  5 neurosurgery
 6 kidney  7 liver  8 heart`
 
-Only `verification === 'VERIFIED'` enters Phase 1 (`poClaimVerified()`). A claim must
+Only `verification === 'VERIFIED'` enters T1–T3 (`poClaimVerified()`). A claim must
 carry category, claimed flag, document attached, verification status, verified by,
 verified date and a document reference. Ties inside a priority band use FSL seniority.
+A manually ticked flag is never sufficient on its own.
 
 ### SC/ST calculation
 
@@ -319,28 +327,27 @@ There is **no** user-facing `ALLOCATED` vs `FWS` choice: the basis is fixed. The
 requirement is evaluated **per local cadre** on that cadre's own working strength,
 because the order distributes the proportion *among local cadres*.
 
-For each deficit the engine:
-
-1. identifies an eligible SC/ST employee of the same category sitting in a cadre that is **over** its own prescribed share (never a preferential employee);
-2. identifies the **LAST ALLOTTED GENERAL CATEGORY** employee in the affected cadre, resolved by the highest `allocation_sequence` — *not* by seniority;
-3. substitutes, which is vacancy-neutral: the cadre's headcount, the category and FWS are unchanged;
-4. records `inserted_employee, replaced_employee, cadre, category, old_allocation, new_allocation, sc_group, allocation_sequence, reason`;
-5. repeats until the requirement is met or no valid substitution exists.
-
-If none exists the shortfall is **never forced**. It becomes
-`SC_ST_SHORTFALL_EXCEPTION` with a stable `exception_key` (`category|group|cadre`),
-`critical: true` when the category total itself cannot meet the proportion. A critical
-shortfall **blocks** FAL publication until `poAcceptScstException(reason, authority)`
-records the DLC's acknowledgement; the computed figures are never altered.
+Because the reserved share is already allotted first in T4, the post-allocation review
+normally confirms the proportions rather than having to substitute. Where a cadre is
+still short the engine substitutes, which is vacancy-neutral. If no valid substitution
+exists the shortfall is **never forced**: it becomes `SC_ST_SHORTFALL_EXCEPTION` with a
+stable `exception_key`, `critical: true` when the category total itself cannot meet the
+proportion. A critical shortfall **blocks** FAL publication until
+`poAcceptScstException(reason, authority)` records the DLC's acknowledgement; the
+computed figures are never altered.
 
 ### Option workflow (`GO REQUIREMENT`)
 
-Default window **5 days** from FSL publication (`PO_DEFAULT_OPTION_DAYS`). Only
-cadres configured for the employee's rank/category may be selected; duplicates and
-out-of-set cadres are rejected. An option is **immutable** once submitted. A correction
-goes through `poCorrectOption(empId, p1, p2, p3, reason, authority)`, which requires
-a reason and an authority, creates a **new version**, retains the superseded version in
-`poState.optionHistory`, and is refused once allocation has begun.
+Default window **5 days** from publication of the Seniority List
+(`PO_DEFAULT_OPTION_DAYS`). Only cadres configured for the employee's rank/category may
+be selected; duplicates and out-of-set cadres are rejected. An option is **immutable**
+once submitted. A correction goes through `poCorrectOption(empId, p1, p2, p3, reason,
+authority)`, which requires a reason and an authority, creates a **new version**,
+retains the superseded version in `poState.optionHistory`, and is refused once
+allocation has begun.
+
+Every refusal returns `{ ok: false, errors: [message] }` — not just a toast — so callers
+can surface the reason.
 
 ### FAL
 
@@ -350,9 +357,12 @@ a reason and an authority, creates a **new version**, retains the superseded ver
 `INVALID_OPTION`, `INVALID_PREFERENTIAL_CLAIM`, `INVALID_COMPULSORY`,
 `INVALID_NO_OPTION`, `ALLOCATION_OUTSIDE_EXERCISE`, `SC_ST_SHORTFALL_EXCEPTION`.
 
+It also warns (`TIER_ORDER`) when an allotment is sequenced against its tier, and
+records a `passed` line confirming the tier order per category.
+
 No edit function exists. After `FAL_APPROVED` normal editing is prevented; after
-`FAL_PUBLISHED` the FAL is immutable and `poReviseFal(reason)` is the only route,
-which retains the previous FAL rows and run in `poState.history`.
+`FAL_PUBLISHED` the FAL is immutable and `poReviseFal(reason)` is the only route, which
+retains the previous FAL rows and run in `poState.history`.
 
 ### OOA / OOT / joining
 
@@ -363,64 +373,60 @@ which retains the previous FAL rows and run in `poState.history`.
 - **Joining** statuses `PENDING | JOINED | OVERDUE | EXCEPTION`. `OVERDUE` is derived by
   `poRefreshJoiningStatus()`. Only `JOINED` and `EXCEPTION` resolve a record.
 
-### Audit and versioning
+### Versioning, events and retained history (no audit trail)
 
-`poAudit(action, {prev, next, reason, employee_id, version})` appends to
-`poState.audit` (capped at 3000). Versions: `fws, dsl, fsl, options, claims, policy,
-fal, ooa, oot` plus the engine's own `engine_version` and `engine_hash`.
+Because there is no audit trail, these three are the record:
 
-### Official data is never silently destroyed
+| Store | Purpose |
+|-------|---------|
+| `poState.versions` (`fws, fsl, options, fal, ooa, oot, claims, policy`) | Which version of each input a run was computed against. |
+| `poState.events` (`poState.events`, whitelisted by `PO_EVENT_KEYS`) | The procedural process: `seniority_uploaded_at`, `fsl_created_at`, `fsl_finalized_at`, `fsl_published_at`, `options_opened_at`, `options_closed_at`, `allocation_started_at`, `allocation_completed_at`, `fal_*`, `ooa_*`, `oot_*`, `joining_deadline`. |
+| `poState.history` (`fsl, allocationRun, fal, ooa, oot, options`) | Every superseded official record. Appends only, never delete-and-recreate. |
 
-`poState.history` retains superseded FSL, allocation runs, FAL rows, OOA, OOT and
-options. Revisions append; they never delete-and-recreate.
-
-### Allocation run snapshot (reproducibility)
-
-`poRunSnapshot()` captures exercise id, run id, engine version and hash, FWS/FSL/
-options/claims/policy versions, the SC/ST configuration, both policy decisions,
-start time, user, input counts and an `input_fingerprint` (FNV-1a over the FSL,
-options and FWS). Re-running the same inputs with the same policy reproduces the
-same output exactly.
+`poRunSnapshot(run)` additionally captures engine version and hash, both policy
+decisions, the SC/ST configuration, input counts and an `input_fingerprint` (FNV-1a over
+the FSL, options and FWS).
 
 ### Simulation vs confirmation
 
 `poSimulateAllocation()` writes only `poState.simulation`; the run, FAL, OOA and OOT
-are untouched. `poConfirmAllocation()` requires FSL locked and published, options
-locked and working strength reconciled, freezes the policy, stamps the snapshot and
-records `allocation_started_at` / `allocation_completed_at`. A failed over-allocation
-check discards the run whole and audits `ALLOCATION_FAILED` — no correction is applied.
+are untouched. `poConfirmAllocation()` requires the list locked and published, options
+locked and working strength reconciled; freezes the policy and stamps the snapshot. A
+failed over-allocation check discards the run whole — no correction is applied.
 
-### Error reporting (PART 29)
+### Error reporting
 
 `POEngine.PO_ERROR_CATALOGUE` gives every critical code a description and a
 recommended action. `poIssueDetail(issue)` normalises any engine issue to
-`{code, description, employee, rank, cadre, source_data, recommended_action}`, which
-is what the Step 7 exception table renders. Official data is never silently corrected.
+`{code, description, employee, rank, cadre, source_data, recommended_action}`, which is
+what the Step 5 exception table renders. Official data is never silently corrected.
 
 ### Verification
 
 ```bash
-node --test tests/po-engine.test.cjs        # 53 engine tests (originals + fixes)
+node --test tests/po-engine.test.cjs        # 59 engine tests
 node --test tests/po-conformance.test.cjs   # 44 GO conformance tests (TEST 1..34)
-node --test tests/po-workflow.test.cjs      # 15 workflow tests (TEST 35..40 + PART 24)
-node .smoke/po-flow.cjs                     # all 21 states in a real browser
+node --test tests/po-workflow.test.cjs      # 21 workflow + shape tests
+node .smoke/po-flow.cjs                     # all 19 states in a real browser
 node .smoke/ui-verify.cjs                   # full-app regression + screenshots
 ```
 
 `tests/po-workflow.test.cjs` evaluates the real `poCore.js` behind a minimal
-localStorage shim, so it drives production code rather than a re-implementation.
+localStorage shim, so it drives production code rather than a re-implementation. It
+also asserts the **absences**: that the objection subsystem, the audit mechanism and
+the DSL do not exist.
 
 ### Backend migration plan
 
-1. Add D1 tables for exercise, dsl, fsl, options, allocation_run, fal, ooa, oot,
-   objection, audit_event, each **append-only** with a version column.
+1. Add D1 tables for exercise, seniority_list, fsl, options, allocation_run, fal, ooa,
+   oot, audit_event, each **append-only** with a version column.
 2. Add Worker endpoints matching `PORepositoryContract.methods`, all idempotent via
    a fingerprint header, and refusing to overwrite an existing version.
 3. Instantiate `BackendPORepository(API_BASE_URL, { token })` in `poCore.js` instead
    of `LocalStoragePORepository`.
 4. Nothing in `poEngine.js` changes: it has no knowledge of persistence.
-5. Flip `authoritative` to `true` only once the server enforces immutability and
-   audit, and only then remove the development-mode banner.
+5. Flip `authoritative` to `true` only once the server enforces immutability, and
+   only then remove the development-mode banner.
 
 ### Assumptions requiring DLC confirmation
 
@@ -431,80 +437,8 @@ localStorage shim, so it drives production code rather than a re-implementation.
 4. Whether the prefer-existing-cadre switch is used at all.
 5. Whether a cadre-level SC/ST imbalance is reportable when the category total is
    satisfied (currently AMBER) or critical (currently BLOCKING).
-6. The objection and FSL-eligibility periods as supplied (5 and 7 days).
-7. The reserved-group percentages are taken as given from the order.
-### Key PO Functions
-
-Engine (`poEngine.js`):
-
-| Function | Purpose |
-|----------|---------|
-| `poBuildContext(input)` | Normalise categories/cadres/strengths into the engine context |
-| `validateWorkingStrength(input)` | FWS reconciliation gate |
-| `validateDSL(records, input)` | DSL validation (para 7) |
-| `validateFSL(fsl, input)` | FSL validation, incl. version stamp and DSL↔FSL reconciliation |
-| `analyseFSL(fsl, input)` | FSL analysis dashboard metrics A-N |
-| `runAllocation(input)` | The allocation engine (mode `SIMULATION` or `CONFIRMED`) |
-| `reviewSegProportion(args)` | SC/ST review + last-allotted substitution, working-strength basis |
-| `validateFAL(result, input)` | FAL GREEN/RED/AMBER validation, 13 blocking checks |
-| `poPreferredClaim(rec)` | Highest-priority **verified** claim, or `null` |
-| `poEngineHash()` | FNV-1a fingerprint of the behaviour-defining engine code |
-| `poApplyRounding(v, policy)` | The `scst_rounding_policy` implementation |
-| `poClaimVerified(rec, id)` | Claim + `verification === 'VERIFIED'` |
-
-Repository (`poRepository.js`):
-
-| Item | Purpose |
-|------|---------|
-| `PORepositoryContract` | The 10-method persistence contract |
-| `LocalStoragePORepository` | Current implementation, `authoritative: false` |
-| `BackendPORepository` | Declared for the Cloudflare Worker, **not wired** |
-
-State (`poCore.js`):
-
-| Function | Purpose |
-|----------|---------|
-| `poLoad()` / `poSave()` | Persist `po_state`; discard stale schema versions |
-| `poStageGuard()` | Preconditions to leave the current stage |
-| `poAdvance(reason)` | The only state mover — one stage forward, audited |
-| `poAudit(action, opts)` | Append an audit event |
-| `poRecordEvent(key, at, opts)` | Procedural event register, whitelisted keys |
-| `poTimeline()` | Calculated DSL / objection / FSL / option / allocation timeline |
-| `poRaiseObjection` / `poDisposeObjection` / `poCloseObjectionWindow` | Objection subsystem |
-| `poPublishFsl()` | FSL publication with the eligibility-date gate |
-| `poCorrectOption(...)` | Audited, versioned option correction |
-| `poSetPolicy` / `poFreezePolicy` / `poPolicyFrozen` | DLC policy and its freeze |
-| `poRunSnapshot(run)` / `poInputFingerprint()` | Reproducibility record |
-| `poAcceptScstException(reason, authority)` | Acknowledge an unavoidable SC/ST shortfall |
-| `poErrorDetail(code, ctx)` / `poIssueDetail(issue)` | PART 29 error shape |
-| `poRefreshJoiningStatus` / `poUnresolvedJoining` / `poOverrideJoiningClosure` | Joining tracking and closure gate |
-| `poSaveCadre` / `poRemoveCadre` | Cadre master |
-| `poSaveCategory` / `poRemoveCategory` / `poSuggestCategoriesFromRankMaster` | Rank master |
-| `poSetStrength` / `poSetApprovedStrength` | Cadre strength, FWS, approved WS |
-| `poImportDslRows` / `poRowToDslRecord` / `poDownloadDslTemplate` | DSL entry (seniority copied verbatim) |
-| `poRunDslValidation` | Validate the DSL and cache the report |
-| `poBuildFslFromDsl` / `poReviseFsl` / `poFsAnalysis` | FSL lifecycle |
-| `poSaveOption` / `poCloseOptions` / `poOptionDeadline` | Option lifecycle and window |
-| `poSimulateAllocation` / `poConfirmAllocation` / `poFALValidation` | Allocation |
-| `poGenerateFal` / `poApproveFal` / `poPublishFal` / `poReviseFal` | FAL lifecycle |
-| `poGenerateOoa` / `poApproveOoa` / `poIssueOoa` / `poReviseOoa` | OOA lifecycle |
-| `poGenerateOot` / `poIssueOot` / `poRecordJoining` | OOT and joining |
-| `poDashboard()` | DLC dashboard counters, timeline, policy, objections, joining |
-| `poResetAll()` | Guarded, audited full reset |
-
-UI (`presidentialOrder.js`):
-
-| Function | Purpose |
-|----------|---------|
-| `showPOPage()` / `renderPOModule()` | Module shell + step rail + versions |
-| `renderCurrentPOTab()` | Render the open step, then the workflow control |
-| `renderExerciseCards()` | Exercise + DLC composition card (rendered inside step 1) |
-| `renderStepRanks` … `renderStepOrders` | The eight step screens |
-| `poAdvanceStage()` | Advance the workflow, prompting for a reason |
-| `poExplainAllocation(employeeId)` | Full "why this cadre?" explanation |
-| `poShowAudit()` / `poShowDashboard()` | Audit trail and DLC dashboard modals |
-
----
+6. The reserved-group percentages are taken as given from the order.
+7. That the reserved share is a preference and not a hard cap (see T4 above).
 
 ## Deployment
 
@@ -585,7 +519,7 @@ Options if this must be closed (none implemented):
 2. **`poEngine.js` must stay pure** - no DOM, no `localStorage`, no `userRole`. That is
    what lets `tests/po-engine.test.cjs` run it under Node.
 3. **Never mutate `poState` fields from the UI** - go through a `poCore.js` function so
-   the change is permission-checked, versioned and audited.
+   the change is permission-checked and versioned.
 4. **PO data is in localStorage** - Clearing browser data resets the PO module
 5. **PO version mismatch discards all data** - Bump `PO_DATA_VERSION` when changing schema
 6. **`escapeQuotes()`** is defined in `policeStation.js`, used by `presidentialOrder.js`
@@ -596,25 +530,35 @@ Options if this must be closed (none implemented):
    non-alphanumerics and lowercases, so `Date of Joining in Category`,
    `date_of_joining_in_category` and `dateofjoiningincategory` all match
 10. **`poTable(headers, rows)` takes an array of HTML row strings** - not an array of
-    objects, and not a pre-joined string
+     objects, and not a pre-joined string
 11. **Cache-Control is 10 minutes** on GitHub Pages - wait or hard-refresh after push
 12. **`allPersonnel` is loaded once** by `loadAllData()`, then cached in memory
 13. **The PO module does NOT read `allPersonnel`.** Personnel data enters only through the
-    DSL/FSL, so the district database can never silently become official seniority data
+     uploaded Seniority List, so the district database can never silently become
+     official seniority data
 14. **`poStepState()` derives the open step from `poStage()`.** To make a step reachable
-    for testing, set `poState.stage` — never add a direct stage setter
+     for testing, set `poState.stage` — never add a direct stage setter
 15. **SC/ST basis is not configurable.** `PO_SEG_BASIS` is fixed to
-    `FINAL_WORKING_STRENGTH` because the order refers to working strength. Do not
-    reintroduce an `ALLOCATED` vs `FWS` toggle.
+     `FINAL_WORKING_STRENGTH` because the order refers to working strength. Do not
+     reintroduce an `ALLOCATED` vs `FWS` toggle.
 16. **Joining statuses are `PENDING | JOINED | OVERDUE | EXCEPTION`.** The old
-    `REPORTED` value is gone; `poRefreshJoiningStatus()` derives `OVERDUE`.
+     `REPORTED` value is gone; `poRefreshJoiningStatus()` derives `OVERDUE`.
 17. **A critical SC/ST shortfall blocks the FAL** until
-    `poAcceptScstException(reason, authority)`. Never resolve it by inventing a
-    reserved-category employee.
-18. **`poBuildFslFromDsl()` is gated three ways**: the option window must not have
-    opened, every objection must be disposed, and `poFslEligible()` must be true.
+     `poAcceptScstException(reason, authority)`. Never resolve it by inventing a
+     reserved-category employee.
+18. **Leaving a stage asserts that stage's work is done.** Do the work *before* you
+     advance: lock the seniority list at `FSL_UPLOADED`, close the options at
+     `OPTIONS_OPEN`, publish the FAL at `FAL_APPROVED`. `FAL_APPROVED` requires
+     status `PUBLISHED`, not `APPROVED`.
 19. **`poNormalizeSegGroup()` strips dots, dashes, spaces and underscores** so
-    `SC_3`, `SC-3`, `SC 3` and `SC3` all parse. Keep the underscore in that class.
+     `SC_3`, `SC-3`, `SC 3` and `SC3` all parse. Keep the underscore in that class.
 20. **Persistence goes through `poRepository`.** `poSave()` writes via the repository,
-    falling back to `localStorage.setItem` only if it is absent.
+     falling back to `localStorage.setItem` only if it is absent.
+21. **The cadre set is fixed** to Krishna / NTR / Eluru. There is no `poSaveCadre`,
+     `poRemoveCadre` or cadre master, and `poLoad()` restores the fixed set regardless
+     of what storage contains.
+22. **There is no DSL, no objection subsystem and no audit trail.** Do not
+     reintroduce `poAudit`, `poDashboard`, `poRaiseObjection` or `poBuildFslFromDsl`.
+     The upload **is** the Seniority List; versions, `poState.events` and
+     `poState.history` are the record.
 
