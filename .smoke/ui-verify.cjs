@@ -6,7 +6,10 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const CHROME = 'C:/Users/a2dpo/AppData/Local/ms-playwright/chromium-1243/chrome-win64/chrome.exe';
+// Chromium is located by playwright-core itself, so this driver runs on any
+// machine. Set CHROME_PATH to pin a specific build, e.g.
+//   CHROME_PATH=/path/to/chrome.exe node .smoke/ui-verify.cjs
+const CHROME = process.env.CHROME_PATH || undefined;
 const ROOT = path.resolve(__dirname, '..');
 const SHOTS = path.join(__dirname, 'shots');
 fs.mkdirSync(SHOTS, { recursive: true });
@@ -108,13 +111,24 @@ const server = http.createServer((req, res) => {
     fs.createReadStream(file).pipe(res);
 });
 
+// Launch with a diagnosable failure: a missing browser is the single most likely
+// reason this driver fails on a fresh machine.
+async function launchChromium() {
+    try {
+        return await chromium.launch({ executablePath: CHROME, headless: true });
+    } catch (e) {
+        if (CHROME) throw new Error('CHROME_PATH could not be launched: ' + e.message);
+        throw new Error('No Chromium found. Run "npm install" then "npx playwright install chromium", or set CHROME_PATH.\n' + e.message);
+    }
+}
+
 (async () => {
     await new Promise(r => server.listen(0, '127.0.0.1', r));
     const port = server.address().port;
     const SITE = `http://127.0.0.1:${port}/index.html`;
     console.log('serving', SITE);
 
-    const browser = await chromium.launch({ executablePath: CHROME, headless: true });
+    const browser = await launchChromium();
     const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
 
     const errs = [], failed = [];

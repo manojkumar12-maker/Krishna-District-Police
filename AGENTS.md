@@ -88,7 +88,7 @@ Do not "fix" them to be visible in CSS — the app would show before login.
 full class coverage, and that every drill-down still works:
 
 ```bash
-node .smoke/ui-verify.cjs
+npm run verify          # or: node .smoke/ui-verify.cjs
 ```
 
 It writes screenshots to `.smoke/shots/` and exits non-zero on regression.
@@ -404,12 +404,19 @@ what the Step 5 exception table renders. Official data is never silently correct
 ### Verification
 
 ```bash
-node --test tests/po-engine.test.cjs        # 59 engine tests
-node --test tests/po-conformance.test.cjs   # 44 GO conformance tests (TEST 1..34)
-node --test tests/po-workflow.test.cjs      # 21 workflow + shape tests
-node .smoke/po-flow.cjs                     # all 19 states in a real browser
-node .smoke/ui-verify.cjs                   # full-app regression + screenshots
+npm install                 # once — devDependencies only (playwright-core)
+npx playwright install chromium
+
+npm test                    # 124 unit tests: 59 engine + 44 conformance + 21 workflow
+npm run test:browser        # .smoke/po-flow.cjs — all 19 states in a real browser
+npm run verify              # .smoke/ui-verify.cjs — full-app regression + screenshots
 ```
+
+Individual suites: `npm run test:engine`, `test:conformance`, `test:workflow`.
+
+The browser drivers locate Chromium through `playwright-core` itself, so no machine-specific
+path is baked in. Set `CHROME_PATH` to pin a specific build; a bad value fails with an
+explicit `CHROME_PATH could not be launched` message rather than a launch stack trace.
 
 `tests/po-workflow.test.cjs` evaluates the real `poCore.js` behind a minimal
 localStorage shim, so it drives production code rather than a re-implementation. It

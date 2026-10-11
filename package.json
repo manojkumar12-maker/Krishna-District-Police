@@ -1,0 +1,17 @@
+{
+  "name": "krishna-district-police",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Krishna District Police records portal and the Presidential Order-2025 (G.O.Ms.No.129) module.",
+  "scripts": {
+    "test": "node --test tests/po-engine.test.cjs tests/po-conformance.test.cjs tests/po-workflow.test.cjs",
+    "test:engine": "node --test tests/po-engine.test.cjs",
+    "test:conformance": "node --test tests/po-conformance.test.cjs",
+    "test:workflow": "node --test tests/po-workflow.test.cjs",
+    "test:browser": "node .smoke/po-flow.cjs",
+    "verify": "node .smoke/ui-verify.cjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.63.0"
+  }
+}
