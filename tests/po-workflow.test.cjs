@@ -55,6 +55,7 @@ const CORE_EXPORTS = [
     'poAcceptScstException', 'poExceptionReport', 'poErrorDetail', 'poIssueDetail',
     'poEvent', 'poRecordEvent', 'poIsAdmin', 'poUser', 'poNow',
     'poVersionLabel', 'poBumpVersion', 'poSetStageDirect', 'poCompetentAuthority',
+    'poDlcSeats', 'poDlc', 'poSeatLabel', 'poFreshDlc', 'PO_DLC_ROLES',
     'poResetAll', 'PO_STEPS',
     'PO_JOINING_STATUS', 'PO_DEFAULT_OPTION_DAYS', 'PO_DEFAULT_JOINING_DAYS',
     'PO_STORAGE_MODE_NOTICE', 'PO_DEFAULT_SEG_PERCENTS', 'PO_EVENT_KEYS',
@@ -104,8 +105,8 @@ function freshState() {
     ex.exercise_id = 'PO2026-KRN-001';
     ex.department = 'Police';
     ex.erstwhile_district = 'Krishna';
-    ex.chairman_name = 'Collector';
-    ex.member_convener_name = 'SP Krishna';
+    // Only designations are official inputs; the nine seats are prescribed.
+    C.poDlc().forEach((d, i) => { d.designation = i === 0 ? 'District Collector' : (i === 3 ? 'SP, Krishna' : 'Seat ' + (i + 1)); });
     C.poSaveExercise();
     return C.poState;
 }
@@ -200,6 +201,59 @@ test('shape: the objection subsystem and the audit trail are gone', () => {
     ['dsl_published_at', 'objection_opened_at', 'objections_disposed_at'].forEach(k => {
         assert.strictEqual(C.PO_EVENT_KEYS.indexOf(k), -1, k + ' is no longer a procedural event');
     });
+});
+
+test('DLC: the composition is the nine prescribed seats, designations only', () => {
+    freshState();
+    assert.deepStrictEqual(C.PO_DLC_ROLES.map(r => r.role),
+        ['Chairman', 'Co-Chairman', 'Member-Convener', 'Co-Convener', 'Member', 'Co-Member']);
+    assert.deepStrictEqual(C.PO_DLC_ROLES.map(r => r.count), [1, 2, 1, 2, 1, 2]);
+
+    const seats = C.poDlcSeats();
+    assert.strictEqual(seats.length, 9);
+    assert.deepStrictEqual(seats.map(s => C.poSeatLabel(s)), [
+        'Chairman', 'Co-Chairman 1', 'Co-Chairman 2',
+        'Member-Convener', 'Co-Convener 1', 'Co-Convener 2',
+        'Member', 'Co-Member 1', 'Co-Member 2'
+    ]);
+
+    // No name is ever held for any seat.
+    const st = C.poState;
+    assert.strictEqual(st.exercise.dlc.length, 9);
+    Object.keys(st.exercise).forEach(k => {
+        assert.ok(!/chairman_name|member_convener_name|co_convener_name|co_chairman_name|dro_name|other_members/.test(k),
+            'the name field ' + k + ' must no longer exist');
+    });
+    st.exercise.dlc.forEach((d, i) => {
+        assert.deepStrictEqual(Object.keys(d).sort(), ['designation', 'n', 'role']);
+        assert.strictEqual(d.role, seats[i].role);
+        assert.ok(!d.name, 'seat ' + i + ' must not carry a name');
+    });
+});
+
+test('DLC: the two presiding seats must carry a designation before DRAFT clears', () => {
+    freshState();
+    const st = C.poState;
+    st.exercise.dlc[0].designation = '';
+    let g = C.poStageGuard();
+    assert.strictEqual(g.ok, false);
+    assert.ok(g.errors.some(e => /Chairman designation/.test(e)), g.errors.join(' | '));
+
+    st.exercise.dlc[0].designation = 'District Collector';
+    const convener = st.exercise.dlc.filter(d => d.role === 'Member-Convener')[0];
+    convener.designation = '';
+    g = C.poStageGuard();
+    assert.strictEqual(g.ok, false);
+    assert.ok(g.errors.some(e => /Member-Convener designation/.test(e)), g.errors.join(' | '));
+
+    convener.designation = 'Superintendent of Police';
+    g = C.poStageGuard();
+    assert.strictEqual(g.ok, true, g.errors.join(' | '));
+
+    // The competent authority printed on orders is the Chairman's designation.
+    assert.strictEqual(C.poCompetentAuthority(), 'District Collector');
+    C.poDlc()[0].designation = '';
+    assert.strictEqual(C.poCompetentAuthority(), 'DLC Chairman', 'falls back when unset');
 });
 
 // ===========================================================================

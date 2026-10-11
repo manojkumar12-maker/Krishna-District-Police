@@ -296,7 +296,7 @@ async function launchChromium() {
         poStepCheck.labels.join('|'));
     ok('PO workflow state machine has 19 stages', poStepCheck.stageCount === 19, String(poStepCheck.stageCount));
     ok('PO starts at DRAFT', poStepCheck.stage === 'DRAFT', String(poStepCheck.stage));
-    ok('PO_DATA_VERSION is 11', poStepCheck.version === 11, String(poStepCheck.version));
+    ok('PO_DATA_VERSION is 12', poStepCheck.version === 12, String(poStepCheck.version));
     ok('allocation engine version stamped', /^[0-9.]+$/.test(poStepCheck.engine), String(poStepCheck.engine));
     poStepCheck.steps.forEach((s, i) => {
         ok('PO step ' + (i + 1) + ' ' + s.key + ' renders', s.len > 200 && s.hasAdvance, s.len + 'b advance=' + s.hasAdvance);
@@ -310,17 +310,28 @@ async function launchChromium() {
         const html = document.getElementById('poTabContent').innerHTML;
         return {
             strayUndefined: /(^|>)\s*undefined\s*(<|$)/.test(html),
+            // Escaping a cell through poTd turns intended markup into visible
+            // text, which no existing check would catch.
+            strayTags: (html.match(/&gt;|&lt;\/?(strong|em|span|b)\b/i) || []).length,
             hasExercise: html.indexOf('Step 1a') !== -1,
             hasDlc: html.indexOf('Step 1b') !== -1,
             hasRank: html.indexOf('Step 1c') !== -1,
             hasCadre: html.indexOf('Step 1d') !== -1,
+            // The nine prescribed seats, and no name input anywhere in step 1.
+            seatCount: document.querySelectorAll('#poDlc_0, #poDlc_1, #poDlc_2, #poDlc_3, #poDlc_4, #poDlc_5, #poDlc_6, #poDlc_7, #poDlc_8').length,
+            nameInputs: (html.match(/-\s*name<\/label>/gi) || []).length,
+            droGone: html.indexOf('District Revenue Officer') === -1,
         };
     });
     ok('no stray "undefined" text node in the module', poMarkup.strayUndefined === false);
+    ok('no escaped markup showing as literal text', poMarkup.strayTags === 0, String(poMarkup.strayTags));
     ok('step 1 renders the exercise card', poMarkup.hasExercise === true);
     ok('step 1 renders the DLC composition card', poMarkup.hasDlc === true);
     ok('step 1 renders the rank master', poMarkup.hasRank === true);
     ok('step 1 renders the fixed cadre set', poMarkup.hasCadre === true);
+    ok('DLC composition has all nine prescribed seats', poMarkup.seatCount === 9, String(poMarkup.seatCount));
+    ok('no name field anywhere in the DLC composition', poMarkup.nameInputs === 0, String(poMarkup.nameInputs));
+    ok('the DRO row is gone', poMarkup.droGone === true);
     ok('only the current step is OPEN', poStepCheck.states.filter(x => x === 'OPEN').length === 1,
         poStepCheck.states.join(','));
 

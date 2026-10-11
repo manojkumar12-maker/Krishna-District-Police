@@ -17,7 +17,7 @@
 // option.
 // ============================================================================
 
-const PO_DATA_VERSION = 11;
+const PO_DATA_VERSION = 12;
 const PO_STORAGE_KEY = 'po_state';
 
 // --- Statutory periods (GO REQUIREMENT) -------------------------------------
@@ -86,12 +86,9 @@ function poFreshState() {
             erstwhile_district: '',
             new_districts: '',
             cadre_scope: 'District and Contiguous District Cadre',
-            chairman_name: '', chairman_designation: '',
-            co_chairman_name: '', co_chairman_designation: '',
-            member_convener_name: '', member_convener_designation: '',
-            co_convener_name: '', co_convener_designation: '',
-            dro_name: '', dro_designation: '',
-            other_members: '',
+            // The nine prescribed seats and their designations. Members sign the
+            // generated lists, so no name is ever recorded here.
+            dlc: poFreshDlc(),
             status: 'DRAFT',
             created_at: null,
             modified_at: null
@@ -256,6 +253,50 @@ function poSessionId() {
 // list, options and working strength they were computed against.
 // ============================================================================
 
+// ============================================================================
+// DLC composition (para 3)
+//
+// The Committee's roles and their prescribed strengths are fixed by the order.
+// Only the DESIGNATION of each seat is an official input: the members sign the
+// generated lists, so their names are never keyed into the system and the
+// module never holds them.
+// ============================================================================
+
+const PO_DLC_ROLES = [
+    { role: 'Chairman',        count: 1, desc: 'District Collector of the erstwhile district' },
+    { role: 'Co-Chairman',     count: 2, desc: 'District Collector(s) of the newly formed district(s)' },
+    { role: 'Member-Convener', count: 1, desc: 'District-level Departmental Head, erstwhile district' },
+    { role: 'Co-Convener',     count: 2, desc: 'District-level Departmental Head(s) of the newly formed district(s)' },
+    { role: 'Member',          count: 1, desc: 'Member nominated by the Committee' },
+    { role: 'Co-Member',       count: 2, desc: 'Co-Member(s) from the newly formed district(s)' }
+];
+
+/** The nine seats, in order. `n` disambiguates repeated roles for labelling. */
+function poDlcSeats() {
+    const out = [];
+    PO_DLC_ROLES.forEach(r => {
+        for (let i = 0; i < r.count; i++) {
+            out.push({ role: r.role, n: i + 1, of: r.count, desc: r.desc, key: r.role.toLowerCase().replace(/[^a-z]+/g, '_') + (r.count > 1 ? '_' + (i + 1) : '') });
+        }
+    });
+    return out;
+}
+
+function poSeatLabel(seat) {
+    return seat.of > 1 ? seat.role + ' ' + seat.n : seat.role;
+}
+
+/** A blank composition in the prescribed order. */
+function poFreshDlc() {
+    return poDlcSeats().map(s => ({ role: s.role, n: s.n, designation: '' }));
+}
+
+/** Read the composition off state, tolerating state saved before it existed. */
+function poDlc() {
+    if (!poState.exercise.dlc || !poState.exercise.dlc.length) poState.exercise.dlc = poFreshDlc();
+    return poState.exercise.dlc;
+}
+
 function poBumpVersion(key) {
     if (!poState.versions) poState.versions = { fws: 0, fsl: 0, options: 0, fal: 0, ooa: 0, oot: 0, claims: 0, policy: 0 };
     poState.versions[key] = (poState.versions[key] || 0) + 1;
@@ -322,8 +363,16 @@ function poStageGuard() {
             if (!ex.exercise_id.trim()) g.errors.push('Exercise ID is required.');
             if (!ex.department.trim()) g.errors.push('Department is required.');
             if (!ex.erstwhile_district.trim()) g.errors.push('Erstwhile District is required.');
-            if (!ex.chairman_name.trim()) g.errors.push('DLC Chairman (District Collector of the erstwhile district) is required.');
-            if (!ex.member_convener_name.trim()) g.errors.push('Member-Convener (Departmental Head, erstwhile district) is required.');
+            // Names are never held; the two presiding seats must at least carry a
+            // designation, because it is what appears on the generated lists.
+            const dlc = poDlc();
+            if (!dlc[0] || !String(dlc[0].designation || '').trim()) {
+                g.errors.push('Chairman designation (District Collector of the erstwhile district) is required.');
+            }
+            const convener = dlc.filter(d => d.role === 'Member-Convener')[0];
+            if (!convener || !String(convener.designation || '').trim()) {
+                g.errors.push('Member-Convener designation (Departmental Head, erstwhile district) is required.');
+            }
             if (ex.cadre_scope !== 'District and Contiguous District Cadre') {
                 g.errors.push('Cadre scope must be "District and Contiguous District Cadre" for district-level processing.');
             }
@@ -1548,7 +1597,8 @@ function poReviseFal(reason) {
 // ============================================================================
 
 function poCompetentAuthority() {
-    return (poState.exercise.chairman_name ? poState.exercise.chairman_designation : '') || 'DLC Chairman';
+    const chairman = poDlc()[0];
+    return (chairman && String(chairman.designation || '').trim()) || 'DLC Chairman';
 }
 
 function poGenerateOoa() {

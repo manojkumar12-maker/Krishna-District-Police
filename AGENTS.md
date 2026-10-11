@@ -213,6 +213,31 @@ renders inside step 1, because the same values (cadre scope, competent authority
 exercise identity) are needed by the rank master and appear on every downstream
 document. The underlying fields still gate the `DRAFT` stage.
 
+### DLC composition — designations only
+
+The composition is fixed by the order and lives in `PO_DLC_ROLES`. `poDlcSeats()`
+expands it to the nine seats; `poDlc()` returns them off `poState.exercise.dlc`.
+
+| Seat | Count |
+|------|-------|
+| Chairman | 1 |
+| Co-Chairman | 2 |
+| Member-Convener | 1 |
+| Co-Convener | 2 |
+| Member | 1 |
+| Co-Member | 2 |
+
+**No name is ever held for any seat.** Members sign the generated lists, so the only
+official input per seat is its **designation** — that is what appears on the FAL, OOA
+and OOT. There is no `chairman_name`, no `other_members` and no DRO seat; do not
+reintroduce them. `DRAFT` requires the Chairman and Member-Convener designations, and
+`poCompetentAuthority()` returns the Chairman's designation (falling back to
+`"DLC Chairman"`).
+
+Each seat object is exactly `{ role, n, designation }`. Write designations back
+against the **prescribed seat order**, never against the saved array order, so a
+re-ordered array cannot shift a designation onto the wrong seat.
+
 ### State machine (19 states, no skipping)
 
 ```
@@ -568,4 +593,12 @@ Options if this must be closed (none implemented):
      reintroduce `poAudit`, `poDashboard`, `poRaiseObjection` or `poBuildFslFromDsl`.
      The upload **is** the Seniority List; versions, `poState.events` and
      `poState.history` are the record.
+23. **The DLC composition holds no names.** Only the nine prescribed designations.
+     Members sign the generated lists. Adding a name field, a DRO seat or an
+     "other members" free-text box all reintroduce personal data the module must
+     not keep.
+24. **`poTd()` escapes its argument.** Passing markup into it renders the tags as
+     visible text. Build the cell directly (`'<td><strong>' + escapeHtml(x) +
+     '</strong></td>'`) when it needs inline formatting — `.smoke/ui-verify.cjs`
+     fails on escaped markup appearing as literal text.
 

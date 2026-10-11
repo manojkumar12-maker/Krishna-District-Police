@@ -239,13 +239,10 @@ function renderExerciseCards() {
     const ex = poState.exercise;
     const editable = poIsAdmin() && poStageIdx(poStage()) <= poStageIdx('CADRE_CONFIGURED');
 
-    const composition = [
-        { role: 'Chairman', desc: 'District Collector of the erstwhile district', who: ex.chairman_name, desig: ex.chairman_designation },
-        { role: 'Co-Chairman', desc: 'District Collector(s) of newly formed district(s)', who: ex.co_chairman_name, desig: ex.co_chairman_designation },
-        { role: 'Member-Convener', desc: 'District-level Departmental Head, erstwhile district', who: ex.member_convener_name, desig: ex.member_convener_designation },
-        { role: 'Co-Convener', desc: 'District-level Departmental Head(s) of newly formed district(s)', who: ex.co_convener_name, desig: ex.co_convener_designation },
-        { role: 'Members', desc: 'District Revenue Officer(s)', who: ex.dro_name, desig: ex.dro_designation }
-    ];
+    // Nine prescribed seats. Only the designation is an official input - the
+    // members sign the generated lists, so no name is ever captured.
+    const seats = poDlcSeats();
+    const dlc = poDlc();
 
     const field = (label, id, val, opts) => {
         const o = opts || {};
@@ -273,24 +270,24 @@ function renderExerciseCards() {
             (editable ? '<div class="po-actions"><button class="btn btn-primary" onclick="poSaveExerciseFromForm()">Save exercise</button></div>' : ''),
             '') +
         poCard('Step 1b &middot; DLC composition as prescribed by ' + escapeHtml(POEngine.PO_GO_REFERENCE.order),
-            poTable(['Role', 'Prescribed holder', 'Name', 'Designation'],
-                composition.map(c => '<tr><td><strong>' + escapeHtml(c.role) + '</strong></td><td>' + escapeHtml(c.desc) + '</td>' + poTd(c.who) + poTd(c.desig) + '</tr>')) +
+            '<p class="po-hint">The composition is fixed by the order: <strong>1 Chairman, 2 Co-Chairmen, 1 Member-Convener, ' +
+            '2 Co-Convener, 1 Member and 2 Co-Members</strong>. Record the designation of each seat — the members sign the generated ' +
+            'lists themselves, so their names are not held in this system.</p>' +
+            poTable(['Seat', 'Prescribed holder', 'Designation'],
+                seats.map((s, i) => '<tr>' +
+                    '<td><strong>' + escapeHtml(poSeatLabel(s)) + '</strong></td>' +
+                    poTd(s.desc) +
+                    poTd(dlc[i] ? dlc[i].designation : '') +
+                '</tr>')) +
             (editable
                 ? '<div class="form-grid">' +
-                    '<div class="form-group"><label>Chairman - name</label><input id="poExChName" value="' + escapeHtml(ex.chairman_name) + '"></div>' +
-                    '<div class="form-group"><label>Chairman - designation</label><input id="poExChDesig" value="' + escapeHtml(ex.chairman_designation) + '"></div>' +
-                    '<div class="form-group"><label>Co-Chairman - name</label><input id="poExCoName" value="' + escapeHtml(ex.co_chairman_name) + '"></div>' +
-                    '<div class="form-group"><label>Co-Chairman - designation</label><input id="poExCoDesig" value="' + escapeHtml(ex.co_chairman_designation) + '"></div>' +
-                    '<div class="form-group"><label>Member-Convener - name</label><input id="poExMcName" value="' + escapeHtml(ex.member_convener_name) + '"></div>' +
-                    '<div class="form-group"><label>Member-Convener - designation</label><input id="poExMcDesig" value="' + escapeHtml(ex.member_convener_designation) + '"></div>' +
-                    '<div class="form-group"><label>Co-Convener - name</label><input id="poExCvName" value="' + escapeHtml(ex.co_convener_name) + '"></div>' +
-                    '<div class="form-group"><label>Co-Convener - designation</label><input id="poExCvDesig" value="' + escapeHtml(ex.co_convener_designation) + '"></div>' +
-                    '<div class="form-group"><label>DRO - name</label><input id="poExDroName" value="' + escapeHtml(ex.dro_name) + '"></div>' +
-                    '<div class="form-group"><label>DRO - designation</label><input id="poExDroDesig" value="' + escapeHtml(ex.dro_designation) + '"></div>' +
+                    seats.map((s, i) =>
+                        '<div class="form-group"><label>' + escapeHtml(poSeatLabel(s)) + ' &mdash; designation</label>' +
+                        '<input id="poDlc_' + i + '" value="' + escapeHtml(dlc[i] ? dlc[i].designation : '') + '"></div>'
+                    ).join('') +
                   '</div>' +
-                  '<div class="form-group"><label>Other DLC members</label><textarea id="poExOther" rows="2">' + escapeHtml(ex.other_members) + '</textarea></div>' +
                   '<div class="po-actions"><button class="btn btn-primary" onclick="poSaveMembersFromForm()">Save composition</button></div>'
-                : (ex.other_members ? '<div class="po-readonly-block"><strong>Other members</strong><br>' + escapeHtml(ex.other_members) + '</div>' : '')),
+                : '<div class="po-note po-note-info">Signatories sign the generated FAL, OOA and OOT.</div>'),
             '') +
         poCard('Exercise status summary', poStats([
             { value: poState.cadres.length, label: 'Cadres' },
@@ -312,14 +309,11 @@ function poSaveExerciseFromForm() {
 }
 
 function poSaveMembersFromForm() {
-    const g = id => (document.getElementById(id) || {}).value || '';
-    const ex = poState.exercise;
-    ex.chairman_name = g('poExChName'); ex.chairman_designation = g('poExChDesig');
-    ex.co_chairman_name = g('poExCoName'); ex.co_chairman_designation = g('poExCoDesig');
-    ex.member_convener_name = g('poExMcName'); ex.member_convener_designation = g('poExMcDesig');
-    ex.co_convener_name = g('poExCvName'); ex.co_convener_designation = g('poExCvDesig');
-    ex.dro_name = g('poExDroName'); ex.dro_designation = g('poExDroDesig');
-    ex.other_members = g('poExOther');
+    const seats = poDlcSeats();
+    const dlc = poDlc();
+    // Write back against the prescribed seat order, never against whatever the
+    // saved order happens to be, so a re-ordered array cannot shift a designation.
+    seats.forEach((s, i) => { dlc[i].designation = ((document.getElementById('poDlc_' + i) || {}).value || '').trim(); });
     if (poSaveExercise()) { showToast('DLC composition saved', 'success'); renderPOModule(); }
 }
 
@@ -1807,6 +1801,7 @@ showPage = function (pageId) {
 [
     'initPOModule', 'showPOPage', 'renderPOModule', 'renderCurrentPOTab', 'switchPOTab', 'poGotoStep',
     'poAdvanceStage', 'poSaveExerciseFromForm', 'poSaveMembersFromForm',
+    'poDlcSeats', 'poDlc', 'poSeatLabel', 'poFreshDlc',
     'poEditCategory', 'poSaveCategoryForm', 'poDeleteCategory', 'poLoadRankMaster',
     'poSetStrengthField', 'poSetApprovedFromForm',
     'poValidateSeniorityNow', 'poDownloadSeniorityTemplate', 'poExportSeniorityCsv', 'poImportSeniorityFile',

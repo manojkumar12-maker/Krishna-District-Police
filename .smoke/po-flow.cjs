@@ -102,12 +102,12 @@ async function launchChromium() {
         ex.department = 'Police';
         ex.erstwhile_district = 'Krishna';
         ex.new_districts = 'NTR, Eluru';
-        ex.chairman_name = 'Collector, Krishna';
-        ex.chairman_designation = 'District Collector';
-        ex.co_chairman_name = 'Collector, NTR';
-        ex.member_convener_name = 'SP, Krishna';
-        ex.member_convener_designation = 'Superintendent of Police';
-        ex.dro_name = 'DRO, Krishna';
+        // Only designations are official inputs; the nine seats are prescribed.
+        poDlc().forEach((d, i) => {
+            d.designation = ['District Collector', 'District Collector, NTR', 'District Collector, Eluru',
+                'Superintendent of Police', 'SP, NTR', 'SP, Eluru',
+                'Member', 'Co-Member', 'Co-Member'][i] || '';
+        });
         poSaveExercise();
     });
     g = await r(() => poStageGuard());
