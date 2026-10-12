@@ -51,27 +51,45 @@ const PO_STAGES = [
 const PO_STAGE_INDEX = {};
 PO_STAGES.forEach((s, i) => { PO_STAGE_INDEX[s] = i; });
 
-// --- Preferential categories (G.O.Ms.No.129 priority order) ----------------
-// A claim only confers preference once the supporting document has been
-// VERIFIED by the DLC. A manually ticked flag is never sufficient on its own.
+// --- Preferential categories (G.O.Ms.No.129, clauses (ix) to (xii)) ---------
+// The Seniority List (the DSL's successor) shall also record, in respect of each
+// employee of a preferential category where applicable, certified by the APPOINTING
+// AUTHORITY after verification of the records. A manually ticked flag is never
+// sufficient: a claim confers preference only when it carries that certification.
+//
+// These are DISJOINT from the SC/ST reservation. SC/ST is not a preferential
+// category - it is a representation requirement applied while distributing the
+// working strength (see PO_SEG_GROUPS below).
 const PO_PREF_CLAIMS = [
-    { id: 'pwbd',              label: 'PwBD with certified disability of 70% or above', priority: 1, minPercent: 70, requiresDoc: true },
-    { id: 'disabled_children', label: 'Employee having dependent mentally challenged child', priority: 2, requiresDoc: true },
-    { id: 'widow',             label: 'Widow who remained unmarried', priority: 3, requiresDoc: true },
-    { id: 'cancer',            label: 'Cancer', priority: 4, requiresDoc: true },
-    { id: 'neurosurgery',      label: 'Major Neurosurgery', priority: 5, requiresDoc: true },
-    { id: 'kidney',            label: 'Kidney Transplantation', priority: 6, requiresDoc: true },
-    { id: 'liver',             label: 'Liver Transplantation', priority: 7, requiresDoc: true },
-    { id: 'heart',             label: 'Open Heart Surgery', priority: 8, requiresDoc: true }
+    { id: 'pwbd',              label: 'PwBD with certified disability of 70% or above', priority: 1, minPercent: 70, requiresDoc: true, docName: 'SADAREM certificate' },
+    { id: 'disabled_children', label: 'Employee having dependent mentally challenged child', priority: 2, requiresDoc: true, docName: 'Dependent disability record' },
+    { id: 'widow',             label: 'Widow who remained unmarried', priority: 3, requiresDoc: true, docName: 'Death certificate / marital status record' },
+    { id: 'cancer',            label: 'Cancer', priority: 4, requiresDoc: true, docName: 'Medical record' },
+    { id: 'neurosurgery',      label: 'Major Neurosurgery', priority: 5, requiresDoc: true, docName: 'Medical record' },
+    { id: 'kidney',            label: 'Kidney Transplantation', priority: 6, requiresDoc: true, docName: 'Medical record' },
+    { id: 'liver',             label: 'Liver Transplantation', priority: 7, requiresDoc: true, docName: 'Medical record' },
+    { id: 'heart',             label: 'Open Heart Surgery', priority: 8, requiresDoc: true, docName: 'Medical record' }
 ];
 
-// --- Reserved (SC/ST) social groups ----------------------------------------
+const PO_PREF_NOTICE =
+    'GO REQUIREMENT - clauses (ix) to (xii). The Seniority List shall record the ' +
+    'preferential category of each employee where applicable, certified by the ' +
+    'appointing authority after verification of the records. PwBD requires a certified ' +
+    'disability of 70% or above as per SADAREM certificate.';
+
+// --- Reserved (SC/ST) social groups (representation, NOT a preference) -------
+// Applied while distributing the working strength. Disjoint from PO_PREF_CLAIMS
+// above: an SC/ST employee gets no preferential ranking from their community.
 const PO_SEG_GROUPS = [
     { id: 'SC_1', label: 'SC Group-I',  percent: 1 },
     { id: 'SC_2', label: 'SC Group-II', percent: 6.5 },
     { id: 'SC_3', label: 'SC Group-III', percent: 7.5 },
     { id: 'ST',   label: 'ST',           percent: 6 }
 ];
+
+const PO_SEG_NOTICE =
+    'GO REQUIREMENT - representation while distributing the working strength. ' +
+    'SC/ST is not a preferential category and confers no preferential ranking.';
 
 // --- Employee service status -----------------------------------------------
 // NONE of these statuses removes an employee from the seniority list. An employee
@@ -110,6 +128,12 @@ const PO_DISTRICTS = [
 ];
 
 const PO_DISTRICT_IDS = PO_DISTRICTS.map(d => d.id);
+
+// --- District bifurcation split (DLC CONFIGURATION / POLICY DECISION) --------
+// The erstwhile working strength is split into the three district cadres by
+// percentage. The defaults below are the working split for this exercise; the
+// DLC may change them before the working strength is finalized.
+const PO_DEFAULT_DISTRICT_SPLIT = { DC_KRISHNA: 54, DC_NTR: 28, DC_ELURU: 18 };
 
 // --- Allocation order tiers (GO REQUIREMENT) --------------------------------
 // Every employee is allotted within exactly one tier. Tiers run in this order
@@ -175,6 +199,24 @@ function poApplyRounding(value, policy) {
         case 'ROUND_CEILING': return Math.ceil(v);
         default: return Math.round(v);   // ROUND_HALF_UP
     }
+}
+
+// --- District strength split (DLC CONFIGURATION / POLICY DECISION) -----------
+// Largest-remainder (Hamilton) apportionment: each share is floored, then the
+// leftover whole posts are handed to the largest fractional remainders so the
+// district strengths always sum exactly to the total working strength.
+function poSplitByPercent(total, percents) {
+    const n = Math.max(0, Math.round(Number(total) || 0));
+    const ps = (percents || []).map(p => Math.max(0, Number(p) || 0));
+    if (!ps.length) return [];
+    const sum = ps.reduce((a, b) => a + b, 0);
+    if (sum <= 0) return ps.map(() => 0);
+    const raw = ps.map(p => n * p / sum);
+    const out = raw.map(Math.floor);
+    let used = out.reduce((a, b) => a + b, 0);
+    const order = raw.map((r, i) => i).sort((a, b) => (raw[b] - out[b]) - (raw[a] - out[a]) || a - b);
+    for (let k = 0; used < n && k < order.length; k++) { out[order[k]]++; used++; }
+    return out;
 }
 
 // --- SC/ST basis is fixed by the order ---------------------------------------
@@ -288,7 +330,12 @@ function poClaim(rec, claimId) {
     return null;
 }
 
-/** A claim is preferential only when claimed AND verified. */
+/**
+ * A claim is preferential only when it is claimed AND verified by the DLC.
+ * The GO additionally requires the category to be CERTIFIED BY THE APPOINTING
+ * AUTHORITY after verification of the records, so an uncertified claim is
+ * reported as claimed-but-uncertified rather than being treated as valid.
+ */
 function poClaimVerified(rec, claimId) {
     const c = poClaim(rec, claimId);
     if (!c) return false;
@@ -297,9 +344,19 @@ function poClaimVerified(rec, claimId) {
     return String(c.verification || '').toUpperCase() === 'VERIFIED';
 }
 
+/** The GO requires certification by the appointing authority after verification
+ *  of the records. A blank authority means the claim is not certified. */
+function poClaimCertified(c) {
+    return !!(c && !poBlank()(c.appointing_authority));
+}
+
 /**
  * Highest-priority VERIFIED preferential claim for a record.
- * Returns { id, label, priority, detail } or null.
+ * Returns { id, label, priority, certified, appointing_authority } or null.
+ *
+ * SC/ST is deliberately NOT consulted here. Reservation while distributing the
+ * working strength is a separate requirement (PO_SEG_GROUPS); a reserved-group
+ * employee carries no preferential ranking because of their community.
  */
 function poPreferredClaim(rec) {
     let best = null;
@@ -311,7 +368,11 @@ function poPreferredClaim(rec) {
             if (pct === null || pct < def.minPercent) return;
         }
         if (!best || def.priority < best.priority) {
-            best = { id: def.id, label: def.label, priority: def.priority };
+            best = {
+                id: def.id, label: def.label, priority: def.priority,
+                doc_name: def.docName || '', certified: poClaimCertified(c),
+                appointing_authority: c.appointing_authority || ''
+            };
         }
     });
     return best;
@@ -411,8 +472,12 @@ function validateWorkingStrength(input) {
                     { category_id: cat.id, cadre_id: s.cadre_id, value: s.fws });
             }
             if (cStrength !== null && fws !== null && fws > cStrength) {
-                poIssue(errors, 'ERROR', 'FWS_EXCEEDS_CADRE_STRENGTH',
-                    'FWS (' + fws + ') exceeds cadre strength (' + cStrength + ') for ' + cat.name + ' / ' + (ctx.cadreById[s.cadre_id] || {}).name,
+                // DLC POLICY: allocation proceeds on FWS irrespective of cadre
+                // strength. The excess is carried on deputation and is marked
+                // against the affected employees in the FAL remarks.
+                poIssue(warnings, 'WARNING', 'FWS_EXCEEDS_CADRE_STRENGTH',
+                    'FWS (' + fws + ') exceeds cadre strength (' + cStrength + ') for ' + cat.name + ' / ' +
+                    (ctx.cadreById[s.cadre_id] || {}).name + ' - the excess is carried on deputation.',
                     { category_id: cat.id, cadre_id: s.cadre_id });
             }
             if (cStrength !== null && cStrength > 0 && fws === 0) {
@@ -603,6 +668,14 @@ function validateSeniorityList(records, input) {
                         'Certification number not stated for "' + def.label + '" claim (' + (r.name || 'record') + ')',
                         { employee_id: r.employee_id, field: 'claim_' + def.id });
                 }
+            }
+            // G.O.Ms.No.129: the category must be certified by the APPOINTING
+            // AUTHORITY after verification of the records.
+            if (poBlank()(c.appointing_authority)) {
+                poIssue(errors, 'ERROR', 'CLAIM_NOT_CERTIFIED',
+                    'Preferential claim "' + def.label + '" for ' + (r.name || 'record') +
+                    ' is not certified by the appointing authority after verification of the records',
+                    { employee_id: r.employee_id, field: 'claim_' + def.id + '.appointing_authority' });
             }
             const v = String(c.verification || 'PENDING').toUpperCase();
             if (v !== 'VERIFIED' && v !== 'REJECTED') {
@@ -1800,11 +1873,14 @@ const POEngine = {
     PO_STAGES: PO_STAGES,
     PO_STAGE_INDEX: PO_STAGE_INDEX,
     PO_PREF_CLAIMS: PO_PREF_CLAIMS,
+    PO_PREF_NOTICE: PO_PREF_NOTICE,
     PO_SEG_GROUPS: PO_SEG_GROUPS,
+    PO_SEG_NOTICE: PO_SEG_NOTICE,
     PO_SERVICE_STATUS: PO_SERVICE_STATUS,
     PO_CADRE_TYPES: PO_CADRE_TYPES,
     PO_DISTRICTS: PO_DISTRICTS,
     PO_DISTRICT_IDS: PO_DISTRICT_IDS,
+    PO_DEFAULT_DISTRICT_SPLIT: PO_DEFAULT_DISTRICT_SPLIT,
     PO_ALLOC_TIERS: PO_ALLOC_TIERS,
     PO_ALLOC_REASONS: PO_ALLOC_REASONS,
     PO_ALLOC_REASON_IDS: PO_ALLOC_REASON_IDS,
@@ -1821,10 +1897,12 @@ const POEngine = {
     PO_POLICY_NOTICE_ROUNDING: PO_POLICY_NOTICE_ROUNDING,
     PO_ERROR_CATALOGUE: PO_ERROR_CATALOGUE,
     poApplyRounding: poApplyRounding,
+    poSplitByPercent: poSplitByPercent,
     PO_GO_REFERENCE: PO_GO_REFERENCE,
     poBuildContext: poBuildContext,
     poPreferredClaim: poPreferredClaim,
     poClaimVerified: poClaimVerified,
+    poClaimCertified: poClaimCertified,
     poApplicableCadres: poApplicableCadres,
     poCategoryFws: poCategoryFws,
     poSeniorityCompare: poSeniorityCompare,

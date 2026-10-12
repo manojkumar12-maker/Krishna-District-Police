@@ -41,6 +41,7 @@ const R = require(path.join(ROOT, 'poRepository.js'));
 const CORE_EXPORTS = [
     'poFreshState', 'poLoad', 'poSave', 'poStageGuard', 'poAdvance', 'poStage', 'poCtx',
     'poSyncStrengthMatrix', 'poSaveExercise', 'poSetStrength', 'poSetApprovedStrength',
+    'poAutoSplitWorkingStrength',
     'poImportSeniorityRows', 'poRowToSeniorityRecord', 'poRunSeniorityValidation',
     'poSeniorityTemplateCsv', 'poSeniorityExportCsv',
     'poFinalizeSeniorityList', 'poPublishFsl', 'poReviseFsl', 'poTimeline',
@@ -734,6 +735,19 @@ test('import: an uploaded row without a seniority keeps it empty', () => {
     const v = C.poRunSeniorityValidation();
     assert.strictEqual(v.valid, false);
     assert.strictEqual(v.errors.filter(e => e.code === 'MISSING_SENIORITY').length, 1);
+});
+
+test('working strength: the total auto-splits into the three districts', () => {
+    freshState();
+    C.poSetStrength('CAT_SI', 'DC_KRISHNA', 'cadre_strength', 200);
+    C.poSetStrength('CAT_SI', 'DC_NTR', 'cadre_strength', 200);
+    C.poSetStrength('CAT_SI', 'DC_ELURU', 'cadre_strength', 200);
+    C.poSetApprovedStrength('CAT_SI', 150);
+    assert.strictEqual(C.poAutoSplitWorkingStrength(), true);
+    const fws = ['DC_KRISHNA', 'DC_NTR', 'DC_ELURU'].map(id =>
+        C.poState.strengths.find(s => s.category_id === 'CAT_SI' && s.cadre_id === id).fws);
+    assert.deepStrictEqual(fws, [81, 42, 27]);
+    assert.strictEqual(fws.reduce((a, b) => a + b, 0), 150);
 });
 
 // ===========================================================================

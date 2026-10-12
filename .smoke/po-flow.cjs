@@ -241,20 +241,45 @@ async function launchChromium() {
         v2.warnings.some(w => w.code === 'MISSING_MOBILE') && v2.errors.length === 0,
         v2.warnings.map(w => w.code).join(','));
 
-    console.log('\n[claims: a flag alone is not preferential]');
+    console.log('\n[claims: a flag alone is not preferential, and the appointing authority must certify it]');
     const claimRes = await r(() => {
         const rec = poState.fsl.find(d => d.name === 'B. Suresh');
-        rec.claims.widow = { claimed: true, doc_present: 'Yes', cert_no: 'W/2026/11', cert_date: '2026-02-01', disability_percent: '', verification: 'PENDING', verified_by: '', verified_at: '', remark: '' };
+        rec.claims.widow = { claimed: true, doc_present: 'Yes', cert_no: 'W/2026/11', cert_date: '2026-02-01', disability_percent: '', appointing_authority: '', verification: 'PENDING', verified_by: '', verified_at: '', remark: '' };
         poSaveSeniorityRecord(rec, false);
-        const before = POEngine.poPreferredClaim(rec);
+        const pending = POEngine.poPreferredClaim(rec);
         rec.claims.widow.verification = 'VERIFIED';
         rec.claims.widow.verified_by = poUser();
         rec.claims.widow.verified_at = poNow();
         poSaveSeniorityRecord(rec, false);
-        return { before: before, after: POEngine.poPreferredClaim(rec) };
+        // Verified but NOT certified by the appointing authority: the GO requires
+        // certification after verification of the records, so this is not yet preferential.
+        const uncertified = POEngine.poPreferredClaim(rec);
+        const uncertifiedIsBlocking = POEngine.validateSeniorityList(poState.fsl, { ctx: poCtx() })
+            .errors.some(e => e.code === 'CLAIM_NOT_CERTIFIED');
+        rec.claims.widow.appointing_authority = 'District Collector & District Magistrate';
+        poSaveSeniorityRecord(rec, false);
+        const after = POEngine.poPreferredClaim(rec);
+        const stillBlocking = POEngine.validateSeniorityList(poState.fsl, { ctx: poCtx() })
+            .errors.some(e => e.code === 'CLAIM_NOT_CERTIFIED');
+        return {
+            pending: pending,
+            uncertified: uncertified,
+            uncertifiedCertifiedFlag: uncertified ? uncertified.certified : null,
+            uncertifiedIsBlocking: uncertifiedIsBlocking,
+            after: after,
+            stillBlocking: stillBlocking
+        };
     });
-    ok('pending claim is not preferential', claimRes.before === null);
-    ok('verified claim is preferential at priority 3', claimRes.after && claimRes.after.priority === 3,
+    ok('pending claim is not preferential', claimRes.pending === null);
+    // The engine ranks a VERIFIED claim; certification is enforced where the GO
+    // puts it - an uncertified claim is a BLOCKING seniority-list error, so the
+    // list cannot be locked or allocated from until the authority is recorded.
+    ok('an uncertified claim is a blocking error on the list', claimRes.uncertifiedIsBlocking === true);
+    ok('an uncertified claim is reported as uncertified', claimRes.uncertifiedCertifiedFlag === false,
+        String(claimRes.uncertifiedCertifiedFlag));
+    ok('certifying by the appointing authority clears the block and keeps priority 3',
+        claimRes.after && claimRes.after.priority === 3 && claimRes.after.certified === true &&
+        claimRes.stillBlocking === false,
         claimRes.after ? claimRes.after.id : 'null');
 
     console.log('\n[STEP 4 - lock and publish the Seniority List]');

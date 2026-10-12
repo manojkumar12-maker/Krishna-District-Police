@@ -328,9 +328,13 @@ function renderStepRanks(content) {
 
     const catRows = poState.categories.map(c => {
         const configured = poState.strengths.filter(s => s.category_id === c.id).length;
+        const approved = (poState.approved.find(a => a.category_id === c.id) || {}).approved_working_strength;
         return '<tr>' +
             poTd(c.id, 'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px') + poTd(c.code) + poTd(c.name) +
             poTd(c.department) + poTd(c.erstwhile_cadre) +
+            (editable
+                ? '<td><input type="number" min="0" class="po-strength-input" style="width:90px" value="' + (approved === undefined ? '' : approved) + '" onchange="poSetApprovedFromForm(\'' + poQs(c.id) + '\',this.value)"></td>'
+                : poTd(String(approved === undefined ? '-' : approved))) +
             '<td>' + configured + '</td>' +
             '<td><span class="po-badge po-badge-' + (c.status === 'ACTIVE' ? 'success' : 'info') + '">' + escapeHtml(c.status) + '</span></td>' +
             '<td>' + (editable
@@ -353,15 +357,34 @@ function renderStepRanks(content) {
     content.innerHTML =
         renderExerciseCards() +
         poCard('Step 1c &middot; Post category / rank master',
-            '<p class="po-hint">Ranks are configuration, not law. Load them from the departmental rank master or define them here. ' +
-            'The allocation engine never mixes two categories.</p>' +
+            '<p class="po-hint">Ranks are configuration, not law. Add them here or upload a .csv/.xlsx file. ' +
+            'The module holds its own data only and never reads any external master. The allocation engine never mixes two categories.</p>' +
             (editable
                 ? '<div class="po-actions" style="margin-bottom:12px;">' +
                     '<button class="btn btn-primary" onclick="poEditCategory(\'\')">+ Add category</button>' +
-                    '<button class="btn btn-secondary" onclick="poLoadRankMaster()">Load from departmental rank master</button>' +
+                    '<button class="btn btn-secondary" onclick="poDownloadCategoryTemplate()">Download template</button>' +
+                    '<button class="btn btn-secondary" onclick="document.getElementById(\'poCategoryFile\').click()">Upload categories (.csv/.xlsx)</button>' +
+                    '<input type="file" id="poCategoryFile" accept=".csv,.xlsx,.xls" style="display:none" onchange="poImportCategoryFile(this)">' +
                   '</div>'
                 : '') +
-            poTable(['Category ID', 'Code', 'Category name', 'Department', 'Erstwhile cadre', 'Cadres configured', 'Status', ''], catRows), '') +
+            poTable(['Category ID', 'Code', 'Category name', 'Department', 'Erstwhile cadre', 'Approved working strength', 'Cadres configured', 'Status', ''], catRows), '') +
+
+        poCard('Step 1e &middot; Preferential categories and SC/ST reservation',
+            '<div class="po-note po-note-info">These are <strong>two separate GO requirements</strong> and are never applied as one. ' +
+            'Preferential categories decide the <strong>order of processing</strong>; SC/ST reservation decides ' +
+            '<strong>representation while distributing the working strength</strong>. An SC/ST employee receives no preferential ranking.</div>' +
+            '<div class="form-grid">' +
+                '<div class="form-group"><label>Preferential categories (clauses ix&ndash;xii)</label>' +
+                    '<div class="po-readonly">' + POEngine.PO_PREF_CLAIMS.map(d =>
+                        escapeHtml(d.label) + (d.minPercent ? ' &mdash; ' + d.minPercent + '% or above' : '')).join('<br>') +
+                    '</div>' +
+                    '<div class="po-policy-notice">' + escapeHtml(POEngine.PO_PREF_NOTICE) + '</div></div>' +
+                '<div class="form-group"><label>SC/ST reserved proportion</label>' +
+                    '<div class="po-readonly">' + POEngine.PO_SEG_GROUPS.map(g =>
+                        escapeHtml(g.label) + ' &mdash; ' + g.percent + '%').join('<br>') +
+                    '</div>' +
+                    '<div class="po-policy-notice">' + escapeHtml(POEngine.PO_SEG_NOTICE) + '</div></div>' +
+            '</div>') +
 
         poCard('Step 1d &middot; The three district cadres',
             '<div class="po-note po-note-info">The cadre set is <strong>fixed by the module</strong>: Krishna, NTR and Eluru. ' +
@@ -390,6 +413,8 @@ function renderPolicyPanel() {
     const pol = poState.policy || {};
     const frozen = poPolicyFrozen();
     const canEdit = poIsAdmin() && !frozen && poStageIdx(poStage()) < poStageIdx('ALLOCATION_RUNNING');
+    const splitEditable = poIsAdmin() && !frozen && poStageIdx(poStage()) <= poStageIdx('WORKING_STRENGTH_FINALIZED');
+    const splitPercents = pol.district_split || POEngine.PO_DEFAULT_DISTRICT_SPLIT;
 
     const sel = (field, options, current, label, notice) => {
         const opts = options.map(o => '<option value="' + escapeHtml(o.id) + '"' +
@@ -431,6 +456,17 @@ function renderPolicyPanel() {
                       '</select>'
                     : '<div class="po-readonly">' + (pol.scst_adjustment !== false ? 'YES' : 'NO') + '</div>') +
                 '<div class="po-policy-notice">SYSTEM IMPLEMENTATION RULE. Adjustment substitutes the last allotted general-category employee with the relevant SC/ST employee.</div></div>' +
+            '<div class="form-group"><label>District working-strength split</label>' +
+                '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+                    poState.cadres.map(c => {
+                        const v = splitPercents[c.id] !== undefined ? splitPercents[c.id] : '';
+                        return '<div style="flex:1;min-width:120px;"><div class="po-policy-notice">' + escapeHtml(c.name) + '</div>' +
+                            (splitEditable
+                                ? '<input type="number" min="0" step="0.01" id="poSplit_' + c.id + '" class="po-strength-input" style="width:100%" value="' + v + '" onchange="poSetDistrictSplitFromUi()">'
+                                : '<div class="po-readonly">' + v + '%</div>') + '</div>';
+                    }).join('') +
+                '</div>' +
+                '<div class="po-policy-notice">DLC policy decision, not a GO requirement. The total working strength is apportioned to Krishna, NTR and Eluru by these percentages using largest-remainder rounding. This freezes with the working strength.</div></div>' +
         '</div>' +
         '<div class="po-legend">' +
             '<div><span class="po-tag po-tag-go">GO REQUIREMENT</span> prescribed by G.O.Ms.No.129</div>' +
@@ -445,6 +481,15 @@ function renderPolicyPanel() {
 function poSetPolicyFromUi(field, value) {
     const v = (field === 'prefer_existing_on_compulsory' || field === 'scst_adjustment') ? (value === 'YES') : value;
     if (poSetPolicy(field, v)) { showToast('Allocation policy updated', 'success'); renderPOModule(); }
+}
+
+function poSetDistrictSplitFromUi() {
+    const split = {};
+    poState.cadres.forEach(c => {
+        const el = document.getElementById('poSplit_' + c.id);
+        split[c.id] = el ? parseFloat(el.value) : 0;
+    });
+    if (poSetPolicy('district_split', split)) { showToast('District split updated', 'success'); renderPOModule(); }
 }
 
 function poFreezePolicyFlow() {
@@ -496,10 +541,21 @@ function poDeleteCategory(id) {
     if (poRemoveCategory(id)) { showToast('Category removed', 'success'); renderPOModule(); }
 }
 
-function poLoadRankMaster() {
-    const n = poSuggestCategoriesFromRankMaster();
-    showToast(n ? n + ' categories loaded from the rank master' : 'No new categories to add', n ? 'success' : 'error');
-    renderPOModule();
+function poDownloadCategoryTemplate() {
+    downloadFile(poCategoryTemplateCsv(), 'PO_CategoryMaster_Template.csv', 'text/csv');
+    showToast('Template downloaded', 'success');
+}
+
+function poImportCategoryFile(input) {
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file) return;
+    poReadSpreadsheet(file, rows => {
+        if (!rows.length) { showToast('No usable rows found in the file', 'error'); return; }
+        const n = poImportCategories(rows);
+        showToast(n ? n + ' category record(s) imported' : 'Nothing was imported', n ? 'success' : 'error');
+        renderPOModule();
+    });
 }
 
 
@@ -523,32 +579,36 @@ function renderStepStrength(content) {
             const name = (ctx.cadreById[s.cadre_id] || {}).name || s.cadre_id;
             const fws = parseInt(s.fws) || 0;
             const cstr = parseInt(s.cadre_strength) || 0;
+            const vacant = cstr - fws;
             return '<tr>' + poTd(name) +
                 (editable
-                    ? '<td><input type="number" min="0" class="po-strength-input" value="' + cstr + '" onchange="poSetStrengthField(\'' + poQs(cat.id) + '\',\'' + poQs(s.cadre_id) + '\',\'cadre_strength\',this.value)"></td>' +
-                      '<td><input type="number" min="0" class="po-strength-input" value="' + fws + '" onchange="poSetStrengthField(\'' + poQs(cat.id) + '\',\'' + poQs(s.cadre_id) + '\',\'fws\',this.value)"></td>'
-                    : poTd(String(cstr)) + poTd(String(fws))) +
-                poTd(String(fws - 0), 'color:var(--text-muted)') +
+                    ? '<td><input type="number" min="0" class="po-strength-input" value="' + cstr + '" onchange="poSetStrengthField(\'' + poQs(cat.id) + '\',\'' + poQs(s.cadre_id) + '\',\'cadre_strength\',this.value)"></td>'
+                    : poTd(String(cstr))) +
+                poTd(String(fws), 'color:var(--accent)') +
+                poTd(String(vacant), vacant < 0 ? 'color:var(--danger)' : 'color:var(--text-muted)') +
             '</tr>';
         });
 
         return '<div class="po-block">' +
             '<div class="po-block-head"><h4>' + escapeHtml(cat.code ? cat.code + ' - ' + cat.name : cat.name) + '</h4>' +
             '<span class="po-badge po-badge-' + (ok ? 'success' : 'danger') + '">' + (ok ? 'RECONCILED' : 'NOT RECONCILED') + '</span></div>' +
-            '<div class="po-table-wrap"><table><thead><tr><th>Local cadre</th><th>Cadre strength</th><th>Final Working Strength (FWS)</th><th>Posts available</th></tr></thead><tbody>' +
+            '<div class="po-table-wrap"><table><thead><tr><th>Local cadre</th><th>Cadre strength (sanctioned)</th><th>Final Working Strength (FWS)</th><th>Vacant posts</th></tr></thead><tbody>' +
             (trs.join('') || '<tr><td colspan="4">No cadre configured for this category.</td></tr>') +
             '</tbody><tfoot><tr><th>Total FWS</th><th colspan="2">' + sumFws + '</th>' +
             '<th>' + (editable
-                ? '<input type="number" min="0" class="po-strength-input" style="width:90px" value="' + (approved === undefined ? 0 : approved) +
+                ? '<input type="number" min="0" class="po-strength-input" style="width:90px" value="' + (approved === undefined ? '' : approved) +
                   '" onchange="poSetApprovedFromForm(\'' + poQs(cat.id) + '\',this.value)">'
                 : (approved === undefined ? '-' : approved)) + '</th></tr></tfoot></table></div>' +
-            '<div class="po-hint">Last column of the footer is the <strong>approved working strength for the exercise</strong>. Total FWS must equal it exactly.</div>' +
+            '<div class="po-hint">Enter the <strong>approved working strength</strong> (footer, last column). It auto-splits into the three districts by the ' +
+            'district split percentages using largest-remainder rounding. <strong>Vacant posts = cadre strength &minus; FWS</strong>.</div>' +
         '</div>';
     });
 
     content.innerHTML =
-        poCard('Step 2 &middot; Cadre strength, Final Working Strength and reconciliation',
-            '<p class="po-hint">FWS is official data. The system never changes it silently and never allocates beyond it.</p>' +
+        poCard('Step 2 &middot; Working strength and district split',
+            '<p class="po-hint">Enter each rank&rsquo;s total working strength; the system splits it into Krishna, NTR and Eluru by the ' +
+            'district split percentages (see Step 1 allocation policy). The three figures sum exactly to the total and are read-only. ' +
+            'Cadre strength is the sanctioned figure; vacant posts are bifurcated with it.</p>' +
             blocks.join(''), '') +
         poCard('Working strength validation', poValidationPanel('Working strength', {
             valid: report.valid,
@@ -565,6 +625,7 @@ function poSetStrengthField(categoryId, cadreId, field, value) {
 
 function poSetApprovedFromForm(categoryId, value) {
     poSetApprovedStrength(categoryId, value);
+    poAutoSplitWorkingStrength();
     renderPOModule();
 }
 
@@ -981,10 +1042,13 @@ function poOpenClaimPanel(employeeId) {
 
     const rowsHtml = POEngine.PO_PREF_CLAIMS.map(def => {
         const c = rec.claims[def.id];
+        const certd = POEngine.poClaimCertified(c);
         return '<tr>' +
             '<td>' + def.priority + '</td>' +
             '<td><strong>' + escapeHtml(def.label) + '</strong><br><span class="po-hint">' +
-                (def.minPercent ? 'Certified disability must be ' + def.minPercent + '% or above' : 'Supporting document required') + '</span></td>' +
+                (def.minPercent
+                    ? 'Certified disability must be ' + def.minPercent + '% or above as per ' + escapeHtml(def.docName || 'certificate')
+                    : 'Document: ' + escapeHtml(def.docName || 'supporting record')) + '</span></td>' +
             '<td>' + (canEdit
                 ? '<input type="checkbox" id="cl_' + def.id + '"' + (c.claimed ? ' checked' : '') + '>'
                 : (c.claimed ? 'CLAIMED' : '-')) + '</td>' +
@@ -992,12 +1056,11 @@ function poOpenClaimPanel(employeeId) {
                 ? '<input type="number" min="0" max="100" style="width:70px" id="pct_' + def.id + '" value="' + escapeHtml(c.disability_percent) + '"' + (def.minPercent ? '' : 'disabled') + '>'
                 : poDash(c.disability_percent)) + '</td>' +
             '<td>' + (canEdit
-                ? '<input id="cert_' + def.id + '" style="width:130px" value="' + escapeHtml(c.cert_no) + '">'
+                ? '<input id="cert_' + def.id + '" style="width:120px" placeholder="cert no" value="' + escapeHtml(c.cert_no) + '">'
                 : poDash(c.cert_no)) + '</td>' +
             '<td>' + (canEdit
-                ? '<select id="doc_' + def.id + '">' + ['', 'Yes', 'No'].map(v =>
-                    '<option value="' + v + '"' + (c.doc_present === v ? ' selected' : '') + '>' + (v || 'select') + '</option>').join('') + '</select>'
-                : poDash(c.doc_present)) + '</td>' +
+                ? '<input id="auth_' + def.id + '" style="width:150px" placeholder="Appointing authority" value="' + escapeHtml(c.appointing_authority || '') + '">'
+                : (certd ? '<span class="po-badge po-badge-success">CERTIFIED</span><br><span class="po-hint">' + escapeHtml(c.appointing_authority) + '</span>' : '-')) + '</td>' +
             '<td><span class="po-badge po-badge-' + poVerifyTone(c.verification) + '">' + escapeHtml(c.verification || 'NOT_CLAIMED') + '</span></td>' +
             '<td>' + (canEdit
                 ? '<button class="action-btn btn-primary" onclick="poVerifyClaim(\'' + poQs(employeeId) + '\',\'' + def.id + '\',\'VERIFIED\')">Verify</button> ' +
@@ -1014,8 +1077,9 @@ function poOpenClaimPanel(employeeId) {
         '<div class="modal-header"><h3>Preferential claim certification - ' + escapeHtml(rec.name) + '</h3>' +
         '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button></div>' +
         '<div class="modal-body">' +
+        '<div class="po-note po-note-info">' + escapeHtml(POEngine.PO_PREF_NOTICE) + '</div>' +
         '<div class="po-table-wrap"><table><thead><tr><th>Priority</th><th>Category</th><th>Claimed</th><th>Disability %</th>' +
-        '<th>Certification no.</th><th>Document</th><th>Verification</th><th>Action</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>' +
+        '<th>Certificate no.</th><th>Appointing authority</th><th>Verification</th><th>Action</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>' +
         '</div>' +
         '<div class="modal-footer">' +
             (canEdit ? '<button class="btn btn-primary" onclick="poSaveClaims(\'' + poQs(employeeId) + '\')">Save claims</button>' : '') +
@@ -1040,20 +1104,26 @@ function poSaveClaims(employeeId) {
         const box = document.getElementById('cl_' + def.id);
         if (!box) return;
         const wasClaimed = c.claimed;
+        const prevAuthority = c.appointing_authority || '';
         c.claimed = box.checked;
         if (!c.claimed) { c.verification = 'NOT_CLAIMED'; c.verified_by = ''; c.verified_at = ''; }
         else if (c.verification === 'NOT_CLAIMED') c.verification = 'PENDING';
         c.disability_percent = (document.getElementById('pct_' + def.id) || {}).value || '';
         c.cert_no = ((document.getElementById('cert_' + def.id) || {}).value || '').trim();
-        c.doc_present = (document.getElementById('doc_' + def.id) || {}).value || '';
+        c.appointing_authority = ((document.getElementById('auth_' + def.id) || {}).value || '').trim();
+        if (!c.claimed) c.appointing_authority = '';
+        // A changed certification invalidates the verification that rested on it.
         if (wasClaimed !== c.claimed && c.claimed) {
             c.verification = 'PENDING';
+            c.verified_by = ''; c.verified_at = '';
+        } else if (c.appointing_authority !== prevAuthority) {
+            c.verification = c.claimed ? 'PENDING' : 'NOT_CLAIMED';
             c.verified_by = ''; c.verified_at = '';
         }
     });
     if (!poSaveSeniorityRecord(rec, false)) return;
     document.querySelector('.modal-overlay').remove();
-    showToast('Claims saved. Verification is still required before a claim is preferential.', 'success');
+    showToast('Claims saved. A claim is preferential only once verified AND certified by the appointing authority.', 'success');
     renderPOModule();
 }
 
@@ -1063,6 +1133,22 @@ function poVerifyClaim(employeeId, claimId, status) {
     poEnsureClaims(rec);
     const c = rec.claims[claimId];
     if (!c) return;
+    const def = POEngine.PO_PREF_CLAIMS.find(x => x.id === claimId);
+    if (status === 'VERIFIED') {
+        // G.O.Ms.No.129: verification follows certification by the appointing
+        // authority. Verifying an uncertified claim would manufacture preference.
+        if (!POEngine.poClaimCertified(c)) {
+            showToast('Record the Appointing Authority that certified this claim before verifying it.', 'error');
+            return;
+        }
+        if (def && def.minPercent != null) {
+            const pct = parseFloat(c.disability_percent);
+            if (isNaN(pct) || pct < def.minPercent) {
+                showToast('A certified disability of ' + def.minPercent + '% or above is required as per ' + (def.docName || 'certificate') + '.', 'error');
+                return;
+            }
+        }
+    }
     const remark = prompt('Verification remark:', '');
     if (remark === null) return;
     if (!poSeniorityEditable()) { showToast('The seniority list is frozen; verification is not permitted at this stage', 'error'); return; }
@@ -1445,7 +1531,7 @@ function renderStepFal(content) {
             (grouped[k] = grouped[k] || []).push(r);
         });
         Object.keys(grouped).sort().forEach(k => {
-            rows.push('<tr class="po-group-row"><th colspan="17">' + escapeHtml(k) + ' (' + grouped[k].length + ')</th></tr>');
+            rows.push('<tr class="po-group-row"><th colspan="22">' + escapeHtml(k) + ' (' + grouped[k].length + ')</th></tr>');
             grouped[k].forEach((r, i) => {
                 const f = poState.fsl.find(x => x.employee_id === r.employee_id) || {};
                 const isExc = (report.blocking || []).some(b => b.employee_id === r.employee_id) ||
@@ -1459,10 +1545,14 @@ function renderStepFal(content) {
                     poTd(r.seniority_no) + poTd(r.category_name) +
                     poTd(r.preferential_claim_label || 'None') + poTd(r.preferential_status) +
                     poTd([r.option_pref1, r.option_pref2, r.option_pref3].filter(Boolean).join(' / ') || '-') +
-                    '<td><strong>' + escapeHtml(r.cadre_name) + '</strong></td>' +
+                    '<td><strong>' + escapeHtml(r.cadre_name) + '</strong>' +
+                        (r.deputation ? ' <span class="po-badge po-badge-warn">DEPUTATION</span>' : '') + '</td>' +
                     poTd(r.allocation_reason, 'font-size:10px') +
                     poTd(String(r.allocation_sequence), 'text-align:center') +
                     '<td>' + (isExc ? '<span class="po-badge po-badge-danger">EXCEPTION</span>' : '<span class="po-badge po-badge-success">CLEAR</span>') + '</td>' +
+                    '<td>' + (admin && !fal.locked
+                        ? '<input type="text" class="po-strength-input" style="width:130px" placeholder="e.g. deputation" value="' + escapeHtml(r.remarks || '') + '" onchange="poSetFalRemarkFromUi(\'' + poQs(r.employee_id) + '\',this.value)">'
+                        : escapeHtml(r.remarks || '-')) + '</td>' +
                     '<td><button class="action-btn btn-secondary" onclick="poExplainAllocation(\'' + poQs(r.employee_id) + '\')">Why?</button></td>' +
                 '</tr>');
             });
@@ -1471,7 +1561,9 @@ function renderStepFal(content) {
 
     content.innerHTML =
         poCard('Step 6 &middot; Final Allocation List',
-            '<p class="po-hint">The FAL is generated by the allocation engine. It cannot be hand-edited: a change after publication requires the revision workflow with a reason and an audit entry.</p>' +
+            '<p class="po-hint">The FAL is generated by the allocation engine and cannot be hand-edited. ' +
+            '<strong>Remarks</strong> (e.g. &ldquo;deputation&rdquo;) are DLC notes per employee and stay editable until the FAL is published; ' +
+            'employees allotted beyond a cadre&rsquo;s sanctioned strength are flagged <strong>DEPUTATION</strong>.</p>' +
             '<div class="po-actions" style="margin-bottom:12px;">' +
                 (admin && !fal ? '<button class="btn btn-primary" onclick="poGenerateFalFlow()">Generate FAL from the confirmed run</button>' : '') +
                 (admin && fal && fal.status === 'DRAFT' ? '<button class="btn btn-primary" onclick="poApproveFalFlow()">Approve FAL</button>' : '') +
@@ -1495,7 +1587,7 @@ function renderStepFal(content) {
             poTable(['Sl.No', 'Erstwhile Local Cadre', 'Employee Name', 'Department', 'Present Office', 'Designation', 'Gender',
                      'Social Category', 'CFMS ID', 'Mobile', 'Date of Birth', 'Seniority No.', 'Rank',
                      'Preferential Category', 'Claim Status', 'Preference 1/2/3', 'Final Allotted Local Cadre',
-                     'Allocation Reason', 'Alloc Seq', 'Exception Status', ''], rows), '') +
+                     'Allocation Reason', 'Alloc Seq', 'Exception Status', 'Remarks', ''], rows), '') +
 
         poCard('FAL validation (para 19)', poValidationPanel('FAL', {
             valid: report.valid,
@@ -1508,6 +1600,9 @@ function renderStepFal(content) {
 
 function poFalViewChanged(v) { poFals.view = v; renderCurrentPOTab(); }
 function poFalSearchChanged(v) { poFals.query = v; renderCurrentPOTab(); const el = document.getElementById('poFalSearch'); if (el) { el.focus(); el.setSelectionRange(v.length, v.length); } }
+function poSetFalRemarkFromUi(employeeId, value) {
+    if (poSetFalRemark(employeeId, value)) { renderCurrentPOTab(); }
+}
 
 function poGenerateFalFlow() {
     if (!confirm('Generate the FAL from the confirmed allocation run?')) return;
@@ -1532,17 +1627,16 @@ function poExportFalCsv() {
     const fal = poState.fal;
     if (!fal) return;
     const fslById = {}; poState.fsl.forEach(f => { fslById[f.employee_id] = f; });
-    const headers = ['Sl.No', 'Erstwhile Local Cadre', 'Employee Name', 'Department', 'Office', 'Designation', 'Gender',
-        'Social Category', 'CFMS ID', 'Mobile', 'Date of Birth', 'Seniority No', 'Preferential Category',
-        'Claim Status', 'Final Allotted Local Cadre', 'Allocation Reason', 'Allocation Sequence',
-        'Vacancy Before', 'Vacancy After', 'SC/ST Adjustment', 'FAL Version', 'Engine Version'];
+    // Annexure-III (17 columns) plus the DLC's deputation working notes.
+    const headers = ['Sl.No', 'Erstwhile Local Cadre', 'Department', 'Office', 'Employee Name', 'Present Working Place',
+        'Designation', 'Date of Birth', 'Gender', 'CFMS ID', 'Community', 'Mobile Number',
+        'Order of Preference', 'Preferential Claim', 'Seniority No', 'Final Allotted Local Cadre', 'Remarks', 'Deputation'];
     const rows = fal.rows.map((r, i) => {
         const f = fslById[r.employee_id] || {};
-        return [i + 1, r.erstwhile_cadre_name, r.name, poState.exercise.department, r.office, r.designation || r.rank_code,
-            f.gender, f.social_category, f.cfms_id, f.mobile, f.date_of_birth, r.seniority_no,
-            r.preferential_claim_label || '', r.preferential_status, r.cadre_name, r.allocation_reason,
-            r.allocation_sequence, r.vacancy_before, r.vacancy_after,
-            r.sc_st_adjustment ? (r.sc_st_adjustment.role + ' for ' + r.sc_st_adjustment.group) : '', fal.version, r.engine_version];
+        return [i + 1, r.erstwhile_cadre_name, poState.exercise.department, r.office || f.present_working_place,
+            r.name, f.present_working_place, r.designation || r.rank_code, f.date_of_birth, f.gender, f.cfms_id,
+            f.social_category, f.mobile, [r.option_pref1, r.option_pref2, r.option_pref3].filter(Boolean).join(' / '),
+            r.preferential_claim_label || '', r.seniority_no, r.cadre_name, r.remarks || '', r.deputation ? 'YES' : ''];
     });
     downloadFile(poToCsv(headers, rows), 'PO_FAL_' + poState.exercise.exercise_id + '_' + fal.version + '.csv', 'text/csv');
     showToast('FAL exported', 'success');
@@ -1551,22 +1645,34 @@ function poExportFalCsv() {
 function poPrintFal() {
     const fal = poState.fal;
     if (!fal) return;
-    const byCadre = {};
-    fal.rows.forEach(r => { (byCadre[r.cadre_name] = byCadre[r.cadre_name] || []).push(r); });
-    let html = '';
-    Object.keys(byCadre).sort().forEach(cadre => {
-        html += '<h3>Local cadre: ' + escapeHtml(cadre) + ' (' + byCadre[cadre].length + ')</h3><table><thead><tr>' +
-            '<th>Sl.No</th><th>Erstwhile Local Cadre</th><th>Employee Name</th><th>Designation</th><th>Gender</th>' +
-            '<th>Social Cat.</th><th>CFMS ID</th><th>Seniority No.</th><th>Preferential Category</th><th>Reason</th></tr></thead><tbody>' +
-            byCadre[cadre].map((r, i) => '<tr><td>' + (i + 1) + '</td><td>' + escapeHtml(r.erstwhile_cadre_name) + '</td><td>' + escapeHtml(r.name) +
-                '</td><td>' + escapeHtml(r.designation || r.rank_code) + '</td><td>' + poDash((poState.fsl.find(f => f.employee_id === r.employee_id) || {}).gender) +
-                '</td><td>' + poDash((poState.fsl.find(f => f.employee_id === r.employee_id) || {}).social_category) +
-                '</td><td>' + poDash((poState.fsl.find(f => f.employee_id === r.employee_id) || {}).cfms_id) +
-                '</td><td>' + poDash(r.seniority_no) + '</td><td>' + poDash(r.preferential_claim_label) +
-                '</td><td>' + escapeHtml(r.allocation_reason) + '</td></tr>').join('') +
-            '</tbody></table><br>';
-    });
-    poPrintDocument('Final Allocation List (FAL)', html);
+    const fslById = {}; poState.fsl.forEach(f => { fslById[f.employee_id] = f; });
+    const headers = ['Sl.No', 'Erstwhile Local Cadre', 'Department', 'Office', 'Employee Name', 'Present Working Place',
+        'Designation', 'Date of Birth', 'Gender', 'CFMS ID', 'Community', 'Mobile',
+        'Order of Preference', 'Preferential Claim', 'Seniority No', 'Final Allotted Local Cadre'];
+    const body = fal.rows.map((r, i) => {
+        const f = fslById[r.employee_id] || {};
+        return '<tr>' +
+            '<td>' + (i + 1) + '</td>' +
+            '<td>' + escapeHtml(r.erstwhile_cadre_name) + '</td>' +
+            '<td>' + escapeHtml(poState.exercise.department) + '</td>' +
+            '<td>' + escapeHtml(r.office || f.present_working_place) + '</td>' +
+            '<td>' + escapeHtml(r.name) + '</td>' +
+            '<td>' + escapeHtml(f.present_working_place) + '</td>' +
+            '<td>' + escapeHtml(r.designation || r.rank_code) + '</td>' +
+            '<td>' + poDash(f.date_of_birth) + '</td>' +
+            '<td>' + poDash(f.gender) + '</td>' +
+            '<td>' + poDash(f.cfms_id) + '</td>' +
+            '<td>' + poDash(f.social_category) + '</td>' +
+            '<td>' + poDash(f.mobile) + '</td>' +
+            '<td>' + poDash([r.option_pref1, r.option_pref2, r.option_pref3].filter(Boolean).join(' / ')) + '</td>' +
+            '<td>' + poDash(r.preferential_claim_label) + '</td>' +
+            '<td>' + poDash(r.seniority_no) + '</td>' +
+            '<td><strong>' + escapeHtml(r.cadre_name) + '</strong>' + (r.deputation ? ' <em>(deputation)</em>' : '') + '</td>' +
+            '</tr>';
+    }).join('');
+    const html = '<table><thead><tr>' + headers.map(h => '<th>' + escapeHtml(h) + '</th>').join('') +
+        '</tr></thead><tbody>' + body + '</tbody></table>';
+    poPrintDocument('ANNEXURE-III - Final Allocation List (FAL)', html);
 }
 
 
@@ -1707,17 +1813,48 @@ function poJoiningClosureOverrideFlow() {
 function poPrintOoa(ooaId) {
     const o = poState.ooa.find(x => x.ooa_id === ooaId);
     if (!o) return;
-    poPrintDocument('Order of Allotment - ' + (o.order_no || o.ooa_id),
-        '<table class="po-order"><tbody>' +
-        [['Order No', o.order_no || '(draft)'], ['Date', o.order_date || '(draft)'], ['Department', o.department],
-         ['Designation', o.designation], ['Name', o.name + ' ' + (o.parentage ? '(' + o.parentage + ')' : '')],
-         ['CFMS ID', o.cfms_id], ['Mobile', o.mobile],
-         ['Erstwhile Local Cadre', o.erstwhile_cadre], ['New Allotted Local Cadre', o.new_cadre],
-         ['Competent Authority', o.competent_authority],
-         ['Reference', o.po_reference], ['Reference', o.go_reference], ['Status', o.status], ['Version', o.version]]
-        .map(r => '<tr><th>' + escapeHtml(r[0]) + '</th><td>' + poDash(r[1]) + '</td></tr>').join('') +
+    const numbered = [
+        ['1', 'Full name of the Government Servant', o.name],
+        ['2', 'S/o, W/o, M/o', o.parentage],
+        ['3', 'CFMS ID of Government Servant', o.cfms_id],
+        ['4', 'Government Servant\u2019s Mobile No.', o.mobile],
+        ['5', 'Designation', o.designation],
+        ['6', 'Erstwhile local cadre as per Presidential Order, 1975.', o.erstwhile_cadre],
+        ['7', 'Organised and allotted to the new local cadre in terms of para 4 of the Andhra Pradesh Public Employment (Organisation of Local Cadres and Regulation of Direct Recruitment) Order, 2025:', o.new_cadre]
+    ];
+    const html =
+        '<div class="ooa-head"><strong>GOVERNMENT OF ANDHRA PRADESH</strong><br>' +
+        escapeHtml(o.department || 'Police') + ' Department</div>' +
+        '<div class="ooa-no">Order No-' + poDash(o.order_no) + ', dated: ' + poDash(o.order_date) + '</div>' +
+        '<div class="ooa-sub">Sub: Allotment of persons and organizing them into local cadres as per the Andhra Pradesh ' +
+        'Public Employment (Organisation of Local Cadres and Regulation of Direct Recruitment) Order, 2025 &mdash; ' +
+        'Allotment to new local cadre &mdash; Orders &mdash; Issued.</div>' +
+        '<div class="ooa-ref">Ref:&nbsp;1. G.O.Ms.No.45, GA(SPF &amp; MC) Dept., dated 20.04.2026 published in the Andhra Pradesh ' +
+        'Gazette, Part-I Extraordinary No-197, Amaravati, dated 20.04.2026.<br>' +
+        '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2. G.O.Ms.No.129, GA(SPF&amp;MC) Dept., dated 17.07.2026.</div>' +
+        '<div class="ooa-order"><strong>ORDER</strong><br>' +
+        'In exercise of powers conferred under sub-para (1) of paragraph 4 of the Andhra Pradesh Public Employment ' +
+        '(Organisation of Local Cadres and Regulation of Direct Recruitment) Order, 2025, orders issued on the process of ' +
+        'allotment of persons in the G.O. 2nd cited, and upon considering the option form submitted by the Government servant, ' +
+        'and on considering the advice of the Implementation Committee authorized by the Government, the following Order of ' +
+        'Allotment (OOA) is hereby issued:-</div>' +
+        '<table class="ooa-fields"><tbody>' +
+        numbered.map(r => '<tr><td class="ooa-num">' + r[0] + '</td><td class="ooa-label">' + escapeHtml(r[1]) + '</td>' +
+            '<td class="ooa-val">' + poDash(r[2]) + '</td></tr>').join('') +
         '</tbody></table>' +
-        '<div class="po-sign">Signature of the Competent Authority</div>');
+        '<div class="ooa-clauses">2. The above orders shall come into force with immediate effect, and the Local cadre of the ' +
+        'above Government servant shall stand organized and allotted to the new local cadre mentioned above.<br>' +
+        '3. The Government servant is directed to report to the new local cadre office, within seven (7) days from the date of ' +
+        'issue of this order.</div>' +
+        '<div class="ooa-sign"><div>Place: ____________________</div>' +
+        '<div class="ooa-sign-right">Signature of the district head/HoD/Secretary to Government<br>' +
+        '<strong>' + escapeHtml(o.competent_authority || '') + '</strong></div></div>' +
+        '<div class="ooa-to"><strong>To</strong><br>' +
+        'Sri/Smt ' + escapeHtml(o.name) + '<br>' + escapeHtml(o.designation || '') + '<br>Present Office address</div>' +
+        '<div class="ooa-copies"><strong>Copy to:</strong><br>The DTO (districts)<br>' +
+        'The Director of Treasuries and Accounts, AP Mangalagiri.<br>' +
+        'The Principal Accountant General, A.P., Vijayawada.</div>';
+    poPrintDocument('ANNEXURE-IV - Order of Allotment - ' + (o.order_no || o.ooa_id), html, true);
 }
 
 function poPrintAllOoa() {
@@ -1743,7 +1880,7 @@ function poPrintAllOot() {
         '</tbody></table>');
 }
 
-function poPrintDocument(title, bodyHtml) {
+function poPrintDocument(title, bodyHtml, bare) {
     const w = window.open('', '', 'width=1000,height=760');
     if (!w) { showToast('Allow pop-ups to print the order document', 'error'); return; }
     w.document.write('<!DOCTYPE html><html><head><title>' + escapeHtml(title) + '</title><style>' +
@@ -1756,11 +1893,27 @@ function poPrintDocument(title, bodyHtml) {
         'th{background:#eee;width:200px}' +
         '.po-order th{width:230px}' +
         '.po-sign{margin-top:60px;text-align:right;padding-right:40px}' +
+        '.ooa-head{text-align:center;font-size:15px;margin-bottom:6px}' +
+        '.ooa-no,.ooa-sub,.ooa-ref{margin:6px 0}' +
+        '.ooa-order{margin:14px 0}' +
+        '.ooa-fields td{padding:6px;border:1px solid #000}' +
+        '.ooa-fields .ooa-num{width:28px;text-align:center}' +
+        '.ooa-fields .ooa-label{width:300px}' +
+        '.ooa-fields .ooa-val{font-weight:bold}' +
+        '.ooa-clauses{margin:14px 0}' +
+        '.ooa-sign{margin-top:70px;display:flex;justify-content:space-between}' +
+        '.ooa-sign-right{text-align:right}' +
+        '.ooa-to{margin-top:40px}' +
+        '.ooa-copies{margin-top:20px}' +
         '@media print{.no-print{display:none}}</style></head><body>' +
-        '<h1>' + escapeHtml(title) + '</h1>' +
-        '<h3>' + escapeHtml(POEngine.PO_GO_REFERENCE.order) + ', ' + escapeHtml(POEngine.PO_GO_REFERENCE.department) + ', dated ' + escapeHtml(POEngine.PO_GO_REFERENCE.date) + '</h3>' +
-        '<div class="ref">Presidential Order-2025 &middot; ' + escapeHtml(poState.exercise.exercise_id || 'Exercise ID not set') + ' &middot; ' + escapeHtml(POEngine.PO_GO_REFERENCE.scope) + '</div>' +
-        bodyHtml +
+        (bare
+            ? '<h1 style="text-align:center;font-size:14px">ANNEXURE-IV</h1>' +
+              '<div style="text-align:center;font-size:11px">[to G.O. Ms.No.129, G.A.(SPF &amp; MC) Dept., dated:17.07.2026]<br>' +
+              '<strong>Format for Order of Allotment (OOA)</strong></div><hr>' + bodyHtml
+            : '<h1>' + escapeHtml(title) + '</h1>' +
+              '<h3>' + escapeHtml(POEngine.PO_GO_REFERENCE.order) + ', ' + escapeHtml(POEngine.PO_GO_REFERENCE.department) + ', dated ' + escapeHtml(POEngine.PO_GO_REFERENCE.date) + '</h3>' +
+              '<div class="ref">Presidential Order-2025 &middot; ' + escapeHtml(poState.exercise.exercise_id || 'Exercise ID not set') + ' &middot; ' + escapeHtml(POEngine.PO_GO_REFERENCE.scope) + '</div>' +
+              bodyHtml) +
         '<br><button class="no-print" onclick="window.print()">Print</button></body></html>');
     w.document.close();
 }
@@ -1802,7 +1955,7 @@ showPage = function (pageId) {
     'initPOModule', 'showPOPage', 'renderPOModule', 'renderCurrentPOTab', 'switchPOTab', 'poGotoStep',
     'poAdvanceStage', 'poSaveExerciseFromForm', 'poSaveMembersFromForm',
     'poDlcSeats', 'poDlc', 'poSeatLabel', 'poFreshDlc',
-    'poEditCategory', 'poSaveCategoryForm', 'poDeleteCategory', 'poLoadRankMaster',
+    'poEditCategory', 'poSaveCategoryForm', 'poDeleteCategory', 'poDownloadCategoryTemplate', 'poImportCategoryFile',
     'poSetStrengthField', 'poSetApprovedFromForm',
     'poValidateSeniorityNow', 'poDownloadSeniorityTemplate', 'poExportSeniorityCsv', 'poImportSeniorityFile',
     'poEditSeniorityRecord', 'poSaveSeniorityForm', 'poDeleteSeniorityRecord',
@@ -1810,11 +1963,11 @@ showPage = function (pageId) {
     'poFinalizeSeniorityFlow', 'poPublishFslFlow', 'poReviseFslFlow',
     'poSubmitOption', 'poSaveOptionWindow', 'poCloseOptionsFlow', 'poCorrectOptionFlow',
     'poRunSimulation', 'poConfirmAllocationFlow', 'poExplainAllocation',
-    'poFalViewChanged', 'poFalSearchChanged', 'poGenerateFalFlow', 'poApproveFalFlow',
+    'poFalViewChanged', 'poFalSearchChanged', 'poSetFalRemarkFromUi', 'poGenerateFalFlow', 'poApproveFalFlow',
     'poPublishFalFlow', 'poReviseFalFlow', 'poExportFalCsv', 'poPrintFal',
     'poGenerateOoaFlow', 'poApproveOoaFlow', 'poIssueOoaFlow', 'poReviseOoaFlow', 'poPrintOoa',
     'poGenerateOotFlow', 'poIssueOotFlow', 'poRecordJoiningFlow', 'poPrintAllOoa', 'poPrintAllOot',
-    'poSetPolicyFromUi', 'poFreezePolicyFlow', 'poJoiningClosureOverrideFlow'
+    'poSetPolicyFromUi', 'poSetDistrictSplitFromUi', 'poFreezePolicyFlow', 'poJoiningClosureOverrideFlow'
 ].forEach(name => {
     try { window[name] = window[name] || eval(name); } catch (e) { /* not a function - ignore */ }
 });

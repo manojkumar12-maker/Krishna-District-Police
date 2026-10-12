@@ -109,16 +109,34 @@ test('working strength: blocks when FWS does not reconcile with the approved str
     assert.ok(r.errors.some(e => e.code === 'FWS_RECONCILIATION'));
 });
 
-test('working strength: FWS above cadre strength is an error, never silently clamped', () => {
+test('working strength: FWS above cadre strength is a deputation warning, never blocking', () => {
     const bad = STRENGTHS.map(s => s.cadre_id === 'DC_NTR' && s.category_id === 'CAT_SI' ? Object.assign({}, s, { cadre_strength: 1 }) : s);
     const r = E.validateWorkingStrength({ ctx: E.poBuildContext({ categories: CATEGORIES, cadres: CADRES, strengths: bad, approved: APPROVED }) });
-    assert.ok(r.errors.some(e => e.code === 'FWS_EXCEEDS_CADRE_STRENGTH'));
+    assert.ok(r.errors.every(e => e.code !== 'FWS_EXCEEDS_CADRE_STRENGTH'), 'not a blocking error');
+    assert.ok(r.warnings.some(e => e.code === 'FWS_EXCEEDS_CADRE_STRENGTH'), 'reported as a warning');
+    assert.strictEqual(r.valid, true, 'allocation is not blocked by cadre strength');
 });
 
 test('working strength: FWS is never modified by the validator', () => {
     const before = JSON.stringify(STRENGTHS);
     E.validateWorkingStrength({ ctx: ctx() });
     assert.strictEqual(JSON.stringify(STRENGTHS), before);
+});
+
+test('district split: largest-remainder apportionment always sums to the total', () => {
+    const split = E.poSplitByPercent(150, [54, 28, 18]);
+    assert.deepStrictEqual(split, [81, 42, 27]);
+    assert.strictEqual(split.reduce((a, b) => a + b, 0), 150);
+});
+
+test('district split: fractional remainders are handed to the largest remainder', () => {
+    // 100 split 3 ways equally: 34/33/33, the extra post goes to the earliest share.
+    assert.deepStrictEqual(E.poSplitByPercent(100, [1, 1, 1]), [34, 33, 33]);
+    assert.deepStrictEqual(E.poSplitByPercent(1, [1, 1, 1]), [1, 0, 0]);
+});
+
+test('district split: a zero total yields all-zero shares', () => {
+    assert.deepStrictEqual(E.poSplitByPercent(0, [54, 28, 18]), [0, 0, 0]);
 });
 
 // ---------------------------------------------------------------------------
@@ -196,8 +214,50 @@ test('preferential: a manually ticked but unverified claim carries no preference
 });
 
 test('preferential: a verified claim is honoured', () => {
-    const rec = emp('01', 1, { claims: { widow: { claimed: true, verification: 'VERIFIED' } } });
+    const rec = emp('01', 1, { claims: { widow: { claimed: true, verification: 'VERIFIED', appointing_authority: 'District Collector' } } });
     assert.strictEqual(E.poPreferredClaim(rec).id, 'widow');
+});
+
+test('preferential: a claim is reported as uncertified until the appointing authority is recorded', () => {
+    const rec = emp('01', 1, { claims: { widow: { claimed: true, verification: 'VERIFIED' } } });
+    const c = E.poPreferredClaim(rec);
+    assert.strictEqual(c.certified, false, 'no appointing authority means not certified');
+    assert.strictEqual(c.appointing_authority, '');
+    assert.strictEqual(E.poClaimCertified({ appointing_authority: 'District Collector' }), true);
+});
+
+test('preferential: a claimed category without appointing-authority certification is a blocking error', () => {
+    const r = E.validateSeniorityList(
+        [emp('01', 1, { claims: { widow: { claimed: true, verification: 'VERIFIED' } } })], { ctx: ctx() });
+    assert.ok(r.errors.some(e => e.code === 'CLAIM_NOT_CERTIFIED'),
+        'the list cannot be locked while a claim is uncertified: ' + JSON.stringify(r.errors));
+    assert.strictEqual(r.valid, false);
+});
+
+test('preferential: the eight categories are exactly clauses (ix) to (xii) in priority order', () => {
+    assert.deepStrictEqual(E.PO_PREF_CLAIMS.map(p => p.id),
+        ['pwbd', 'disabled_children', 'widow', 'cancer', 'neurosurgery', 'kidney', 'liver', 'heart']);
+    assert.strictEqual(E.PO_PREF_CLAIMS[0].minPercent, 70, 'PwBD is 70% or above');
+    assert.ok(/SADAREM/i.test(E.PO_PREF_CLAIMS[0].docName), 'PwBD is certified per SADAREM');
+});
+
+test('preferential: PwBD is only preferential at 70% or above as certified', () => {
+    const ok = emp('01', 1, { claims: { pwbd: { claimed: true, verification: 'VERIFIED', disability_percent: 82, appointing_authority: 'District Collector' } } });
+    assert.strictEqual(E.poPreferredClaim(ok).id, 'pwbd');
+    const low = emp('02', 2, { claims: { pwbd: { claimed: true, verification: 'VERIFIED', disability_percent: 69, appointing_authority: 'District Collector' } } });
+    assert.strictEqual(E.poPreferredClaim(low), null, '69% certified is not preferential');
+});
+
+test('SC/ST is representation, never a preferential category', () => {
+    // The reserved percentages are exactly as prescribed by the order.
+    assert.deepStrictEqual(E.PO_SEG_GROUPS.map(g => [g.id, g.percent]),
+        [['SC_1', 1], ['SC_2', 6.5], ['SC_3', 7.5], ['ST', 6]]);
+    // No reserved-group id appears among the preferential categories.
+    const prefIds = E.PO_PREF_CLAIMS.map(p => p.id);
+    E.PO_SEG_GROUPS.forEach(g => assert.ok(prefIds.indexOf(g.id) === -1, g.id + ' is not preferential'));
+    // A reserved employee with no preferential claim gets no preference.
+    const reserved = emp('01', 1, { sc_group: 'SC_3' });
+    assert.strictEqual(E.poPreferredClaim(reserved), null, 'SC/ST confers no preferential ranking');
 });
 
 test('preferential: PwBD below 70% certified is not preferential', () => {

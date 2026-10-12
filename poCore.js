@@ -45,8 +45,8 @@ const PO_DEFAULT_CADRES = POEngine.PO_DISTRICTS.map(d => ({
 }));
 
 // Seed rank/categories preserved from the previous module (curated by request).
-// Ranks are configuration, not law: the DLC may load the departmental rank
-// master instead (see poSuggestCategoriesFromRankMaster).
+// Ranks are configuration, not law: the DLC enters or uploads them here. No
+// external rank master is consulted; the module holds its own data only.
 const PO_DEFAULT_CATEGORIES = [
     'Assistant Sub-Inspector of Police', 'Head Constable (Civil)', 'Police Constable (Civil)',
     'Head Constable (AR)', 'Police Constable (AR)', 'Junior Assistant', 'Typists',
@@ -99,6 +99,7 @@ function poFreshState() {
             prefer_existing_on_compulsory: false,
             scst_rounding_policy: POEngine.PO_DEFAULT_ROUNDING_POLICY,
             scst_adjustment: true,
+            district_split: Object.assign({}, POEngine.PO_DEFAULT_DISTRICT_SPLIT),
             frozen_at: null,
             frozen_by: null
         },
@@ -601,35 +602,53 @@ function poSeedMasters() {
     poSave();
 }
 
-function poSuggestCategoriesFromRankMaster() {
+/**
+ * Import categories from rows produced by the in-module CSV/Excel upload.
+ * Columns map punctuation-insensitively: categoryid, code, categoryname,
+ * department, erstwhilecadre, approvedworkingstrength. An existing Category ID
+ * is updated in place; a new one is created. No external master is consulted.
+ */
+function poImportCategories(rows) {
     if (!poIsAdmin()) { showToast('Admin only', 'error'); return 0; }
-    const seen = {};
-    poState.categories.forEach(c => { seen[poKeyOf(c.name)] = true; });
-    const pool = []
-        .concat((typeof rankMap !== 'undefined' && rankMap.ERSTWHILE_CIVIL) || [])
-        .concat((typeof rankMap !== 'undefined' && rankMap.ERSTWHILE_AR) || [])
-        .concat((typeof rankMap !== 'undefined' && rankMap.ERSTWHILE_MINISTERIAL) || [])
-        .concat((typeof rankMap !== 'undefined' && rankMap.ERSTWHILE_CLASS_IV) || []);
-
-    let added = 0;
-    pool.forEach(name => {
-        const k = poKeyOf(name);
-        if (!k || seen[k]) return;
-        seen[k] = true;
-        poState.categories.push({
-            id: 'CAT_' + String(poState.categories.length + 1).padStart(2, '0') + '_' + String(added + 1).padStart(2, '0'),
-            code: name,
-            name: name,
-            department: poState.exercise.department || '',
-            erstwhile_cadre: '',
-            status: 'ACTIVE',
-            created_at: poNow()
-        });
-        added++;
+    if (!Array.isArray(rows) || !rows.length) { showToast('No category rows to import', 'error'); return 0; }
+    let added = 0, updated = 0, skipped = 0;
+    rows.forEach(r => {
+        const id = String(r.categoryid || '').trim();
+        const name = String(r.categoryname || r.name || '').trim();
+        if (!id || !name) { skipped++; return; }
+        const code = String(r.code || '').trim() || name;
+        const department = String(r.department || '').trim() || poState.exercise.department || '';
+        const erstwhile = String(r.erstwhilecadre || r.erstwhile_cadre || '').trim();
+        const existing = poState.categories.find(c => c.id === id);
+        if (existing) {
+            existing.code = code; existing.name = name;
+            existing.department = department; existing.erstwhile_cadre = erstwhile;
+            updated++;
+        } else {
+            poState.categories.push({ id: id, code: code, name: name, department: department,
+                erstwhile_cadre: erstwhile, status: 'ACTIVE', created_at: poNow() });
+            added++;
+        }
+        const aws = r.approvedworkingstrength;
+        if (aws !== undefined && String(aws).trim() !== '') {
+            const n = parseInt(aws, 10);
+            if (!isNaN(n) && n >= 0) {
+                let row = poState.approved.find(a => a.category_id === id);
+                if (!row) { row = { category_id: id, approved_working_strength: 0 }; poState.approved.push(row); }
+                row.approved_working_strength = n;
+            }
+        }
     });
     poSyncStrengthMatrix();
+    poApplySplits();
     poSave();
-    return added;
+    if (skipped && !added && !updated) { showToast('No usable rows found. Rows need a Category ID and name.', 'error'); return 0; }
+    return added + updated;
+}
+
+function poCategoryTemplateCsv() {
+    return poToCsv(['Category ID', 'Code', 'Category name', 'Department', 'Erstwhile cadre', 'Approved working strength'],
+        [['CAT_15', 'Police Constable (AR) (Women)', 'Police Constable (AR) (Women)', 'Police', '', '0']]);
 }
 
 function poKeyOf(s) { return String(s || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ''); }
@@ -709,6 +728,53 @@ function poSetApprovedStrength(categoryId, value) {
     return v;
 }
 
+/**
+ * Split percentages for the three cadres, in cadre order. Reads the DLC's
+ * district_split policy (default 54/28/18) and returns one number per cadre.
+ */
+function poDistrictSplitPercents() {
+    const pol = poState.policy && poState.policy.district_split;
+    return poState.cadres.map(c => {
+        const v = pol && pol[c.id] !== undefined ? pol[c.id] : 0;
+        return Number(v) || 0;
+    });
+}
+
+/**
+ * Recompute the per-cadre FWS for every category from its approved working
+ * strength and the district split, using largest-remainder apportionment. The
+ * three district figures always sum exactly to the approved total.
+ */
+function poApplySplits() {
+    const percents = poDistrictSplitPercents();
+    poState.categories.forEach(cat => {
+        const approved = (poState.approved.find(a => a.category_id === cat.id) || {}).approved_working_strength;
+        if (approved === undefined || approved === null) return;
+        const shares = POEngine.poSplitByPercent(approved, percents);
+        poState.cadres.forEach((cadre, i) => {
+            const row = poState.strengths.find(s => s.category_id === cat.id && s.cadre_id === cadre.id);
+            if (row) row.fws = shares[i] || 0;
+        });
+    });
+}
+
+/**
+ * Auto-split the working strength for every category. Called from the UI when
+ * the DLC enters a total (or changes the split): the approved total is
+ * apportioned to Krishna, NTR and Eluru and the per-cadre FWS becomes read-only.
+ */
+function poAutoSplitWorkingStrength() {
+    if (!poIsAdmin()) { showToast('Admin only', 'error'); return false; }
+    if (poStageIdx(poStage()) > poStageIdx('WORKING_STRENGTH_FINALIZED')) {
+        showToast('Working strength is finalized and can no longer be split.', 'error');
+        return false;
+    }
+    poApplySplits();
+    poBumpVersion('fws');
+    poSave();
+    return true;
+}
+
 function poSetStrength(categoryId, cadreId, field, value) {
     if (!poIsAdmin()) { showToast('Admin only', 'error'); return; }
     if (poStageIdx(poStage()) > poStageIdx('WORKING_STRENGTH_FINALIZED')) {
@@ -751,6 +817,10 @@ const PO_SENIORITY_COLUMNS = [
     { key: 'deputation_unit',             header: 'Deputation Unit',                  required: false },
     { key: 'preferential_category',       header: 'Preferential Category',            required: false },
     { key: 'supporting_document_status',  header: 'Supporting Document',              required: false },
+    { key: 'preferential_certificate_no', header: 'Preferential Certificate No',      required: false },
+    { key: 'preferential_certificate_date', header: 'Certificate Date',               required: false },
+    { key: 'disability_percent',          header: 'Certified Disability %',           required: false },
+    { key: 'appointing_authority',        header: 'Appointing Authority',             required: false },
     { key: 'seniority_type',              header: 'Type of Seniority',                required: false }
 ];
 
@@ -773,20 +843,30 @@ function poBlankRecord(categoryId) {
     };
 }
 
+/**
+ * A blank preferential claim. `appointing_authority` carries the certification
+ * the GO requires: the category must be certified by the APPOINTING AUTHORITY
+ * after verification of the records. Verification alone is not sufficient.
+ */
+function poBlankClaim() {
+    return {
+        claimed: false, doc_present: '', cert_no: '', cert_date: '',
+        disability_percent: '', appointing_authority: '',
+        verification: 'NOT_CLAIMED', verified_by: '', verified_at: '', remark: ''
+    };
+}
+
 function poBlankClaims() {
     const c = {};
-    POEngine.PO_PREF_CLAIMS.forEach(def => {
-        c[def.id] = { claimed: false, doc_present: '', cert_no: '', cert_date: '', disability_percent: '', verification: 'NOT_CLAIMED', verified_by: '', verified_at: '', remark: '' };
-    });
+    POEngine.PO_PREF_CLAIMS.forEach(def => { c[def.id] = poBlankClaim(); });
     return c;
 }
 
 function poEnsureClaims(rec) {
     if (!rec.claims) rec.claims = {};
     POEngine.PO_PREF_CLAIMS.forEach(def => {
-        if (!rec.claims[def.id]) {
-            rec.claims[def.id] = { claimed: false, doc_present: '', cert_no: '', cert_date: '', disability_percent: '', verification: 'NOT_CLAIMED', verified_by: '', verified_at: '', remark: '' };
-        }
+        if (!rec.claims[def.id]) rec.claims[def.id] = poBlankClaim();
+        else if (rec.claims[def.id].appointing_authority === undefined) rec.claims[def.id].appointing_authority = '';
     });
     return rec;
 }
@@ -871,20 +951,25 @@ function poRowToSeniorityRecord(row, rowNo) {
     };
 
     // A single free-text preferential column maps to one claim; verification
-    // always starts as PENDING - a typed flag never grants preference.
+    // always starts as PENDING - a typed flag never grants preference. The
+    // appointing authority is carried from the upload where the file states it;
+    // without it the claim is still NOT preferential until it is certified.
     const prefRaw = (row.preferential_category || '').trim();
     if (prefRaw) {
         const def = POEngine.PO_PREF_CLAIMS.find(p =>
             poKeyOf(p.label) === poKeyOf(prefRaw) || poKeyOf(p.id) === poKeyOf(prefRaw) ||
             poKeyOf(p.label).indexOf(poKeyOf(prefRaw)) !== -1);
         if (def) {
-            rec.claims[def.id] = {
+            rec.claims[def.id] = Object.assign(poBlankClaim(), {
                 claimed: true,
                 doc_present: poNormalizeYesNo(row.supporting_document_status),
-                cert_no: '', cert_date: '', disability_percent: '',
+                cert_no: (row.preferential_certificate_no || '').trim(),
+                cert_date: (row.preferential_certificate_date || '').trim(),
+                disability_percent: (row.disability_percent || '').trim(),
+                appointing_authority: (row.appointing_authority || '').trim(),
                 verification: 'PENDING', verified_by: '', verified_at: '',
                 remark: 'Imported from seniority list upload'
-            };
+            });
         }
     }
     return rec;
@@ -943,18 +1028,39 @@ function poRunSeniorityValidation() {
 
 function poSeniorityTemplateCsv() {
     const headers = PO_SENIORITY_COLUMNS.map(c => c.header);
-    const sample = ['', 'Sample Name', 'S/o Sample', 'Male', '1234567', '9000000000', '01-01-1990', '01-01-2015', '', '', 'KRN PS', 'Police Constable', '', '', '', '', 'PRESENT', '', '', 'No', 'Provisional'];
-    return headers.join(',') + '\n' + sample.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',') + '\n';
+    // One sample cell per declared column, so the template can never drift.
+    const sampleByKey = {
+        name: 'Sample Name', parentage: 'S/o Sample', gender: 'Male',
+        cfms_id: '1234567', mobile: '9000000000',
+        date_of_birth: '01-01-1990', date_of_joining_category: '01-01-2015',
+        office: 'KRN PS', designation: 'Police Constable',
+        social_category: 'BC-B', erstwhile_cadre: 'DC_KRISHNA', present_local_cadre: 'DC_KRISHNA',
+        present_working_place: 'KRN PS', service_status: 'PRESENT',
+        preferential_category: 'Widow who remained unmarried',
+        appointing_authority: 'District Collector & District Magistrate',
+        seniority_type: 'Provisional'
+    };
+    const sample = PO_SENIORITY_COLUMNS.map(c => sampleByKey[c.key] || '');
+    return poToCsv(headers, [sample]);
 }
 
 function poSeniorityExportCsv() {
     const headers = PO_SENIORITY_COLUMNS.map(c => c.header);
+    // Preferential fields live on the claim, not on the record. The highest
+    // priority VERIFIED claim is what the list reports, and it is reported only
+    // when the appointing authority has certified it.
+    const claimKeys = ['preferential_certificate_no', 'preferential_certificate_date', 'disability_percent', 'appointing_authority'];
     const rows = poState.fsl.map(r => PO_SENIORITY_COLUMNS.map(c => {
         let v = r[c.key];
         if (c.key === 'erstwhile_cadre') v = r.erstwhile_cadre_id;
         if (c.key === 'present_local_cadre') v = r.present_local_cadre_id;
         if (c.key === 'preferential_category') v = POEngine.poPreferredClaim(r) ? POEngine.poPreferredClaim(r).label : '';
-        if (c.key === 'supporting_document_status') v = '';
+        if (claimKeys.indexOf(c.key) !== -1) {
+            const claim = POEngine.poPreferredClaim(r);
+            const def = claim ? POEngine.PO_PREF_CLAIMS.find(d => d.id === claim.id) : null;
+            const raw = def ? (r.claims && r.claims[def.id] ? r.claims[def.id][c.key] : '') : '';
+            v = raw || '';
+        }
         return v === undefined || v === null ? '' : String(v);
     }));
     return poToCsv(headers, rows);
@@ -1328,10 +1434,30 @@ function poSetPolicy(field, value) {
         if (POEngine.PO_ROUNDING_POLICY_IDS.indexOf(value) === -1) { showToast('Unknown rounding policy', 'error'); return false; }
     } else if (field === 'prefer_existing_on_compulsory' || field === 'scst_adjustment') {
         value = !!value;
+    } else if (field === 'district_split') {
+        // One non-negative percentage per fixed cadre. This drives the FWS split,
+        // so it is frozen together with the working strength.
+        if (poStageIdx(poStage()) > poStageIdx('WORKING_STRENGTH_FINALIZED')) {
+            showToast('District split is frozen once the working strength is finalized.', 'error');
+            return false;
+        }
+        const clean = {};
+        let bad = false;
+        poState.cadres.forEach(c => {
+            const v = Number(value && value[c.id]);
+            if (isNaN(v) || v < 0) bad = true;
+            clean[c.id] = isNaN(v) ? 0 : v;
+        });
+        if (bad) { showToast('District split needs a non-negative percentage per district.', 'error'); return false; }
+        if (poState.cadres.reduce((a, c) => a + (clean[c.id] || 0), 0) <= 0) {
+            showToast('District split percentages must sum to more than zero.', 'error'); return false;
+        }
+        value = clean;
     } else { showToast('Unknown policy field', 'error'); return false; }
 
     const prev = pol[field];
     pol[field] = value;
+    if (field === 'district_split') { poApplySplits(); poBumpVersion('fws'); }
     poBumpVersion('policy');
     poSave();
     return true;
@@ -1519,6 +1645,25 @@ function poGenerateFal() {
     if (poState.fal) {
         poState.history.fal.push({ at: poNow(), version: poState.fal.version, reason: 'Superseded by v' + ver });
     }
+    const rows = JSON.parse(JSON.stringify(run.allocations));
+
+    // Deputation marking (DLC POLICY): allocation proceeds on FWS irrespective of
+    // cadre strength. An employee whose ordinal within their category/cadre (by
+    // allocation sequence) exceeds the cadre's sanctioned strength is carried on
+    // deputation and is flagged so the DLC can record it in the row's remarks.
+    const cadreStrength = {};
+    poState.strengths.forEach(s => { cadreStrength[s.category_id + '|' + s.cadre_id] = parseInt(s.cadre_strength) || 0; });
+    const byCadre = {};
+    rows.forEach(r => { const k = r.category_id + '|' + r.cadre_id; (byCadre[k] = byCadre[k] || []).push(r); });
+    Object.keys(byCadre).forEach(k => {
+        byCadre[k].sort((a, b) => (a.allocation_sequence || 0) - (b.allocation_sequence || 0));
+        const cs = cadreStrength[k] || 0;
+        byCadre[k].forEach((r, idx) => {
+            r.remarks = '';
+            r.deputation = cs > 0 && (idx + 1) > cs;
+        });
+    });
+
     poState.fal = {
         version: 'v' + ver,
         run_id: run.run.run_id,
@@ -1532,9 +1677,26 @@ function poGenerateFal() {
         approved_at: null, approved_by: null,
         published_at: null, published_by: null,
         locked: false,
-        rows: JSON.parse(JSON.stringify(run.allocations)),
+        rows: rows,
         validation: { blocking: v.blocking, warnings: v.warnings }
     };
+    poSave();
+    return true;
+}
+
+/**
+ * Record a remark against an FAL row (e.g. "deputation"). The FAL itself cannot
+ * be hand-edited, but remarks are a DLC working note and remain editable until
+ * the FAL is published/locked.
+ */
+function poSetFalRemark(employeeId, text) {
+    if (!poIsAdmin()) { showToast('Admin only', 'error'); return false; }
+    if (!poState.fal) { showToast('No FAL to edit', 'error'); return false; }
+    if (poState.fal.locked) { showToast('The FAL is published and locked. Use the revision workflow to change remarks.', 'error'); return false; }
+    const row = poState.fal.rows.find(r => r.employee_id === employeeId);
+    if (!row) { showToast('FAL row not found', 'error'); return false; }
+    row.remarks = String(text || '').trim();
+    poBumpVersion('fal');
     poSave();
     return true;
 }
