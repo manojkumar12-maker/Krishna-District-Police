@@ -592,8 +592,11 @@ function validateSeniorityList(records, input) {
         }
 
         // -- social category ------------------------------------------------
+        // The model file's "Indicate if SC." column carries the SC/ST group; OC/BC
+        // employees leave it blank and have no separate social category. Flag as a
+        // warning (not blocking) so OC/BC records clear validation.
         if (poBlank()(r.social_category)) {
-            poIssue(errors, 'ERROR', 'MISSING_SOCIAL_CATEGORY', 'Social category is missing for ' + (r.name || 'record'), { employee_id: r.employee_id, field: 'social_category' });
+            poIssue(warnings, 'WARNING', 'MISSING_SOCIAL_CATEGORY', 'Social category is missing for ' + (r.name || 'record'), { employee_id: r.employee_id, field: 'social_category' });
         }
         if (!poBlank()(r.sc_group)) {
             const known = PO_SEG_GROUPS.some(g => g.id === r.sc_group);
@@ -694,9 +697,7 @@ function validateSeniorityList(records, input) {
         if (poBlank()(r.mobile)) {
             poIssue(warnings, 'WARNING', 'MISSING_MOBILE', 'Mobile number missing for ' + (r.name || 'record'), { employee_id: r.employee_id, field: 'mobile' });
         }
-        if (poBlank()(r.present_working_place)) {
-            poIssue(warnings, 'WARNING', 'MISSING_WORKING_PLACE', 'Present working place missing for ' + (r.name || 'record'), { employee_id: r.employee_id, field: 'present_working_place' });
-        }
+
         if (!poBlank()(r.gender) && ['Male', 'Female', 'Other'].indexOf(r.gender) === -1) {
             poIssue(warnings, 'WARNING', 'INVALID_GENDER', 'Gender "' + r.gender + '" is not normalised (' + (r.name || 'record') + ')', { employee_id: r.employee_id, field: 'gender' });
         }
