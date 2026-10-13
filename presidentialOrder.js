@@ -966,10 +966,6 @@ function poEditSeniorityRecord(employeeId) {
 
     const catOpts = '<option value="">Select category</option>' + poState.categories.map(c =>
         '<option value="' + escapeHtml(c.id) + '"' + (rec.category_id === c.id ? ' selected' : '') + '>' + escapeHtml((c.code ? c.code + ' - ' : '') + c.name) + '</option>').join('');
-    const cadreOpts = (sel, blank) => (blank ? '<option value="">' + blank + '</option>' : '') + poState.cadres.map(c =>
-        '<option value="' + escapeHtml(c.id) + '"' + (sel === c.id ? ' selected' : '') + '>' + escapeHtml(c.name) + '</option>').join('');
-    const statusOpts = POEngine.PO_SERVICE_STATUS.map(s =>
-        '<option value="' + s.id + '"' + (rec.service_status === s.id ? ' selected' : '') + '>' + escapeHtml(s.label) + '</option>').join('');
     const segOpts = '<option value="">Not reserved</option>' + POEngine.PO_SEG_GROUPS.map(g =>
         '<option value="' + g.id + '"' + (rec.sc_group === g.id ? ' selected' : '') + '>' + escapeHtml(g.label + ' (' + g.percent + '%)') + '</option>').join('');
 
@@ -981,12 +977,11 @@ function poEditSeniorityRecord(employeeId) {
         '<div class="modal-header"><h3>' + (employeeId ? 'Edit' : 'Add') + ' seniority list record</h3>' +
         '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button></div>' +
         '<div class="modal-body"><div class="po-note po-note-info">Date of joining means <strong>date of joining in the category</strong>. ' +
-        'Appointment, promotion and present-office joining dates are never substituted.</div>' +
+        'All employees belong to the Erstwhile Krishna District Cadre.</div>' +
         '<div class="form-grid">' +
             '<div class="form-group"><label>Seniority No. * (official)</label><input type="number" min="1" id="poR_sen" value="' + escapeHtml(rec.seniority_no === null ? '' : rec.seniority_no) + '"></div>' +
+            '<div class="form-group"><label>Type of Seniority</label><input id="poR_stype" placeholder="Final / Provisional / Tentative" value="' + escapeHtml(rec.seniority_type) + '"></div>' +
             '<div class="form-group"><label>Employee Name *</label><input id="poR_name" value="' + escapeHtml(rec.name) + '"></div>' +
-            '<div class="form-group"><label>Parentage</label><input id="poR_par" value="' + escapeHtml(rec.parentage) + '"></div>' +
-            '<div class="form-group"><label>Rank / category *</label><select id="poR_cat">' + catOpts + '</select></div>' +
             '<div class="form-group"><label>Gender</label><select id="poR_gen">' +
                 ['', 'Male', 'Female', 'Other'].map(g => '<option value="' + g + '"' + (rec.gender === g ? ' selected' : '') + '>' + (g || 'Select') + '</option>').join('') +
             '</select></div>' +
@@ -994,16 +989,17 @@ function poEditSeniorityRecord(employeeId) {
             '<div class="form-group"><label>Mobile Number</label><input id="poR_mob" value="' + escapeHtml(rec.mobile) + '"></div>' +
             '<div class="form-group"><label>Date of Birth</label><input type="date" id="poR_dob" value="' + escapeHtml(rec.date_of_birth) + '"></div>' +
             '<div class="form-group"><label>Date of Joining in Category *</label><input type="date" id="poR_doj" value="' + escapeHtml(rec.date_of_joining_category) + '"></div>' +
-            '<div class="form-group"><label>Type of seniority</label><input id="poR_stype" value="' + escapeHtml(rec.seniority_type) + '"></div>' +
-            '<div class="form-group"><label>Office</label><input id="poR_off" value="' + escapeHtml(rec.office) + '"></div>' +
-            '<div class="form-group"><label>Designation</label><input id="poR_desig" value="' + escapeHtml(rec.designation) + '"></div>' +
-            '<div class="form-group"><label>Social Category *</label><input id="poR_social" placeholder="e.g. BC-B / OC / SC / ST" value="' + escapeHtml(rec.social_category) + '"></div>' +
-            '<div class="form-group"><label>SC/ST reserved group</label><select id="poR_seg">' + segOpts + '</select></div>' +
-            '<div class="form-group"><label>Erstwhile Local Cadre</label><select id="poR_erc">' + cadreOpts(rec.erstwhile_cadre_id, 'Not stated') + '</select></div>' +
-            '<div class="form-group"><label>Present Local Cadre</label><select id="poR_prc">' + cadreOpts(rec.present_local_cadre_id, 'Not stated') + '</select></div>' +
-            '<div class="form-group"><label>Present Working Place</label><input id="poR_pwp" value="' + escapeHtml(rec.present_working_place) + '"></div>' +
-            '<div class="form-group"><label>Deputation / other status</label><select id="poR_stat">' + statusOpts + '</select></div>' +
-            '<div class="form-group"><label>Deputation unit</label><input id="poR_dunit" value="' + escapeHtml(rec.deputation_unit) + '"></div>' +
+            '<div class="form-group"><label>Rank / category *</label><select id="poR_cat">' + catOpts + '</select></div>' +
+            '<div class="form-group"><label>Indicate if SC. (Group-I, II, III)</label><select id="poR_seg">' + segOpts + '</select></div>' +
+            '<div class="form-group"><label>PwBD</label><select id="poR_pwbd">' +
+                '<option value="">No</option><option value="Yes"' + (rec.claims.pwbd.claimed ? ' selected' : '') + '>Yes</option></select></div>' +
+            '<div class="form-group"><label>Widow</label><select id="poR_widow">' +
+                '<option value="">No</option><option value="Yes"' + (rec.claims.widow.claimed ? ' selected' : '') + '>Yes</option></select></div>' +
+            '<div class="form-group"><label>Mentally Challenged Children</label><select id="poR_dc">' +
+                '<option value="">No</option><option value="Yes"' + (rec.claims.disabled_children.claimed ? ' selected' : '') + '>Yes</option></select></div>' +
+            '<div class="form-group"><label>Health Issues</label><select id="poR_health">' +
+                '<option value="">No</option><option value="Yes"' + (rec.claims.cancer.claimed || rec.claims.neurosurgery.claimed || rec.claims.kidney.claimed || rec.claims.heart.claimed ? ' selected' : '') + '>Yes</option></select></div>' +
+            '<div class="form-group"><label>G.No.</label><input id="poR_gno" value="' + escapeHtml(rec.g_no || '') + '"></div>' +
         '</div></div>' +
         '<div class="modal-footer"><button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">Cancel</button>' +
         '<button class="btn btn-primary" onclick="poSaveSeniorityForm(' + (employeeId ? '\'' + poQs(employeeId) + '\'' : 'null') + ')">Save</button></div>' +
@@ -1028,22 +1024,33 @@ function poSaveSeniorityForm(employeeId) {
     rec.rank_code = cat ? cat.code : '';
     rec.seniority_no = sen;              // null stays null - never a row number
     rec.name = (g('poR_name') || '').trim();
-    rec.parentage = (g('poR_par') || '').trim();
     rec.gender = g('poR_gen') || '';
     rec.cfms_id = (g('poR_cfms') || '').trim();
     rec.mobile = (g('poR_mob') || '').trim();
     rec.date_of_birth = g('poR_dob') || '';
     rec.date_of_joining_category = g('poR_doj') || '';
     rec.seniority_type = poNormalizeSeniorityType(g('poR_stype'));
-    rec.office = (g('poR_off') || '').trim();
-    rec.designation = (g('poR_desig') || '').trim();
-    rec.social_category = (g('poR_social') || '').trim();
     rec.sc_group = g('poR_seg') || '';
-    rec.erstwhile_cadre_id = g('poR_erc') || '';
-    rec.present_local_cadre_id = g('poR_prc') || '';
-    rec.present_working_place = (g('poR_pwp') || '').trim();
-    rec.service_status = g('poR_stat') || 'PRESENT';
-    rec.deputation_unit = (g('poR_dunit') || '').trim();
+    rec.g_no = (g('poR_gno') || '').trim();
+    // Single Erstwhile Krishna District Cadre for all employees.
+    rec.erstwhile_cadre_id = PO_DEFAULT_CADRES[0].id;
+    rec.present_local_cadre_id = PO_DEFAULT_CADRES[0].id;
+    rec.service_status = 'PRESENT';
+
+    // Preferential claims from the individual columns.
+    const mkClaim = (claimed) => Object.assign(poBlankClaim(), {
+        claimed: !!claimed, doc_present: claimed ? 'Yes' : '',
+        verification: 'PENDING', verified_by: '', verified_at: '',
+        remark: ''
+    });
+    rec.claims.pwbd = mkClaim(g('poR_pwbd'));
+    rec.claims.widow = mkClaim(g('poR_widow'));
+    rec.claims.disabled_children = mkClaim(g('poR_dc'));
+    const health = g('poR_health');
+    rec.claims.cancer = mkClaim(health);
+    rec.claims.neurosurgery = mkClaim(health);
+    rec.claims.kidney = mkClaim(health);
+    rec.claims.heart = mkClaim(health);
 
     const isNew = !employeeId;
     if (!poSaveSeniorityRecord(rec, isNew)) return;
