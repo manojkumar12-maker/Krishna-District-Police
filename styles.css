@@ -1072,10 +1072,10 @@ tbody tr:last-child td { border-bottom: none; }
     border-radius: var(--r-full); background: linear-gradient(var(--brand-500), var(--violet-600, #7c3aed));
 }
 .po-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.po-rank-upload-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin: 12px 0; }
+.po-rank-upload-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin: 12px 0; }
 .po-rank-upload { border: 1px solid var(--border); border-radius: var(--r-sm); padding: 12px; background: var(--surface-2); }
 .po-rank-upload-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px; font-size: 12px; }
-.po-cadre-upload-btns { display: flex; gap: 6px; }
+.po-rank-upload-btns { display: flex; gap: 4px; flex-wrap: wrap; }
 .po-hint { font-size: 11.5px; color: var(--text-muted); line-height: 1.55; margin: 4px 0 12px; }
 .po-readonly {
     padding: 8px 10px; background: var(--surface-3); border: 1px solid var(--border);

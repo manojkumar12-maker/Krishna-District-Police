@@ -711,12 +711,8 @@ function renderStepSeniority(content) {
             'uploading a rank&rsquo;s file replaces that rank&rsquo;s rows and leaves the other ranks untouched. The working strength is bifurcated into ' +
             'Krishna, NTR and Eluru during allocation. Seniority numbers are official: they are copied exactly as supplied and are never generated from row order.</p>' +
              (editable
-                 ? '<div class="po-actions" style="margin-bottom:12px;">' +
-                     '<button class="btn btn-primary" onclick="poEditSeniorityRecord(\'\')">+ Add record</button>' +
-                     '<button class="btn btn-secondary" onclick="poDownloadSeniorityTemplate()">Download CSV template</button>' +
-                     '<button class="btn btn-secondary" onclick="poExportSeniorityCsv()">Export</button>' +
-                     '<button class="btn btn-primary" onclick="poValidateSeniorityNow()">Run validation</button>' +
-                   '</div>'
+                 ? '<div class="po-note po-note-info" style="margin-bottom:12px;">Upload <strong>one file per rank</strong>. All employees belong to the single <strong>Erstwhile Krishna District Cadre</strong>; ' +
+                     'the bifurcation into Krishna, NTR and Eluru happens during allocation. Use the buttons on each rank card below to add records, download the template, upload, export, or validate.</div>'
                  : '<div class="po-note po-note-info">The seniority list is frozen at this stage.</div>') +
              (editable
                  ? '<div class="po-rank-upload-grid">' +
@@ -725,9 +721,13 @@ function renderStepSeniority(content) {
                          return '<div class="po-rank-upload">' +
                              '<div class="po-rank-upload-head"><strong>' + escapeHtml(cat.code ? cat.code + ' - ' + cat.name : cat.name) + '</strong>' +
                                  '<span class="po-badge po-badge-' + (n ? 'success' : 'warn') + '">' + (n ? n + ' records' : 'empty') + '</span></div>' +
-                             '<div class="po-cadre-upload-btns">' +
-                                 '<button class="btn btn-primary" onclick="document.getElementById(\'poSenRank_' + poQs(cat.id) + '\').click()">Upload / Replace</button>' +
+                             '<div class="po-rank-upload-btns">' +
+                                 '<button class="btn btn-secondary btn-sm" onclick="poEditSeniorityRecord(\'\')">+ Add</button>' +
+                                 '<button class="btn btn-secondary btn-sm" onclick="poDownloadSeniorityTemplate()">Template</button>' +
+                                 '<button class="btn btn-primary btn-sm" onclick="document.getElementById(\'poSenRank_' + poQs(cat.id) + '\').click()">Upload / Replace</button>' +
                                  '<input type="file" id="poSenRank_' + poQs(cat.id) + '" accept=".csv,.xlsx,.xls" style="display:none" onchange="poImportSeniorityFile(this,\'' + poQs(cat.id) + '\')">' +
+                                 '<button class="btn btn-secondary btn-sm" onclick="poExportRankCsv(\'' + poQs(cat.id) + '\')">Export</button>' +
+                                 '<button class="btn btn-secondary btn-sm" onclick="poValidateSeniorityNow()">Validate</button>' +
                              '</div>' +
                          '</div>';
                      }).join('') +
@@ -848,6 +848,15 @@ function poExportSeniorityCsv() {
     downloadFile(poSeniorityExportCsv(), 'PO_SeniorityList_' + poState.exercise.exercise_id + '.csv', 'text/csv');
 }
 
+/** Export a single rank's rows as CSV (model-file format). */
+function poExportRankCsv(categoryId) {
+    const rows = poState.fsl.filter(r => r.category_id === categoryId);
+    if (!rows.length) { showToast('No records for this rank', 'error'); return; }
+    const cat = poState.categories.find(c => c.id === categoryId);
+    const label = cat ? cat.code || cat.name : categoryId;
+    downloadFile(poSeniorityExportCsv(rows), 'PO_SeniorityList_' + label + '_' + poState.exercise.exercise_id + '.csv', 'text/csv');
+}
+
 // --- CSV / Excel ingestion ---------------------------------------------------
 // Header matching is case- and punctuation-insensitive, so 'Date of Joining in
 // Category', 'date_of_joining_in_category' and 'dateofjoiningincategory' all
@@ -894,7 +903,9 @@ function poSplitCsvLines(text) {
     for (let i = 0; i < text.length; i++) {
         const ch = text[i], nx = text[i + 1];
         if (ch === '"') {
-            if (q && nx === '"') { cur += '"'; i++; } else { q = !q; }
+            // Keep the quote character so poParseCsvLine can still distinguish
+            // commas inside quoted fields from field separators.
+            if (q && nx === '"') { cur += '"'; i++; } else { cur += '"'; q = !q; }
         } else if (ch === '\n' || ch === '\r') {
             if (q) { cur += ch; } else { out.push(cur); cur = ''; if (ch === '\r' && nx === '\n') i++; }
         } else { cur += ch; }

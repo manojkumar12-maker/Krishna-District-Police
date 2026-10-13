@@ -910,21 +910,21 @@ function poDeleteSeniorityRecord(employeeId) {
  */
 const PO_HEADER_ALIASES = {
     seniority_no:            ['senioritynumber', 'seniorityno', 'seniority', 'empid', 'idno'],
-    seniority_type:          ['typeofseniority', 'typeofseniorityflnalprovisionaltentative', 'senioritytype', 'type'],
-    proceedings_no:          ['senioritylist', 'proceedingsno', 'proceedingno', 'procno', 'caseno'],
-    proceedings_date:        ['proceedingsdate', 'proceedingdate', 'procdate', 'date'],
+    seniority_type:          ['typeofseniority', 'typeofseniorityflnalprovisionaltentative', 'typeofseniorityfinalprovisionaltentative', 'senioritytype', 'type'],
+    proceedings_no:          ['senioritylist', 'aproceedingsnumber', 'proceedingsno', 'proceedingno', 'procno', 'caseno'],
+    proceedings_date:        ['bdate', 'proceedingsdate', 'proceedingdate', 'procdate', 'date'],
     name:                    ['nameofthegovtservant', 'name', 'employeename', 'nameofemployee', 'nameofthegovts servant'],
     parentage:               ['parentage', 'fathername', 'spousename', 'parent'],
     gender:                  ['gendermf', 'gender', 'sex'],
     cfms_id:                 ['cfmsidno', 'cfmsid', 'cfms', 'cfmsno', 'cfms_id'],
     mobile:                  ['mobilenoof theemployee', 'mobilenooftheemployee', 'mobile', 'mobileno', 'mobile_number', 'phoneno', 'contactno'],
-    date_of_birth:           ['dobddmmyy', 'dob', 'dateofbirth', 'birthdate', 'date_of_birth'],
+    date_of_birth:           ['dobddmmyyyy', 'dobddmmyy', 'dob', 'dateofbirth', 'birthdate', 'date_of_birth'],
     date_of_joining_category: ['dateofjoininginthecategory', 'dateofjoiningincategory', 'dateofjoining', 'doj', 'joiningdate', 'date_of_joining_category', 'dateofjoiningthecategory'],
-    sc_group:                ['indicateifscgroupiii', 'scgroup', 'sc_group', 'reservedcategory', 'scstgroup', 'socialcategory', 'caste', 'category'],
-    pwd_percent:             ['ifpwbd', 'pwbd', 'disabilitypercent', 'disability_percent', 'certifieddisability', 'sadarem', 'disabliltypercent', 'disability'],
+    sc_group:                ['indicateifscgroupiiiiii', 'indicateifscgroupiii', 'scgroup', 'sc_group', 'reservedcategory', 'scstgroup', 'socialcategory', 'caste', 'category'],
+    pwd_percent:             ['ifpwbdcertifieddisabilityasperthevalidsadaremcertificate', 'ifpwbd', 'pwbd', 'disabilitypercent', 'disability_percent', 'certifieddisability', 'sadarem', 'disabliltypercent', 'disability'],
     widow:                   ['ifwidowmentionyes', 'widow', 'iswidow', 'widowstatus'],
     disabled_children:       ['mentionyesifhavingmentallychallengedchildren', 'disabledchildren', 'disabled_children', 'mentallychallengedchildren', 'challengedchildren'],
-    health_issues:           ['mentionifappilcabeicancer', 'cancer', 'healthissues', 'healthproblems', 'medicalcondition'],
+    health_issues:           ['mentionifapplicableicanceriineurosurgeryiiikidneytransplantivopenheartsurgery', 'mentionifappilcabeicancer', 'cancer', 'healthissues', 'healthproblems', 'medicalcondition'],
     g_no:                    ['gno', 'g_no', 'pfno', 'pf_no', 'pfnumber'],
     qualification:           ['ssc', 'qualification', 'education', 'qual'],
     native_place:            ['nativeplace', 'native_place', 'native', 'hometown', 'nativetown'],
@@ -1135,30 +1135,67 @@ function poRunSeniorityValidation() {
 }
 
 function poSeniorityTemplateCsv() {
-    const headers = PO_SENIORITY_COLUMNS.map(c => c.header);
-    // One sample cell per declared column, so the template can never drift.
-    const sampleByKey = {
-        name: 'Sample Name', parentage: 'S/o Sample', gender: 'Male',
-        cfms_id: '1234567', mobile: '9000000000',
-        date_of_birth: '01-01-1990', date_of_joining_category: '01-01-2015',
-        office: 'KRN PS', designation: 'Police Constable',
-        social_category: 'BC-B', erstwhile_cadre: 'DC_KRISHNA', present_local_cadre: 'DC_KRISHNA',
-        present_working_place: 'KRN PS', service_status: 'PRESENT',
-        preferential_category: 'Widow who remained unmarried',
-        appointing_authority: 'District Collector & District Magistrate',
-        seniority_type: 'Provisional'
-    };
-    const sample = PO_SENIORITY_COLUMNS.map(c => sampleByKey[c.key] || '');
+    // Template mirrors the official MODEL SENIORITY LIST format so the DLC can
+    // fill it in the same layout as the paper list.
+    const headers = [
+        'SI.No',
+        'Type of Seniority\nFinal/ Provisional/ Tentative',
+        'Seniority List',
+        '(a) Proceedings Number',
+        '(b) Date',
+        'Seniority Number',
+        'Name of the Govt. Servant',
+        'Gender\nM/F',
+        'CFMS ID NO.',
+        'Mobile No of the employee',
+        'DOB\ndd.mm.yyyy',
+        'Date of Joining in the category',
+        'Indicate if SC. (Group-I, II, III)',
+        'If PwBD, certified Disability % as per the valid SADAREM certificate',
+        'if widow, mention Yes.',
+        'Mention Yes\nIf having Mentally Challenged Children',
+        'Mention, If applicable\n(i) Cancer (ii)Neuro Surgery (iii) Kidney Transplant (iv) Open Heart Surgery',
+        'G.No.',
+        'Qualification',
+        'Native Place',
+        'Present Working Place',
+        'Remarks'
+    ];
+    const sample = [
+        '1',
+        'Provisional',
+        'C.No.125/A2/26',
+        'C.No.125/A2/26',
+        '09.03.26',
+        '2',
+        'B.NAGA RAJU',
+        'M',
+        '14381002',
+        '9866832528',
+        '30.05.1969',
+        '21.01.1992',
+        'SC-III',
+        'NO',
+        'NO',
+        'NO',
+        'NO',
+        '610',
+        'SSC',
+        'KURUMADDALI',
+        'KRISHNA DIST.',
+        'Convertion from AR to Civil 12.10.10'
+    ];
     return poToCsv(headers, [sample]);
 }
 
-function poSeniorityExportCsv() {
+function poSeniorityExportCsv(records) {
     const headers = PO_SENIORITY_COLUMNS.map(c => c.header);
+    const data = records || poState.fsl;
     // Preferential fields live on the claim, not on the record. The highest
     // priority VERIFIED claim is what the list reports, and it is reported only
     // when the appointing authority has certified it.
     const claimKeys = ['preferential_certificate_no', 'preferential_certificate_date', 'disability_percent', 'appointing_authority'];
-    const rows = poState.fsl.map(r => PO_SENIORITY_COLUMNS.map(c => {
+    const rows = data.map(r => PO_SENIORITY_COLUMNS.map(c => {
         let v = r[c.key];
         if (c.key === 'erstwhile_cadre') v = r.erstwhile_cadre_id;
         if (c.key === 'present_local_cadre') v = r.present_local_cadre_id;
@@ -1232,8 +1269,11 @@ function poNormalizeGender(val) {
 }
 
 function poNormalizeSegGroup(val) {
-    // strip dots, dashes, spaces AND underscores so SC_3, SC-3, SC 3 and SC3 all match
-    const v = String(val || '').toUpperCase().replace(/[._\-\s]/g, '');
+    // strip dots, dashes, spaces AND underscores so SC_3, SC-3, SC 3 and SC3 all match.
+    // Also strip Roman numerals (I, II, III) used by the model file: SC-III -> SC3.
+    const v = String(val || '').toUpperCase()
+        .replace(/[._\-\s]/g, '')
+        .replace(/III$/g, '3').replace(/II$/g, '2').replace(/I$/g, '1').replace(/IV$/g, '4');
     if (!v) return '';
     if (['SC1', 'S1', 'SCGROUP1', 'SCGRP1', 'SCG1'].indexOf(v) !== -1) return 'SC_1';
     if (['SC2', 'S2', 'SCGROUP2', 'SCGRP2', 'SCG2'].indexOf(v) !== -1) return 'SC_2';
