@@ -1155,11 +1155,7 @@ function poSeniorityTemplateCsv() {
         'if widow, mention Yes.',
         'Mention Yes\nIf having Mentally Challenged Children',
         'Mention, If applicable\n(i) Cancer (ii)Neuro Surgery (iii) Kidney Transplant (iv) Open Heart Surgery',
-        'G.No.',
-        'Qualification',
-        'Native Place',
-        'Present Working Place',
-        'Remarks'
+        'G.No.'
     ];
     const sample = [
         '1',
@@ -1179,11 +1175,7 @@ function poSeniorityTemplateCsv() {
         'NO',
         'NO',
         'NO',
-        '610',
-        'SSC',
-        'KURUMADDALI',
-        'KRISHNA DIST.',
-        'Convertion from AR to Civil 12.10.10'
+        '610'
     ];
     return poToCsv(headers, [sample]);
 }
