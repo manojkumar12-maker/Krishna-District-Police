@@ -112,20 +112,19 @@ function freshState() {
     return C.poState;
 }
 
-/** Upload one cadre's seniority list. Rows name DC_KRISHNA / DC_NTR / DC_ELURU. */
-function importSeniority(n, cadre) {
-    const cadreId = cadre || 'DC_KRISHNA';
+/** Upload one rank's seniority list. All employees are assigned to DC_KRISHNA. */
+function importSeniority(n, categoryId) {
+    const cat = categoryId || 'CAT_SI';
     const rows = [];
     for (let i = 1; i <= n; i++) {
         rows.push({
-            seniority_no: String(i), name: 'E' + i, category_id: 'CAT_SI', gender: 'Male',
+            seniority_no: String(i), name: 'E' + i, category_id: cat, gender: 'Male',
             cfms_id: 'C' + i, mobile: '90000000' + i, date_of_birth: '01-01-1990',
             date_of_joining_category: '01-01-2015', social_category: 'BC-B',
-            erstwhile_cadre: cadreId, present_local_cadre: cadreId,
-            present_working_place: cadreId + ' PS', service_status: 'PRESENT'
+            present_working_place: 'Krishna PS', service_status: 'PRESENT'
         });
     }
-    return C.poImportSeniorityRows(rows, true);
+    return C.poImportSeniorityRows(rows, true, cat);
 }
 
 /** Drive the real workflow to the point where the list can be locked.
@@ -287,35 +286,46 @@ test('TEST 35: the seniority list cannot be modified once options have opened', 
 });
 
 // ===========================================================================
-// Per-cadre upload
+// Per-rank upload — all employees belong to the single Erstwhile Krishna District Cadre
 // ===========================================================================
-test('upload: each cadre is uploaded separately and replaces only its own rows', () => {
+test('upload: each rank is uploaded separately and replaces only its own rows', () => {
     freshState();
-    assert.strictEqual(importSeniority(3, 'DC_KRISHNA'), 3);
-    assert.strictEqual(importSeniority(2, 'DC_NTR'), 2);
-    assert.strictEqual(C.poState.fsl.length, 5, 'both cadres present');
+    // Add a second category for the test.
+    C.poState.categories.push({ id: 'CAT_HC', code: 'HC', name: 'Head Constable', status: 'ACTIVE' });
+    C.poSyncStrengthMatrix();
 
-    // Re-uploading Krishna replaces Krishna and leaves NTR alone.
-    assert.strictEqual(importSeniority(4, 'DC_KRISHNA'), 4);
-    assert.strictEqual(C.poState.fsl.length, 6, 'Krishna 4 + NTR 2');
-    assert.strictEqual(C.poState.fsl.filter(r => r.erstwhile_cadre_id === 'DC_KRISHNA').length, 4);
-    assert.strictEqual(C.poState.fsl.filter(r => r.erstwhile_cadre_id === 'DC_NTR').length, 2);
+    assert.strictEqual(importSeniority(3, 'CAT_SI'), 3);
+    assert.strictEqual(importSeniority(2, 'CAT_HC'), 2);
+    assert.strictEqual(C.poState.fsl.length, 5, 'both ranks present');
+
+    // All employees belong to the single Erstwhile Krishna District Cadre.
+    assert.strictEqual(C.poState.fsl.filter(r => r.erstwhile_cadre_id === 'DC_KRISHNA').length, 5);
+
+    // Re-uploading CAT_SI replaces CAT_SI rows and leaves CAT_HC alone.
+    assert.strictEqual(importSeniority(4, 'CAT_SI'), 4);
+    assert.strictEqual(C.poState.fsl.length, 6, 'CAT_SI 4 + CAT_HC 2');
+    assert.strictEqual(C.poState.fsl.filter(r => r.category_id === 'CAT_SI').length, 4);
+    assert.strictEqual(C.poState.fsl.filter(r => r.category_id === 'CAT_HC').length, 2);
 
     // Employee ids are re-keyed so they stay unique after every import.
     const ids = C.poState.fsl.map(r => r.employee_id);
     assert.strictEqual(new Set(ids).size, ids.length, 'employee ids remain unique');
 });
 
-test('upload: a file that names none of the three districts is refused', () => {
+test('upload: a file with an unknown category is imported but flagged by validation', () => {
     freshState();
-    assert.strictEqual(importSeniority(3, 'DC_KRISHNA'), 3);
+    assert.strictEqual(importSeniority(3, 'CAT_SI'), 3);
+    // A row with an unknown category is still imported (the validator flags it).
     const n = C.poImportSeniorityRows([{
-        seniority_no: '1', name: 'Stranger', category_id: 'CAT_SI',
+        seniority_no: '1', name: 'Stranger', category_id: 'CAT_UNKNOWN',
         date_of_birth: '01-01-1990', date_of_joining_category: '01-01-2015',
-        social_category: 'OC', erstwhile_cadre: 'Atlantis', present_local_cadre: 'Atlantis'
+        social_category: 'OC'
     }], true);
-    assert.strictEqual(n, 0, 'refused rather than silently appended');
-    assert.strictEqual(C.poState.fsl.length, 3, 'existing rows untouched');
+    assert.strictEqual(n, 1, 'imported — the validator will flag the unknown category');
+    assert.strictEqual(C.poState.fsl.length, 4, 'row appended');
+    // The unknown category is flagged by the validator.
+    const r = C.poRunSeniorityValidation();
+    assert.ok(r.errors.some(e => e.code === 'INVALID_CATEGORY'), 'unknown category flagged');
 });
 
 // ===========================================================================
@@ -755,7 +765,7 @@ test('working strength: the total auto-splits into the three districts', () => {
 // ===========================================================================
 test('end to end: upload -> lock -> publish -> options -> allocation -> FAL', () => {
     freshState();
-    assert.strictEqual(importSeniority(3, 'DC_KRISHNA'), 3);
+    assert.strictEqual(importSeniority(3, 'CAT_SI'), 3);
 
     // DRAFT -> CADRE_CONFIGURED -> WORKING_STRENGTH_FINALIZED -> FSL_UPLOADED
     assert.strictEqual(C.poAdvance('configured').ok, true);

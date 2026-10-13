@@ -1084,50 +1084,36 @@ function poRowToSeniorityRecord(row, rowNo) {
 /**
  * Import uploaded rows into the seniority list.
  *
- * `replace` is how the DLC uploads one file PER CADRE: uploading the Krishna
- * file REPLACES the Krishna rows and leaves the NTR and Eluru rows untouched.
- * Uploading a file that names no known cadre is refused rather than silently
- * appending duplicates - the per-cadre file must state Erstwhile or Present
- * Local Cadre.
+ * `replace` is how the DLC uploads one file per rank: uploading the Police
+ * Constable file replaces that rank's rows and leaves the other ranks untouched.
  *
- * `forcedCadreId` is set when the UI uploads against a specific cadre button
- * (Krishna / NTR / Eluru). It replaces only that cadre's rows, assigns it as
- * both the erstwhile and present local cadre, and never reads the cadre from
- * the file — so the official model format (which carries no cadre column) works.
+ * `categoryId` is set when the UI uploads against a specific rank button. It
+ * replaces only that rank's rows, assigns the single Erstwhile Krishna District
+ * Cadre (DC_KRISHNA) as both erstwhile and present local cadre, and never reads
+ * the category from the file — so the official model format (which carries no
+ * category column) works. The bifurcation into Krishna, NTR and Eluru happens
+ * during allocation.
  */
-function poImportSeniorityRows(rows, replace, forcedCadreId) {
+function poImportSeniorityRows(rows, replace, categoryId) {
     if (!poIsAdmin()) { showToast('Admin only', 'error'); return 0; }
     if (!poAssertSeniorityEditable()) return 0;
-    if (replace) {
-        const ids = [];
-        if (forcedCadreId) {
-            ids.push(forcedCadreId);
-        } else {
-            const fileCadres = {};
-            (rows || []).forEach(r => {
-                [r.erstwhile_cadre, r.present_local_cadre].filter(Boolean).forEach(x => {
-                    const hit = poState.cadres.find(c => c.id.toLowerCase() === String(x).trim().toLowerCase() ||
-                        poKeyOf(c.name) === poKeyOf(x));
-                    if (hit) fileCadres[hit.id] = true;
-                });
-            });
-            Object.keys(fileCadres).forEach(id => ids.push(id));
-            if (!ids.length) {
-                showToast('The file does not name Krishna, NTR or Eluru in Erstwhile/Present Local Cadre. Upload each cadre separately using the cadre buttons.', 'error');
-                return 0;
-            }
-        }
-        poState.fsl = poState.fsl.filter(r =>
-            ids.indexOf(r.erstwhile_cadre_id) === -1 && ids.indexOf(r.present_local_cadre_id) === -1);
+    const theCadre = PO_DEFAULT_CADRES[0].id;   // DC_KRISHNA — single erstwhile cadre
+    if (replace && categoryId) {
+        // Replace only the selected rank's rows; leave other ranks untouched.
+        poState.fsl = poState.fsl.filter(r => r.category_id !== categoryId);
     }
-    const assignCadre = forcedCadreId || null;
     let n = 0;
     (rows || []).forEach((row, i) => {
         const rec = poRowToSeniorityRecord(row, i + 1);
-        if (assignCadre) {
-            rec.erstwhile_cadre_id = assignCadre;
-            rec.present_local_cadre_id = assignCadre;
+        // Force the rank from the upload button.
+        if (categoryId) {
+            rec.category_id = categoryId;
+            const cat = poState.categories.find(c => c.id === categoryId);
+            rec.rank_code = cat ? cat.code : rec.rank_code;
         }
+        // All employees belong to the single Erstwhile Krishna District Cadre.
+        rec.erstwhile_cadre_id = theCadre;
+        rec.present_local_cadre_id = theCadre;
         poState.fsl.push(rec);
         n++;
     });

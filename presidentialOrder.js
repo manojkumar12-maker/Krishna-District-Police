@@ -706,10 +706,10 @@ function renderStepSeniority(content) {
         '</tr>');
 
     content.innerHTML =
-        poCard('Step 3 &middot; Upload the Seniority List, cadre by cadre',
-            '<p class="po-hint">Upload <strong>one file per cadre</strong>: Krishna, NTR and Eluru. Uploading a cadre&rsquo;s file replaces that ' +
-            'cadre&rsquo;s rows and leaves the other two untouched. Seniority numbers are official: they are copied exactly as supplied and are never ' +
-            'generated from row order. Employees on deputation, leave, probation, training, suspension or absence all remain on the list.</p>' +
+        poCard('Step 3 &middot; Upload the Seniority List, rank by rank',
+            '<p class="po-hint">Upload <strong>one file per rank / category</strong>. All employees on the list belong to the single <strong>Erstwhile Krishna District Cadre</strong>; ' +
+            'uploading a rank&rsquo;s file replaces that rank&rsquo;s rows and leaves the other ranks untouched. The working strength is bifurcated into ' +
+            'Krishna, NTR and Eluru during allocation. Seniority numbers are official: they are copied exactly as supplied and are never generated from row order.</p>' +
              (editable
                  ? '<div class="po-actions" style="margin-bottom:12px;">' +
                      '<button class="btn btn-primary" onclick="poEditSeniorityRecord(\'\')">+ Add record</button>' +
@@ -719,21 +719,21 @@ function renderStepSeniority(content) {
                    '</div>'
                  : '<div class="po-note po-note-info">The seniority list is frozen at this stage.</div>') +
              (editable
-                 ? '<div class="po-cadre-upload-grid">' +
-                     poState.cadres.map(c => {
-                         const n = list.filter(r => r.erstwhile_cadre_id === c.id || r.present_local_cadre_id === c.id).length;
-                         return '<div class="po-cadre-upload">' +
-                             '<div class="po-cadre-upload-head"><strong>' + escapeHtml(c.name) + '</strong>' +
+                 ? '<div class="po-rank-upload-grid">' +
+                     poState.categories.filter(c => c.status !== 'INACTIVE').map(cat => {
+                         const n = list.filter(r => r.category_id === cat.id).length;
+                         return '<div class="po-rank-upload">' +
+                             '<div class="po-rank-upload-head"><strong>' + escapeHtml(cat.code ? cat.code + ' - ' + cat.name : cat.name) + '</strong>' +
                                  '<span class="po-badge po-badge-' + (n ? 'success' : 'warn') + '">' + (n ? n + ' records' : 'empty') + '</span></div>' +
                              '<div class="po-cadre-upload-btns">' +
-                                 '<button class="btn btn-primary" onclick="document.getElementById(\'poSenFile_' + poQs(c.id) + '\').click()">Upload / Replace</button>' +
-                                 '<input type="file" id="poSenFile_' + poQs(c.id) + '" accept=".csv,.xlsx,.xls" style="display:none" onchange="poImportSeniorityFile(this,\'' + poQs(c.id) + '\')">' +
+                                 '<button class="btn btn-primary" onclick="document.getElementById(\'poSenRank_' + poQs(cat.id) + '\').click()">Upload / Replace</button>' +
+                                 '<input type="file" id="poSenRank_' + poQs(cat.id) + '" accept=".csv,.xlsx,.xls" style="display:none" onchange="poImportSeniorityFile(this,\'' + poQs(cat.id) + '\')">' +
                              '</div>' +
                          '</div>';
                      }).join('') +
                    '</div>'
                  : '') +
-            '<div class="po-stat-grid">' + cadreCards + '</div>' +
+             '<div class="po-stat-grid">' + cadreCards + '</div>' +
             poStats([
                 { value: list.length, label: 'Records loaded' },
                 { value: (report ? report.errors.length : '-'), label: 'Errors' },
@@ -919,27 +919,26 @@ function poParseCsvLine(line) {
 function text1(s, i) { return s[i + 1]; }
 
 /**
- * Upload one cadre's seniority list. When `forcedCadreId` is set the file is
- * loaded against that cadre: its existing rows are replaced and the other two
- * are left alone. The cadre is assigned from the button used, never read from
- * the file — so the official model format (no cadre column) works.
- * Without `forcedCadreId` the file must name Krishna, NTR or Eluru in
- * Erstwhile / Present Local Cadre.
+ * Upload one rank's seniority list. `categoryId` selects the rank; the file
+ * replaces that rank's rows and leaves other ranks untouched. Every employee
+ * is assigned to the single Erstwhile Krishna District Cadre (DC_KRISHNA) as
+ * both erstwhile and present local cadre — the bifurcation into Krishna, NTR
+ * and Eluru happens during allocation, not at upload.
  */
-function poImportSeniorityFile(input, forcedCadreId) {
+function poImportSeniorityFile(input, categoryId) {
     const file = input.files && input.files[0];
     input.value = '';
     if (!file) return;
-    const cadreName = forcedCadreId ? (poState.cadres.find(c => c.id === forcedCadreId) || {}).name : 'the cadre named in the file';
-    if (!confirm('Upload this file for ' + cadreName + '?\n\n' + (forcedCadreId
-        ? 'This replaces ' + cadreName + "'s rows. The other two cadres are untouched."
-        : 'The rows of the cadre named in the file will be REPLACED. Rows of the other two cadres are untouched.')
+    const cat = categoryId ? poState.categories.find(c => c.id === categoryId) : null;
+    const catName = cat ? (cat.code ? cat.code + ' - ' + cat.name : cat.name) : 'the rank named in the file';
+    if (!confirm('Upload this file for ' + catName + '?\n\nThis replaces ' + catName +
+        "'s rows in the Erstwhile Krishna District Cadre. Other ranks are untouched."
     )) return;
     poReadSpreadsheet(file, rows => {
         if (!rows.length) { showToast('No usable rows found in the file', 'error'); return; }
-        const n = poImportSeniorityRows(rows, true, forcedCadreId || undefined);
+        const n = poImportSeniorityRows(rows, true, categoryId || undefined);
         if (!n) { renderPOModule(); return; }
-        showToast(n + ' record(s) imported for ' + cadreName + '. Run validation to see any errors.', 'success');
+        showToast(n + ' record(s) imported for ' + catName + '. Run validation to see any errors.', 'success');
         renderPOModule();
     });
 }
