@@ -903,12 +903,57 @@ function poDeleteSeniorityRecord(employeeId) {
 }
 
 /**
+ * Header alias map: maps normalized header keys from uploaded files to
+ * standard field names. The module's template headers and the official
+ * "MODEL SENIORITY LIST" format both resolve through this map.
+ * Keys are already normalized (lowercase, non-alphanumerics stripped) by poCsvToRows.
+ */
+const PO_HEADER_ALIASES = {
+    seniority_no:            ['senioritynumber', 'seniorityno', 'seniority', 'empid', 'idno'],
+    seniority_type:          ['typeofseniority', 'typeofseniorityflnalprovisionaltentative', 'senioritytype', 'type'],
+    proceedings_no:          ['senioritylist', 'proceedingsno', 'proceedingno', 'procno', 'caseno'],
+    proceedings_date:        ['proceedingsdate', 'proceedingdate', 'procdate', 'date'],
+    name:                    ['nameofthegovtservant', 'name', 'employeename', 'nameofemployee', 'nameofthegovts servant'],
+    parentage:               ['parentage', 'fathername', 'spousename', 'parent'],
+    gender:                  ['gendermf', 'gender', 'sex'],
+    cfms_id:                 ['cfmsidno', 'cfmsid', 'cfms', 'cfmsno', 'cfms_id'],
+    mobile:                  ['mobilenoof theemployee', 'mobilenooftheemployee', 'mobile', 'mobileno', 'mobile_number', 'phoneno', 'contactno'],
+    date_of_birth:           ['dobddmmyy', 'dob', 'dateofbirth', 'birthdate', 'date_of_birth'],
+    date_of_joining_category: ['dateofjoininginthecategory', 'dateofjoiningincategory', 'dateofjoining', 'doj', 'joiningdate', 'date_of_joining_category', 'dateofjoiningthecategory'],
+    sc_group:                ['indicateifscgroupiii', 'scgroup', 'sc_group', 'reservedcategory', 'scstgroup', 'socialcategory', 'caste', 'category'],
+    pwd_percent:             ['ifpwbd', 'pwbd', 'disabilitypercent', 'disability_percent', 'certifieddisability', 'sadarem', 'disabliltypercent', 'disability'],
+    widow:                   ['ifwidowmentionyes', 'widow', 'iswidow', 'widowstatus'],
+    disabled_children:       ['mentionyesifhavingmentallychallengedchildren', 'disabledchildren', 'disabled_children', 'mentallychallengedchildren', 'challengedchildren'],
+    health_issues:           ['mentionifappilcabeicancer', 'cancer', 'healthissues', 'healthproblems', 'medicalcondition'],
+    g_no:                    ['gno', 'g_no', 'pfno', 'pf_no', 'pfnumber'],
+    qualification:           ['ssc', 'qualification', 'education', 'qual'],
+    native_place:            ['nativeplace', 'native_place', 'native', 'hometown', 'nativetown'],
+    present_working_place:   ['presentworkingplace', 'present_working_place', 'presentworking', 'workingplace', 'presentoffice', 'present_working', 'presentposting'],
+    remarks:                 ['remarks', 'remark', 'notes', 'note'],
+    office:                  ['office', 'presentoffice', 'workingoffice'],
+    designation:             ['designation', 'presentdesignation', 'post'],
+    social_category:         ['socialcategory', 'social_category', 'caste', 'community']
+};
+
+/** Look up a field value from the row using the alias map. */
+function poField(row, fieldName) {
+    const aliases = PO_HEADER_ALIASES[fieldName] || [fieldName];
+    for (const a of aliases) {
+        const ak = String(a).toLowerCase().replace(/[^a-z0-9]+/g, '');
+        if (row[ak] !== undefined && row[ak] !== null) return row[ak];
+    }
+    // Also try the raw fieldName itself
+    if (row[fieldName] !== undefined && row[fieldName] !== null) return row[fieldName];
+    return '';
+}
+
+/**
  * Normalise one uploaded row into a seniority-list record.
  * Seniority is copied verbatim. If it is absent it stays absent and is reported
  * as MISSING_SENIORITY - the system never substitutes a row number.
  */
 function poRowToSeniorityRecord(row, rowNo) {
-    const catRaw = (row.category_id || row.rank_code || '').trim();
+    const catRaw = (poField(row, 'category_id') || poField(row, 'rank_code') || '').trim();
     const category = poState.categories.find(c =>
         c.id.toLowerCase() === catRaw.toLowerCase() ||
         poKeyOf(c.code) === poKeyOf(catRaw) ||
@@ -919,54 +964,115 @@ function poRowToSeniorityRecord(row, rowNo) {
         const hit = poState.cadres.find(c => c.id.toLowerCase() === s.toLowerCase() || poKeyOf(c.name) === poKeyOf(s));
         return hit ? hit.id : s;   // unknown value preserved -> flagged as INVALID_* by the validator
     };
-    const senRaw = (row.seniority_no || '').trim();
+    const senRaw = (poField(row, 'seniority_no') || '').trim();
     const sen = /^\d+$/.test(senRaw) ? parseInt(senRaw, 10) : null;
+
+    const scGroupVal = poNormalizeSegGroup(poField(row, 'sc_group'));
+    const socialCatRaw = (poField(row, 'social_category') || '').trim();
 
     const rec = {
         employee_id: 'PO-' + String(poState.fsl.length + 1).padStart(4, '0') + '-' + rowNo,
         category_id: category ? category.id : catRaw,
-        rank_code: category ? category.code : (row.rank_code || '').trim(),
+        rank_code: category ? category.code : (poField(row, 'rank_code') || '').trim(),
         seniority_no: sen,
-        seniority_type: poNormalizeSeniorityType(row.seniority_type),
-        name: (row.name || '').trim(),
-        parentage: (row.parentage || '').trim(),
-        gender: poNormalizeGender(row.gender),
-        cfms_id: (row.cfms_id || '').trim(),
-        mobile: (row.mobile || '').trim(),
-        date_of_birth: poNormalizeDate(row.date_of_birth),
-        date_of_joining_category: poNormalizeDate(row.date_of_joining_category || row.date_of_joining),
-        office: (row.office || '').trim(),
-        designation: (row.designation || '').trim(),
-        social_category: (row.social_category || '').trim(),
-        sc_group: poNormalizeSegGroup(row.sc_group),
-        erstwhile_cadre_id: cadre(row.erstwhile_cadre),
-        present_local_cadre_id: cadre(row.present_local_cadre),
-        present_working_place: (row.present_working_place || '').trim(),
-        service_status: poNormalizeStatus(row.service_status),
-        deputation_unit: (row.deputation_unit || '').trim(),
+        seniority_type: poNormalizeSeniorityType(poField(row, 'seniority_type')),
+        name: (poField(row, 'name') || '').trim(),
+        parentage: (poField(row, 'parentage') || '').trim(),
+        gender: poNormalizeGender(poField(row, 'gender')),
+        cfms_id: (poField(row, 'cfms_id') || '').trim(),
+        mobile: (poField(row, 'mobile') || '').trim(),
+        date_of_birth: poNormalizeDate(poField(row, 'date_of_birth')),
+        date_of_joining_category: poNormalizeDate(poField(row, 'date_of_joining_category')),
+        office: (poField(row, 'office') || '').trim(),
+        designation: (poField(row, 'designation') || '').trim(),
+        social_category: socialCatRaw || scGroupVal,
+        sc_group: scGroupVal,
+        erstwhile_cadre_id: cadre(poField(row, 'erstwhile_cadre')),
+        present_local_cadre_id: cadre(poField(row, 'present_local_cadre')),
+        present_working_place: (poField(row, 'present_working_place') || '').trim(),
+        service_status: poNormalizeStatus(poField(row, 'service_status')),
+        deputation_unit: (poField(row, 'deputation_unit') || '').trim(),
         claims: poBlankClaims(),
         fsl_version: 0,
         created_at: poNow(),
         modified_at: poNow()
     };
 
-    // A single free-text preferential column maps to one claim; verification
-    // always starts as PENDING - a typed flag never grants preference. The
-    // appointing authority is carried from the upload where the file states it;
-    // without it the claim is still NOT preferential until it is certified.
-    const prefRaw = (row.preferential_category || '').trim();
-    if (prefRaw) {
+    // Parse preferential claims from the model file's individual columns.
+    // The model file has separate columns for PwBD, Widow, Disabled Children,
+    // and a combined Health Issues column (Cancer/Neuro Surgery/Kidney/Heart).
+    const pwdVal = (poField(row, 'pwd_percent') || '').trim();
+    if (pwdVal) {
+        const pwdUpper = pwdVal.toUpperCase();
+        const isYes = ['YES', 'Y', 'TRUE', '1', 'AVAILABLE'].indexOf(pwdUpper) !== -1;
+        const pct = parseFloat(pwdVal.replace(/[^0-9.]/g, ''));
+        if (isYes || (!isNaN(pct) && pct > 0)) {
+            rec.claims.pwbd = Object.assign(poBlankClaim(), {
+                claimed: true,
+                doc_present: isYes ? 'Yes' : '',
+                disability_percent: isYes ? '' : String(pct),
+                verification: 'PENDING', verified_by: '', verified_at: '',
+                remark: 'Imported from seniority list upload'
+            });
+        }
+    }
+
+    const widowVal = (poField(row, 'widow') || '').trim();
+    if (widowVal && ['YES', 'Y', 'TRUE', '1'].indexOf(widowVal.toUpperCase()) !== -1) {
+        rec.claims.widow = Object.assign(poBlankClaim(), {
+            claimed: true, doc_present: 'Yes',
+            verification: 'PENDING', verified_by: '', verified_at: '',
+            remark: 'Imported from seniority list upload'
+        });
+    }
+
+    const dcVal = (poField(row, 'disabled_children') || '').trim();
+    if (dcVal && ['YES', 'Y', 'TRUE', '1'].indexOf(dcVal.toUpperCase()) !== -1) {
+        rec.claims.disabled_children = Object.assign(poBlankClaim(), {
+            claimed: true, doc_present: 'Yes',
+            verification: 'PENDING', verified_by: '', verified_at: '',
+            remark: 'Imported from seniority list upload'
+        });
+    }
+
+    const healthVal = (poField(row, 'health_issues') || '').trim().toUpperCase();
+    if (healthVal && ['YES', 'Y', 'TRUE', '1'].indexOf(healthVal) !== -1) {
+        // Model file uses a single combined column; map to individual claims.
+        rec.claims.cancer = Object.assign(poBlankClaim(), {
+            claimed: true, doc_present: 'Yes',
+            verification: 'PENDING', verified_by: '', verified_at: '',
+            remark: 'Imported from seniority list upload'
+        });
+    } else if (healthVal) {
+        // Check for specific health conditions mentioned in the combined column
+        if (healthVal.indexOf('CANCER') !== -1) {
+            rec.claims.cancer = Object.assign(poBlankClaim(), { claimed: true, doc_present: 'Yes', verification: 'PENDING', remark: 'Imported' });
+        }
+        if (healthVal.indexOf('NEURO') !== -1) {
+            rec.claims.neurosurgery = Object.assign(poBlankClaim(), { claimed: true, doc_present: 'Yes', verification: 'PENDING', remark: 'Imported' });
+        }
+        if (healthVal.indexOf('KIDNEY') !== -1) {
+            rec.claims.kidney = Object.assign(poBlankClaim(), { claimed: true, doc_present: 'Yes', verification: 'PENDING', remark: 'Imported' });
+        }
+        if (healthVal.indexOf('HEART') !== -1) {
+            rec.claims.heart = Object.assign(poBlankClaim(), { claimed: true, doc_present: 'Yes', verification: 'PENDING', remark: 'Imported' });
+        }
+    }
+
+    // Legacy: a single free-text preferential column (from the module template).
+    const prefRaw = (poField(row, 'preferential_category') || '').trim();
+    if (prefRaw && !pwdVal && !widowVal && !dcVal && !healthVal) {
         const def = POEngine.PO_PREF_CLAIMS.find(p =>
             poKeyOf(p.label) === poKeyOf(prefRaw) || poKeyOf(p.id) === poKeyOf(prefRaw) ||
             poKeyOf(p.label).indexOf(poKeyOf(prefRaw)) !== -1);
         if (def) {
             rec.claims[def.id] = Object.assign(poBlankClaim(), {
                 claimed: true,
-                doc_present: poNormalizeYesNo(row.supporting_document_status),
-                cert_no: (row.preferential_certificate_no || '').trim(),
-                cert_date: (row.preferential_certificate_date || '').trim(),
-                disability_percent: (row.disability_percent || '').trim(),
-                appointing_authority: (row.appointing_authority || '').trim(),
+                doc_present: poNormalizeYesNo(poField(row, 'supporting_document_status')),
+                cert_no: (poField(row, 'preferential_certificate_no') || '').trim(),
+                cert_date: (poField(row, 'preferential_certificate_date') || '').trim(),
+                disability_percent: (poField(row, 'disability_percent') || '').trim(),
+                appointing_authority: (poField(row, 'appointing_authority') || '').trim(),
                 verification: 'PENDING', verified_by: '', verified_at: '',
                 remark: 'Imported from seniority list upload'
             });
@@ -983,30 +1089,46 @@ function poRowToSeniorityRecord(row, rowNo) {
  * Uploading a file that names no known cadre is refused rather than silently
  * appending duplicates - the per-cadre file must state Erstwhile or Present
  * Local Cadre.
+ *
+ * `forcedCadreId` is set when the UI uploads against a specific cadre button
+ * (Krishna / NTR / Eluru). It replaces only that cadre's rows, assigns it as
+ * both the erstwhile and present local cadre, and never reads the cadre from
+ * the file — so the official model format (which carries no cadre column) works.
  */
-function poImportSeniorityRows(rows, replace) {
+function poImportSeniorityRows(rows, replace, forcedCadreId) {
     if (!poIsAdmin()) { showToast('Admin only', 'error'); return 0; }
     if (!poAssertSeniorityEditable()) return 0;
     if (replace) {
-        const fileCadres = {};
-        (rows || []).forEach(r => {
-            [r.erstwhile_cadre, r.present_local_cadre].filter(Boolean).forEach(x => {
-                const hit = poState.cadres.find(c => c.id.toLowerCase() === String(x).trim().toLowerCase() ||
-                    poKeyOf(c.name) === poKeyOf(x));
-                if (hit) fileCadres[hit.id] = true;
+        const ids = [];
+        if (forcedCadreId) {
+            ids.push(forcedCadreId);
+        } else {
+            const fileCadres = {};
+            (rows || []).forEach(r => {
+                [r.erstwhile_cadre, r.present_local_cadre].filter(Boolean).forEach(x => {
+                    const hit = poState.cadres.find(c => c.id.toLowerCase() === String(x).trim().toLowerCase() ||
+                        poKeyOf(c.name) === poKeyOf(x));
+                    if (hit) fileCadres[hit.id] = true;
+                });
             });
-        });
-        const ids = Object.keys(fileCadres);
-        if (!ids.length) {
-            showToast('The file does not name Krishna, NTR or Eluru in Erstwhile/Present Local Cadre. Each cadre must be uploaded as its own file.', 'error');
-            return 0;
+            Object.keys(fileCadres).forEach(id => ids.push(id));
+            if (!ids.length) {
+                showToast('The file does not name Krishna, NTR or Eluru in Erstwhile/Present Local Cadre. Upload each cadre separately using the cadre buttons.', 'error');
+                return 0;
+            }
         }
         poState.fsl = poState.fsl.filter(r =>
             ids.indexOf(r.erstwhile_cadre_id) === -1 && ids.indexOf(r.present_local_cadre_id) === -1);
     }
+    const assignCadre = forcedCadreId || null;
     let n = 0;
     (rows || []).forEach((row, i) => {
-        poState.fsl.push(poRowToSeniorityRecord(row, i + 1));
+        const rec = poRowToSeniorityRecord(row, i + 1);
+        if (assignCadre) {
+            rec.erstwhile_cadre_id = assignCadre;
+            rec.present_local_cadre_id = assignCadre;
+        }
+        poState.fsl.push(rec);
         n++;
     });
     // re-key surrogates so they stay unique and stable after an import
@@ -1079,24 +1201,36 @@ function poToCsv(headers, rows) {
 
 function poNormalizeDate(val) {
     if (val === undefined || val === null || String(val).trim() === '') return '';
+    // Excel serial date number (model file provides these for some DOB cells)
     const num = Number(val);
     if (!isNaN(num) && num > 20000 && num < 80000) {
         const d = new Date(Date.UTC(1899, 11, 30) + Math.round(num) * 86400000);
         return poFmtDate(d);
     }
     const s = String(val).trim();
-    if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(s)) {
-        const p = s.split('-');
+    // Some cells contain two dates separated by a newline (e.g. "21.01.1992\n23.01.1992").
+    // Take the first one — it is the original date of joining.
+    const firstLine = s.split(/\r?\n/)[0].trim();
+    const s2 = firstLine || s;
+    if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(s2)) {
+        const p = s2.split('-');
         return p[0] + '-' + String(p[1]).padStart(2, '0') + '-' + String(p[2]).padStart(2, '0');
     }
-    const m = s.match(/^(\d{1,2})[\-\/.](\d{1,2})[\-\/.](\d{4})$/);
+    const m = s2.match(/^(\d{1,2})[\-\/.](\d{1,2})[\-\/.](\d{4})$/);
     if (m) {
         const d = parseInt(m[1], 10), mo = parseInt(m[2], 10), y = m[3];
         if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0');
     }
-    const n = new Date(s);
-    if (!isNaN(n.getTime()) && s.length > 5) return poFmtDate(n);
-    return s;
+    // Two-digit year (e.g. "09.03.26" -> proceedings date in the model file)
+    const m2 = s2.match(/^(\d{1,2})[\-\/.](\d{1,2})[\-\/.](\d{2})$/);
+    if (m2) {
+        const d = parseInt(m2[1], 10), mo = parseInt(m2[2], 10), y = parseInt(m2[3], 10);
+        const yr = y >= 50 ? 1900 + y : 2000 + y;
+        if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return String(yr) + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+    }
+    const n = new Date(s2);
+    if (!isNaN(n.getTime()) && s2.length > 5) return poFmtDate(n);
+    return s2;
 }
 
 function poFmtDate(d) {

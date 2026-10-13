@@ -710,16 +710,29 @@ function renderStepSeniority(content) {
             '<p class="po-hint">Upload <strong>one file per cadre</strong>: Krishna, NTR and Eluru. Uploading a cadre&rsquo;s file replaces that ' +
             'cadre&rsquo;s rows and leaves the other two untouched. Seniority numbers are official: they are copied exactly as supplied and are never ' +
             'generated from row order. Employees on deputation, leave, probation, training, suspension or absence all remain on the list.</p>' +
-            (editable
-                ? '<div class="po-actions" style="margin-bottom:12px;">' +
-                    '<button class="btn btn-primary" onclick="poEditSeniorityRecord(\'\')">+ Add record</button>' +
-                    '<button class="btn btn-secondary" onclick="poDownloadSeniorityTemplate()">Download CSV template</button>' +
-                    '<button class="btn btn-primary" onclick="document.getElementById(\'poSeniorityFile\').click()">Upload CSV / Excel for this cadre</button>' +
-                    '<input type="file" id="poSeniorityFile" accept=".csv,.xlsx,.xls" style="display:none" onchange="poImportSeniorityFile(this)">' +
-                    '<button class="btn btn-secondary" onclick="poExportSeniorityCsv()">Export</button>' +
-                    '<button class="btn btn-primary" onclick="poValidateSeniorityNow()">Run validation</button>' +
-                  '</div>'
-                : '<div class="po-note po-note-info">The seniority list is frozen at this stage.</div>') +
+             (editable
+                 ? '<div class="po-actions" style="margin-bottom:12px;">' +
+                     '<button class="btn btn-primary" onclick="poEditSeniorityRecord(\'\')">+ Add record</button>' +
+                     '<button class="btn btn-secondary" onclick="poDownloadSeniorityTemplate()">Download CSV template</button>' +
+                     '<button class="btn btn-secondary" onclick="poExportSeniorityCsv()">Export</button>' +
+                     '<button class="btn btn-primary" onclick="poValidateSeniorityNow()">Run validation</button>' +
+                   '</div>'
+                 : '<div class="po-note po-note-info">The seniority list is frozen at this stage.</div>') +
+             (editable
+                 ? '<div class="po-cadre-upload-grid">' +
+                     poState.cadres.map(c => {
+                         const n = list.filter(r => r.erstwhile_cadre_id === c.id || r.present_local_cadre_id === c.id).length;
+                         return '<div class="po-cadre-upload">' +
+                             '<div class="po-cadre-upload-head"><strong>' + escapeHtml(c.name) + '</strong>' +
+                                 '<span class="po-badge po-badge-' + (n ? 'success' : 'warn') + '">' + (n ? n + ' records' : 'empty') + '</span></div>' +
+                             '<div class="po-cadre-upload-btns">' +
+                                 '<button class="btn btn-primary" onclick="document.getElementById(\'poSenFile_' + poQs(c.id) + '\').click()">Upload / Replace</button>' +
+                                 '<input type="file" id="poSenFile_' + poQs(c.id) + '" accept=".csv,.xlsx,.xls" style="display:none" onchange="poImportSeniorityFile(this,\'' + poQs(c.id) + '\')">' +
+                             '</div>' +
+                         '</div>';
+                     }).join('') +
+                   '</div>'
+                 : '') +
             '<div class="po-stat-grid">' + cadreCards + '</div>' +
             poStats([
                 { value: list.length, label: 'Records loaded' },
@@ -906,20 +919,27 @@ function poParseCsvLine(line) {
 function text1(s, i) { return s[i + 1]; }
 
 /**
- * Upload one cadre's seniority list. The file must name Krishna, NTR or Eluru in
- * Erstwhile / Present Local Cadre; that cadre's existing rows are replaced and
- * the other two are left alone.
+ * Upload one cadre's seniority list. When `forcedCadreId` is set the file is
+ * loaded against that cadre: its existing rows are replaced and the other two
+ * are left alone. The cadre is assigned from the button used, never read from
+ * the file — so the official model format (no cadre column) works.
+ * Without `forcedCadreId` the file must name Krishna, NTR or Eluru in
+ * Erstwhile / Present Local Cadre.
  */
-function poImportSeniorityFile(input) {
+function poImportSeniorityFile(input, forcedCadreId) {
     const file = input.files && input.files[0];
     input.value = '';
     if (!file) return;
-    if (!confirm('Upload this file as a cadre seniority list?\n\nThe rows of the cadre named in the file will be REPLACED. Rows of the other two cadres are untouched.')) return;
+    const cadreName = forcedCadreId ? (poState.cadres.find(c => c.id === forcedCadreId) || {}).name : 'the cadre named in the file';
+    if (!confirm('Upload this file for ' + cadreName + '?\n\n' + (forcedCadreId
+        ? 'This replaces ' + cadreName + "'s rows. The other two cadres are untouched."
+        : 'The rows of the cadre named in the file will be REPLACED. Rows of the other two cadres are untouched.')
+    )) return;
     poReadSpreadsheet(file, rows => {
         if (!rows.length) { showToast('No usable rows found in the file', 'error'); return; }
-        const n = poImportSeniorityRows(rows, true);
+        const n = poImportSeniorityRows(rows, true, forcedCadreId || undefined);
         if (!n) { renderPOModule(); return; }
-        showToast(n + ' record(s) imported for ' + file.name + '. Run validation to see blocking errors.', 'success');
+        showToast(n + ' record(s) imported for ' + cadreName + '. Run validation to see any errors.', 'success');
         renderPOModule();
     });
 }
