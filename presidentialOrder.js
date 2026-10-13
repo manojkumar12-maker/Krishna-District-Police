@@ -663,24 +663,22 @@ function renderStepSeniority(content) {
         const pref = POEngine.poPreferredClaim(r);
         const pending = poPendingClaims(r);
         const flag = issues[r.employee_id];
-        return '<tr' + (flag && flag.some(f => f.indexOf('ERROR') === 0) ? ' class="po-row-error"' : '') + '>' +
+        const rowClass = flag && flag.some(f => f.indexOf('ERROR') === 0) ? ' class="po-row-error"' : '';
+        return '<tr' + rowClass + '>' +
+            '<td class="po-td-check"><input type="checkbox" class="po-sel-row" data-eid="' + poQs(r.employee_id) + '"></td>' +
             poTd(r.seniority_no) +
             poTd(r.name) +
             poTd((ctx.categoryById[r.category_id] || {}).name || r.rank_code) +
             poTd(r.gender) + poTd(r.cfms_id) + poTd(r.mobile) +
-            poTd(r.date_of_birth) + poTd(r.date_of_joining_category) +
-            poTd(r.social_category) + poTd(r.sc_group) +
-            poTd((ctx.cadreById[r.erstwhile_cadre_id] || {}).name) +
-            poTd((ctx.cadreById[r.present_local_cadre_id] || {}).name) +
-            poTd(r.present_working_place) +
-            poTd(poServiceLabel(r.service_status), r.service_status === 'PRESENT' ? '' : 'color:var(--warn)') +
+            poTd(poFmtDate(r.date_of_birth)) + poTd(poFmtDate(r.date_of_joining_category)) +
+            poTd(r.sc_group) +
             '<td>' + (pref ? '<span class="po-badge po-badge-success">VERIFIED: ' + escapeHtml(pref.label) + '</span>'
                 : (pending ? '<span class="po-badge po-badge-warn">' + pending.length + ' claim(s) pending verification</span>' : '-')) + '</td>' +
             '<td>' + (flag ? flag.map(f => '<span class="po-badge po-badge-' + (f.indexOf('ERROR') === 0 ? 'danger' : 'warn') + '">' + escapeHtml(f.split(':')[1]) + '</span>').join(' ') : '-') + '</td>' +
             '<td>' + (editable
                 ? '<button class="action-btn btn-primary" onclick="poEditSeniorityRecord(\'' + poQs(r.employee_id) + '\')">Edit</button> ' +
                   '<button class="action-btn btn-secondary" onclick="poOpenClaimPanel(\'' + poQs(r.employee_id) + '\')">Claims</button> ' +
-                  '<button class="action-btn btn-danger" onclick="poDeleteSeniorityRecord(\'' + poQs(r.employee_id) + '\')">Del</button>'
+                  '<button class="action-btn btn-danger" onclick="poConfirmDeleteSeniority(\'' + poQs(r.employee_id) + '\')">Del</button>'
                 : '<span style="color:var(--text-subtle)">locked</span>') + '</td>' +
         '</tr>';
     });
@@ -741,9 +739,12 @@ function renderStepSeniority(content) {
                 { value: list.filter(r => r.service_status === 'DEPUTATION').length, label: 'On deputation' },
                 { value: poVersionLabel('fsl'), label: 'List version' }
             ]) +
-            poTable(['Seniority No', 'Employee Name', 'Category', 'Gender', 'CFMS ID', 'Mobile', 'Date of Birth',
-                     'Date of Joining in Category', 'Social Category', 'SC/ST Group', 'Erstwhile Cadre',
-                     'Present Local Cadre', 'Present Working Place', 'Status', 'Preferential', 'Validation', ''], rows), '') +
+             (editable && list.length
+                 ? '<div class="po-table-actions"><label class="po-select-all"><input type="checkbox" id="poSelAll" onchange="document.querySelectorAll(\'.po-sel-row\').forEach(cb => cb.checked = this.checked)"> Select all</label>' +
+                     '<button class="btn btn-danger btn-sm" onclick="poDeleteSelectedSeniority()">Delete selected</button></div>'
+                 : '') +
+             poTable(['', 'Seniority No', 'Employee Name', 'Category', 'Gender', 'CFMS ID', 'Mobile',
+                      'Date of Birth', 'Date of Joining in Category', 'SC/ST Group', 'Preferential', 'Validation', ''], rows), '') +
 
         poCard('Lock and publish the Seniority List',
             '<div class="po-hint">Once locked the list becomes the authoritative dataset for the allocation engine. A later change requires an ' +
@@ -1059,10 +1060,27 @@ function poSaveSeniorityForm(employeeId) {
     renderPOModule();
 }
 
-function poDeleteSeniorityRecord(employeeId) {
+function poConfirmDeleteSeniority(employeeId) {
     const rec = poState.fsl.find(r => r.employee_id === employeeId);
     if (!confirm('Delete seniority list record for ' + (rec ? rec.name : employeeId) + '?')) return;
     if (poDeleteSeniorityRecord(employeeId)) { showToast('Record deleted', 'success'); renderPOModule(); }
+}
+
+function poDeleteSelectedSeniority() {
+    const checked = Array.from(document.querySelectorAll('.po-sel-row:checked')).map(cb => cb.dataset.eid);
+    if (!checked.length) { showToast('Select at least one record', 'error'); return; }
+    if (!confirm('Delete ' + checked.length + ' selected record(s)?')) return;
+    let n = 0;
+    checked.forEach(eid => { if (poDeleteSeniorityRecord(eid)) n++; });
+    showToast(n + ' record(s) deleted', 'success');
+    renderPOModule();
+}
+
+function poFmtDate(d) {
+    if (!d) return '';
+    const m = String(d).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return m[3] + '-' + m[2] + '-' + m[1];
+    return d;
 }
 
 // --- preferential claim certification & verification -------------------------
