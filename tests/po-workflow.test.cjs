@@ -56,8 +56,8 @@ const CORE_EXPORTS = [
     'poAcceptScstException', 'poExceptionReport', 'poErrorDetail', 'poIssueDetail',
     'poEvent', 'poRecordEvent', 'poIsAdmin', 'poUser', 'poNow',
     'poVersionLabel', 'poBumpVersion', 'poSetStageDirect', 'poCompetentAuthority',
-    'poDlcSeats', 'poDlc', 'poSeatLabel', 'poFreshDlc', 'PO_DLC_ROLES',
-    'poResetAll', 'PO_STEPS',
+    'poDlcSeats', 'poDlcSignSeats', 'poDlc', 'poSeatLabel', 'poFreshDlc', 'PO_DLC_ROLES',
+    'poResetAll', 'poVacantPosts', 'poAdjustDeputation', 'PO_STEPS',
     'PO_JOINING_STATUS', 'PO_DEFAULT_OPTION_DAYS', 'PO_DEFAULT_JOINING_DAYS',
     'PO_STORAGE_MODE_NOTICE', 'PO_DEFAULT_SEG_PERCENTS', 'PO_EVENT_KEYS',
     'PO_DEFAULT_CADRES', 'PO_DATA_VERSION'
@@ -206,15 +206,24 @@ test('shape: the objection subsystem and the audit trail are gone', () => {
 test('DLC: the composition is the nine prescribed seats, designations only', () => {
     freshState();
     assert.deepStrictEqual(C.PO_DLC_ROLES.map(r => r.role),
-        ['Chairman', 'Co-Chairman', 'Member-Convener', 'Co-Convener', 'Member', 'Co-Member']);
-    assert.deepStrictEqual(C.PO_DLC_ROLES.map(r => r.count), [1, 2, 1, 2, 1, 2]);
+        ['Member-Convener', 'Co-Convener', 'Co-Member', 'Member', 'Co-Chairman', 'Chairman']);
+    assert.deepStrictEqual(C.PO_DLC_ROLES.map(r => r.count), [1, 2, 2, 1, 2, 1]);
 
     const seats = C.poDlcSeats();
     assert.strictEqual(seats.length, 9);
     assert.deepStrictEqual(seats.map(s => C.poSeatLabel(s)), [
-        'Chairman', 'Co-Chairman 1', 'Co-Chairman 2',
         'Member-Convener', 'Co-Convener 1', 'Co-Convener 2',
-        'Member', 'Co-Member 1', 'Co-Member 2'
+        'Co-Member 1', 'Co-Member 2', 'Member',
+        'Co-Chairman 1', 'Co-Chairman 2', 'Chairman'
+    ]);
+
+    // FAL signatory order differs from the prescribed seat order
+    const signSeats = C.poDlcSignSeats();
+    assert.strictEqual(signSeats.length, 9);
+    assert.deepStrictEqual(signSeats.map(s => C.poSeatLabel(s)), [
+        'Member-Convener', 'Co-Convener 1', 'Co-Convener 2',
+        'Co-Member 1', 'Co-Member 2', 'Member',
+        'Co-Chairman 1', 'Co-Chairman 2', 'Chairman'
     ]);
 
     // No name is ever held for any seat.
@@ -234,12 +243,14 @@ test('DLC: the composition is the nine prescribed seats, designations only', () 
 test('DLC: the two presiding seats must carry a designation before DRAFT clears', () => {
     freshState();
     const st = C.poState;
-    st.exercise.dlc[0].designation = '';
+    // Chairman is now the last seat (index 8).
+    const chairman = st.exercise.dlc[8];
+    chairman.designation = '';
     let g = C.poStageGuard();
     assert.strictEqual(g.ok, false);
     assert.ok(g.errors.some(e => /Chairman designation/.test(e)), g.errors.join(' | '));
 
-    st.exercise.dlc[0].designation = 'District Collector';
+    chairman.designation = 'District Collector';
     const convener = st.exercise.dlc.filter(d => d.role === 'Member-Convener')[0];
     convener.designation = '';
     g = C.poStageGuard();
@@ -252,7 +263,7 @@ test('DLC: the two presiding seats must carry a designation before DRAFT clears'
 
     // The competent authority printed on orders is the Chairman's designation.
     assert.strictEqual(C.poCompetentAuthority(), 'District Collector');
-    C.poDlc()[0].designation = '';
+    chairman.designation = '';
     assert.strictEqual(C.poCompetentAuthority(), 'DLC Chairman', 'falls back when unset');
 });
 
@@ -840,4 +851,87 @@ test('end to end: upload -> lock -> publish -> options -> allocation -> FAL', ()
     assert.strictEqual(C.poIssueOot() >= 0, true, 'every draft OOT is issued');
     assert.strictEqual(C.poAdvance('oot issued').ok, true);
     assert.strictEqual(C.poStage(), 'OOT_GENERATED');
+});
+
+// ===========================================================================
+// TEST: deputation adjustment — NTR/Eluru excess moves to Krishna
+// ===========================================================================
+test('deputation: NTR and Eluru cannot exceed sanctioned; excess moves to Krishna', () => {
+    // Scenario: Head Constable (Civil) — 381 sanctioned but 447 working.
+    // FWS split 54/28/18 → Krishna: 241, NTR: 125, Eluru: 81
+    // NTR sanctioned: 107, Eluru sanctioned: 68
+    // Excess NTR: 125 - 107 = 18, Excess Eluru: 81 - 68 = 13
+    // These should move to Krishna as deputation.
+    freshState();
+
+    // Use CAT_SI (the category set up by freshState)
+    const catId = 'CAT_SI';
+
+    // Set cadre_strength and FWS for each cadre to simulate
+    // Head Constable (Civil): 381 sanctioned, 447 working
+    C.poState.strengths.forEach(s => {
+        if (s.category_id !== catId) return;
+        if (s.cadre_id === 'DC_KRISHNA') { s.cadre_strength = 206; s.fws = 241; }
+        if (s.cadre_id === 'DC_NTR') { s.cadre_strength = 107; s.fws = 125; }
+        if (s.cadre_id === 'DC_ELURU') { s.cadre_strength = 68; s.fws = 81; }
+    });
+    const ap = C.poState.approved.find(a => a.category_id === catId);
+    if (ap) ap.approved_working_strength = 447;
+
+    // Seed a minimal seniority list so allocation can run (all prefer Krishna first)
+    for (let i = 1; i <= 447; i++) {
+        C.poState.fsl.push({
+            employee_id: 'PO-' + String(i).padStart(4, '0'),
+            category_id: catId,
+            rank_code: 'HC',
+            seniority_no: i,
+            name: 'Employee ' + i,
+            gender: 'Male',
+            cfms_id: 'CFMS' + i,
+            date_of_joining_category: '2000-01-01',
+            sc_group: '',
+            erstwhile_cadre_id: 'DC_KRISHNA',
+            present_local_cadre_id: 'DC_KRISHNA',
+            service_status: 'PRESENT',
+            claims: {},
+            fsl_version: 1
+        });
+    }
+    C.poState.options = {};
+    C.poState.fsl.forEach(r => {
+        C.poState.options[r.employee_id] = {
+            pref1: 'DC_KRISHNA', pref2: 'DC_NTR', pref3: 'DC_ELURU',
+            submitted: true, submitted_at: C.poNow(), submitted_by: 'test'
+        };
+    });
+
+    // Lock and publish FSL, close options (required before allocation)
+    C.poState.fslLocked = true;
+    C.poState.fslPublishedAt = C.poNow();
+    C.poState.optionsLocked = true;
+    C.poState.stage = 'ALLOCATION_RUNNING';
+    const r = C.poConfirmAllocation();
+    assert.strictEqual(r.run.status, 'PASSED', 'allocation passed: ' + (r.exceptions || []).map(e => e.code).join(','));
+
+    const krishnaAllocs = r.allocations.filter(a => a.cadre_id === 'DC_KRISHNA');
+    const ntrAllocs = r.allocations.filter(a => a.cadre_id === 'DC_NTR');
+    const eluruAllocs = r.allocations.filter(a => a.cadre_id === 'DC_ELURU');
+
+    // NTR and Eluru cannot exceed their sanctioned strength
+    assert.strictEqual(ntrAllocs.length <= 107, true, 'NTR within sanctioned: ' + ntrAllocs.length + ' <= 107');
+    assert.strictEqual(eluruAllocs.length <= 68, true, 'Eluru within sanctioned: ' + eluruAllocs.length + ' <= 68');
+
+    // Total still equals FWS
+    assert.strictEqual(r.allocations.length, 447, 'all 447 allocated');
+
+    // Krishna absorbs the excess (deputation)
+    assert.strictEqual(krishnaAllocs.length, 447 - ntrAllocs.length - eluruAllocs.length, 'Krishna absorbs excess');
+    assert.strictEqual(krishnaAllocs.length > 206, true, 'Krishna exceeds sanctioned (deputation)');
+
+    // Vacant posts computation
+    const vacant = C.poVacantPosts();
+    const ntrVacant = vacant.find(v => v.cadre_id === 'DC_NTR' && v.category_id === catId);
+    const eluruVacant = vacant.find(v => v.cadre_id === 'DC_ELURU' && v.category_id === catId);
+    assert.strictEqual(ntrVacant.vacant, 0, 'NTR has no vacancies (at sanctioned cap)');
+    assert.strictEqual(eluruVacant.vacant, 0, 'Eluru has no vacancies (at sanctioned cap)');
 });

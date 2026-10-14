@@ -17,7 +17,7 @@
 // option.
 // ============================================================================
 
-const PO_DATA_VERSION = 12;
+const PO_DATA_VERSION = 13;
 const PO_STORAGE_KEY = 'po_state';
 
 // --- Statutory periods (GO REQUIREMENT) -------------------------------------
@@ -44,15 +44,49 @@ const PO_DEFAULT_CADRES = POEngine.PO_DISTRICTS.map(d => ({
     status: 'ACTIVE'
 }));
 
-// Seed rank/categories preserved from the previous module (curated by request).
+// Seed rank/categories for the Erstwhile Krishna District (curated by request).
 // Ranks are configuration, not law: the DLC enters or uploads them here. No
 // external rank master is consulted; the module holds its own data only.
 const PO_DEFAULT_CATEGORIES = [
-    'Assistant Sub-Inspector of Police', 'Head Constable (Civil)', 'Police Constable (Civil)',
-    'Head Constable (AR)', 'Police Constable (AR)', 'Junior Assistant', 'Typists',
-    'Record Assistant', 'Office Sub-Ordinates', 'Sweepers', 'Scavengers', 'Dhobi',
-    'Barbers', 'Cobbler'
+    'Assistant Sub-Inspector of Police (Civil)',
+    'Head Constable (Civil)',
+    'Head Constable (AR)',
+    'Police Constable (Civil)',
+    'Police Constable (AR)',
+    'Junior Office Assistant',
+    'Typists',
+    'Record Assistant',
+    'Office Sub-ordinate',
+    'Scavenger',
+    'Sweeper',
+    'Barber',
+    'Cobbler',
+    'Dhobi',
+    'Water boy'
 ];
+
+// Pre-populated strength data for the Erstwhile Krishna District (Step 2).
+// cadre_strength = sanctioned; working = physically working in the district;
+// deputation = employees on deputation (still borne on the cadre);
+// total_working = working + deputation; vacant = cadre_strength - total_working (min 0).
+// The district split apportions total_working to Krishna, NTR and Eluru cadres.
+const PO_ERSTWHILE_STRENGTH = {
+    'Assistant Sub-Inspector of Police (Civil)': { cadre_strength: 150, working: 82,  deputation: 10 },
+    'Head Constable (Civil)':                   { cadre_strength: 381, working: 378, deputation: 69 },
+    'Head Constable (AR)':                       { cadre_strength: 108, working: 104, deputation: 14 },
+    'Police Constable (Civil)':                  { cadre_strength: 1215, working: 991, deputation: 102 },
+    'Police Constable (AR)':                     { cadre_strength: 367, working: 244, deputation: 25 },
+    'Junior Office Assistant':                   { cadre_strength: 32, working: 32,  deputation: 0 },
+    'Typists':                                   { cadre_strength: 13, working: 11,  deputation: 0 },
+    'Record Assistant':                          { cadre_strength: 1, working: 1,   deputation: 0 },
+    'Office Sub-ordinate':                       { cadre_strength: 2, working: 2,   deputation: 0 },
+    'Scavenger':                                 { cadre_strength: 3, working: 2,   deputation: 0 },
+    'Sweeper':                                   { cadre_strength: 9, working: 3,   deputation: 0 },
+    'Barber':                                    { cadre_strength: 4, working: 2,   deputation: 0 },
+    'Cobbler':                                   { cadre_strength: 1, working: 1,   deputation: 0 },
+    'Dhobi':                                     { cadre_strength: 5, working: 1,   deputation: 0 },
+    'Water boy':                                 { cadre_strength: 1, working: 0,   deputation: 0 }
+};
 
 // --- The stage-based screens -------------------------------------------------
 // Seven steps. The exercise reference data and the DLC composition are folded
@@ -117,6 +151,9 @@ function poFreshState() {
         fslPublishedAt: null,
         fslValidation: null,
         fslRevisions: [],
+        // Rank-by-rank completion tracking for Steps 3-7.
+        rankProgress: { seniority: {}, options: {}, allocation: {}, fal: {}, ooa: {} },
+        selectedRank: '',
         options: {},
         optionHistory: [],
         optionsLocked: false,
@@ -135,6 +172,7 @@ function poFreshState() {
         // Procedural event register - the statutory process behind the workflow.
         events: {},
         stage: 'DRAFT',
+        selectedRank: '',
         versions: { fws: 0, fsl: 0, options: 0, fal: 0, ooa: 0, oot: 0, claims: 0, policy: 0 },
         // Retained prior versions of official records. Never delete + recreate:
         // every superseded version is appended here.
@@ -205,6 +243,8 @@ function poLoad() {
         poState.segPercents = Object.assign({}, PO_DEFAULT_SEG_PERCENTS, parsed.segPercents || {});
         poState.events = Object.assign({}, parsed.events || {});
         poState.history = Object.assign(poFreshState().history, parsed.history || {});
+        poState.rankProgress = Object.assign({ seniority: {}, options: {}, allocation: {}, fal: {}, ooa: {} }, parsed.rankProgress || {});
+        poState.selectedRank = parsed.selectedRank || '';
         poState.storage_mode_notice = PO_STORAGE_MODE_NOTICE;
         // The cadre set is fixed by the module, never carried in from storage.
         poState.cadres = PO_DEFAULT_CADRES.map(c => Object.assign({}, c));
@@ -264,12 +304,21 @@ function poSessionId() {
 // ============================================================================
 
 const PO_DLC_ROLES = [
-    { role: 'Chairman',        count: 1, desc: 'District Collector of the erstwhile district' },
-    { role: 'Co-Chairman',     count: 2, desc: 'District Collector(s) of the newly formed district(s)' },
     { role: 'Member-Convener', count: 1, desc: 'District-level Departmental Head, erstwhile district' },
     { role: 'Co-Convener',     count: 2, desc: 'District-level Departmental Head(s) of the newly formed district(s)' },
+    { role: 'Co-Member',       count: 2, desc: 'Co-Member(s) from the newly formed district(s)' },
     { role: 'Member',          count: 1, desc: 'Member nominated by the Committee' },
-    { role: 'Co-Member',       count: 2, desc: 'Co-Member(s) from the newly formed district(s)' }
+    { role: 'Co-Chairman',     count: 2, desc: 'District Collector(s) of the newly formed district(s)' },
+    { role: 'Chairman',        count: 1, desc: 'District Collector of the erstwhile district' }
+];
+
+const PO_DLC_SIGN_ORDER = [
+    'Member-Convener',
+    'Co-Convener', 'Co-Convener',
+    'Co-Member', 'Co-Member',
+    'Member',
+    'Co-Chairman', 'Co-Chairman',
+    'Chairman'
 ];
 
 /** The nine seats, in order. `n` disambiguates repeated roles for labelling. */
@@ -279,6 +328,22 @@ function poDlcSeats() {
         for (let i = 0; i < r.count; i++) {
             out.push({ role: r.role, n: i + 1, of: r.count, desc: r.desc, key: r.role.toLowerCase().replace(/[^a-z]+/g, '_') + (r.count > 1 ? '_' + (i + 1) : '') });
         }
+    });
+    return out;
+}
+
+/** The nine seats in FAL signatory order (same format for taking manual signs). */
+function poDlcSignSeats() {
+    const out = [];
+    const byRole = {};
+    PO_DLC_ROLES.forEach(r => {
+        byRole[r.role] = [];
+        for (let i = 0; i < r.count; i++) {
+            byRole[r.role].push({ role: r.role, n: i + 1, of: r.count, desc: r.desc, key: r.role.toLowerCase().replace(/[^a-z]+/g, '_') + (r.count > 1 ? '_' + (i + 1) : '') });
+        }
+    });
+    PO_DLC_SIGN_ORDER.forEach(role => {
+        if (byRole[role] && byRole[role].length) out.push(byRole[role].shift());
     });
     return out;
 }
@@ -315,9 +380,10 @@ function poVersionLabel(key) {
 // Workflow state machine (para 22)
 // ============================================================================
 
-function poStage() { return poState.stage || 'DRAFT'; }
+function poStage() { if (!poState) poLoad(); return poState.stage || 'DRAFT'; }
 
 function poStageIdx(s) {
+    if (!poState) poLoad();
     const i = POEngine.PO_STAGE_INDEX[s];
     return i === undefined ? 0 : i;
 }
@@ -366,8 +432,10 @@ function poStageGuard() {
             if (!ex.erstwhile_district.trim()) g.errors.push('Erstwhile District is required.');
             // Names are never held; the two presiding seats must at least carry a
             // designation, because it is what appears on the generated lists.
+            // After reordering, Chairman is the last seat (index 8).
             const dlc = poDlc();
-            if (!dlc[0] || !String(dlc[0].designation || '').trim()) {
+            const chairman = dlc.filter(d => d.role === 'Chairman')[0];
+            if (!chairman || !String(chairman.designation || '').trim()) {
                 g.errors.push('Chairman designation (District Collector of the erstwhile district) is required.');
             }
             const convener = dlc.filter(d => d.role === 'Member-Convener')[0];
@@ -599,7 +667,36 @@ function poSeedMasters() {
         created_at: poNow()
     }));
     poSyncStrengthMatrix();
+    poSeedErstwhileStrength();
     poSave();
+}
+
+/**
+ * Pre-populate the working strength for the Erstwhile Krishna District ranks.
+ * Sets the approved working strength and per-cadre FWS for each rank that has
+ * an entry in PO_ERSTWHILE_STRENGTH. The district split apportions the total
+ * working strength into Krishna, NTR and Eluru cadres.
+ */
+function poSeedErstwhileStrength() {
+    const percents = poDistrictSplitPercents();
+    poState.categories.forEach(cat => {
+        const data = PO_ERSTWHILE_STRENGTH[cat.name];
+        if (!data) return;
+        const totalWorking = data.working + data.deputation;
+        // Set cadre strength for each district from the percentage split of total sanctioned.
+        const cadreShares = POEngine.poSplitByPercent(data.cadre_strength, percents);
+        poState.cadres.forEach((cadre, i) => {
+            const strRow = poState.strengths.find(s => s.category_id === cat.id && s.cadre_id === cadre.id);
+            if (strRow) strRow.cadre_strength = cadreShares[i] || 0;
+        });
+        // Approved working strength is the Total Working figure (working + deputation).
+        let approved = poState.approved.find(a => a.category_id === cat.id);
+        if (!approved) { approved = { category_id: cat.id, approved_working_strength: 0 }; poState.approved.push(approved); }
+        approved.approved_working_strength = totalWorking;
+    });
+    // Apply the district split so FWS is apportioned to Krishna, NTR and Eluru.
+    poApplySplits();
+    poBumpVersion('fws');
 }
 
 /**
@@ -747,13 +844,30 @@ function poDistrictSplitPercents() {
  */
 function poApplySplits() {
     const percents = poDistrictSplitPercents();
+    const krishnaId = PO_DEFAULT_CADRES[0].id;
     poState.categories.forEach(cat => {
         const approved = (poState.approved.find(a => a.category_id === cat.id) || {}).approved_working_strength;
         if (approved === undefined || approved === null) return;
         const shares = POEngine.poSplitByPercent(approved, percents);
+        // Cap NTR and Eluru at their cadre strength. Krishna (erstwhile residuary)
+        // absorbs any overflow as deputation — it can exceed its sanctioned strength.
+        const cappedShares = shares.slice();
+        let overflow = 0;
+        poState.cadres.forEach((cadre, i) => {
+            if (cadre.id === krishnaId) return;
+            const csRow = poState.strengths.find(s => s.category_id === cat.id && s.cadre_id === cadre.id);
+            const cs = csRow ? (parseInt(csRow.cadre_strength) || 0) : 0;
+            if (cappedShares[i] > cs) {
+                overflow += cappedShares[i] - cs;
+                cappedShares[i] = cs;
+            }
+        });
+        // Krishna gets its own share plus all overflow from capped districts
+        const krishnaIdx = poState.cadres.findIndex(c => c.id === krishnaId);
+        if (krishnaIdx >= 0) cappedShares[krishnaIdx] += overflow;
         poState.cadres.forEach((cadre, i) => {
             const row = poState.strengths.find(s => s.category_id === cat.id && s.cadre_id === cadre.id);
-            if (row) row.fws = shares[i] || 0;
+            if (row) row.fws = cappedShares[i] || 0;
         });
     });
 }
@@ -1479,6 +1593,71 @@ function poNoOptionEmployees() {
     return poActiveFsl().filter(r => !(poState.options[r.employee_id] || {}).submitted);
 }
 
+
+// ============================================================================
+// RANK-BY-RANK PROCESSING  (Steps 3-7)
+// Each step processes one rank at a time with verification before confirming.
+// ============================================================================
+
+/** Mark a rank's step as completed (verified + confirmed by the DLC). */
+function poMarkRankStepDone(step, categoryId) {
+    if (!poIsAdmin()) return false;
+    poState.rankProgress[step] = poState.rankProgress[step] || {};
+    poState.rankProgress[step][categoryId] = poNow();
+    poSave();
+    return true;
+}
+
+/** Check whether a rank's step has been completed. */
+function poIsRankStepDone(step, categoryId) {
+    return !!(poState.rankProgress[step] && poState.rankProgress[step][categoryId]);
+}
+
+/** Count of ranks completed for a given step. */
+function poRankStepDoneCount(step) {
+    return Object.keys(poState.rankProgress[step] || {}).length;
+}
+
+/** All active categories. */
+function poActiveCategories() {
+    return poState.categories.filter(c => c.status !== 'INACTIVE');
+}
+
+/** Set the currently selected rank for rank-by-rank processing. */
+function poSelectRank(categoryId) {
+    poState.selectedRank = categoryId;
+    poSave();
+}
+
+/** Records on the seniority list for the selected rank. */
+function poSelectedRankFsl() {
+    return poState.fsl.filter(r => r.category_id === poState.selectedRank);
+}
+
+/** Get the FAL rows for a specific rank. */
+function poRankFalRows(categoryId) {
+    if (!poState.fal) return [];
+    return poState.fal.rows.filter(r => r.category_id === categoryId);
+}
+
+/** Get the allocation rows for a specific rank. */
+function poRankAllocations(categoryId) {
+    if (!poState.allocationRun) return [];
+    return poState.allocationRun.allocations.filter(a => a.category_id === categoryId);
+}
+
+/** Get the OOA rows for a specific rank. */
+function poRankOoaRows(categoryId) {
+    return poState.ooa.filter(o => poState.fal && poState.fal.rows.some(r => r.employee_id === o.employee_id && r.category_id === categoryId));
+}
+
+/** Deputation summary for a rank: employees carried beyond cadre strength. */
+function poRankDeputationSummary(categoryId) {
+    const rows = poRankFalRows(categoryId);
+    const deputed = rows.filter(r => r.deputation);
+    return { total: rows.length, deputed: deputed.length, employees: deputed.map(r => ({ name: r.name, seniority_no: r.seniority_no, cadre_name: r.cadre_name })) };
+}
+
 /**
  * PART 6 - audited correction of a locked option.
  *
@@ -1765,8 +1944,119 @@ function poConfirmAllocation() {
     poRecordEvent('allocation_completed_at', poNow(), { action: 'ALLOCATION_COMPLETED', next: r.run.allocated + ' allotted, ' + r.run.unallocated + ' not allocable' });
     (r.scstReview.adjustments || []).forEach(a => {
     });
+    // Deputation adjustment: NTR and Eluru cannot exceed their sanctioned strength.
+    // Excess employees are re-allocated to Krishna (which can hold deputation).
+    poAdjustDeputation();
     poSave();
     return r;
+}
+
+/**
+ * Deputation adjustment (G.O.Ms.No.129 clause 4.7).
+ *
+ * NTR and Eluru cadres CANNOT exceed their sanctioned (cadre_strength) posts.
+ * When the allocation places more employees there than the cadre can hold,
+ * the excess (last allotted, by allocation_sequence) is moved to Krishna,
+ * which CAN exceed its sanctioned strength and carries the excess as deputation.
+ *
+ * Krishna is PO_DEFAULT_CADRES[0] (DC_KRISHNA — the residuary erstwhile district).
+ * This adjustment runs after the allocation engine and SC/ST review.
+ */
+function poAdjustDeputation() {
+    const run = poState.allocationRun;
+    if (!run) return;
+    const krishnaId = PO_DEFAULT_CADRES[0].id;
+    const cadreStrength = {};
+    poState.strengths.forEach(s => {
+        if (s.status === 'INACTIVE') return;
+        cadreStrength[s.category_id + '|' + s.cadre_id] = parseInt(s.cadre_strength) || 0;
+    });
+
+    const byCatCadre = {};
+    run.allocations.forEach(a => {
+        const k = a.category_id + '|' + a.cadre_id;
+        (byCatCadre[k] = byCatCadre[k] || []).push(a);
+    });
+
+    // Sort each group by allocation_sequence so we can identify the "last allotted"
+    Object.keys(byCatCadre).forEach(k => {
+        byCatCadre[k].sort((a, b) => (a.allocation_sequence || 0) - (b.allocation_sequence || 0));
+    });
+
+    // For each category + non-Krishna cadre, move excess to Krishna
+    Object.keys(byCatCadre).forEach(k => {
+        const [catId, cadreId] = k.split('|');
+        if (cadreId === krishnaId) return;  // Krishna can hold deputation
+        const cs = cadreStrength[k] || 0;
+        if (cs <= 0) return;
+        const allocs = byCatCadre[k];
+        if (allocs.length <= cs) return;
+
+        // Excess employees: the LAST allotted (highest allocation_sequence)
+        const excess = allocs.slice(cs);  // beyond sanctioned count
+        excess.forEach(a => {
+            const oldCadre = a.cadre_name;
+            a.cadre_id = krishnaId;
+            a.cadre_name = (POEngine.poBuildContext({ cadres: poState.cadres }).cadreById[krishnaId] || {}).name || krishnaId;
+            a.deputation = true;
+            a.allocation_reason = a.allocation_reason === 'SC_ST_ADJUSTMENT' ? 'SC_ST_ADJUSTMENT' : 'COMPULSORY_ALLOTMENT';
+            a.remarks = 'Deputation: allotted beyond ' + oldCadre + ' sanctioned strength (' + cs + '). Carried to ' + a.cadre_name + '.';
+            a.reason_detail = (a.reason_detail || '') + ' [Deputation adjustment: moved from ' + oldCadre + ' to ' + a.cadre_name + ' (' + oldCadre + ' exceeded sanctioned ' + cs + ')]';
+        });
+    });
+
+    // Mark Krishna employees beyond Krishna's sanctioned as deputation
+    Object.keys(byCatCadre).forEach(k => {
+        const [catId, cadreId] = k.split('|');
+        if (cadreId !== krishnaId) return;
+        const cs = cadreStrength[k] || 0;
+        if (cs <= 0) return;
+        const allocs = byCatCadre[k];
+        allocs.forEach((a, idx) => {
+            if (idx + 1 > cs) {
+                a.deputation = true;
+                if (!a.remarks) a.remarks = 'Deputation: beyond Krishna sanctioned strength (' + cs + ').';
+            }
+        });
+    });
+}
+
+/**
+ * Compute vacant posts per cadre for the FAL.
+ * Vacant = cadre_strength - min(allotted, cadre_strength) for each category+cadre.
+ * Returns an array of { category_id, cadre_id, cadre_name, sanctioned, allotted, vacant }.
+ */
+function poVacantPosts() {
+    const run = poState.allocationRun;
+    if (!run) return [];
+    const cadreStrength = {};
+    poState.strengths.forEach(s => {
+        if (s.status === 'INACTIVE') return;
+        cadreStrength[s.category_id + '|' + s.cadre_id] = parseInt(s.cadre_strength) || 0;
+    });
+    const allotted = {};
+    run.allocations.forEach(a => {
+        const k = a.category_id + '|' + a.cadre_id;
+        allotted[k] = (allotted[k] || 0) + 1;
+    });
+    const result = [];
+    poState.strengths.forEach(s => {
+        if (s.status === 'INACTIVE') return;
+        const k = s.category_id + '|' + s.cadre_id;
+        const cs = cadreStrength[k] || 0;
+        const al = allotted[k] || 0;
+        const effective = Math.min(al, cs);
+        result.push({
+            category_id: s.category_id,
+            cadre_id: s.cadre_id,
+            cadre_name: (POEngine.poBuildContext({ cadres: poState.cadres }).cadreById[s.cadre_id] || {}).name || s.cadre_id,
+            category_name: (poState.categories.find(c => c.id === s.category_id) || {}).name || s.category_id,
+            sanctioned: cs,
+            allotted: al,
+            vacant: Math.max(0, cs - effective)
+        });
+    });
+    return result;
 }
 
 function poFALValidation() {
@@ -1799,10 +2089,9 @@ function poGenerateFal() {
     }
     const rows = JSON.parse(JSON.stringify(run.allocations));
 
-    // Deputation marking (DLC POLICY): allocation proceeds on FWS irrespective of
-    // cadre strength. An employee whose ordinal within their category/cadre (by
-    // allocation sequence) exceeds the cadre's sanctioned strength is carried on
-    // deputation and is flagged so the DLC can record it in the row's remarks.
+    // Deputation marking: the allocation engine already marks deputation via
+    // poAdjustDeputation(). For Krishna cadre, employees beyond sanctioned strength
+    // are flagged as deputation. NTR/Eluru excess has already been moved to Krishna.
     const cadreStrength = {};
     poState.strengths.forEach(s => { cadreStrength[s.category_id + '|' + s.cadre_id] = parseInt(s.cadre_strength) || 0; });
     const byCadre = {};
@@ -1811,10 +2100,16 @@ function poGenerateFal() {
         byCadre[k].sort((a, b) => (a.allocation_sequence || 0) - (b.allocation_sequence || 0));
         const cs = cadreStrength[k] || 0;
         byCadre[k].forEach((r, idx) => {
-            r.remarks = '';
-            r.deputation = cs > 0 && (idx + 1) > cs;
+            if (!r.remarks) r.remarks = '';
+            // Krishna can hold deputation; flag beyond sanctioned
+            if (k.endsWith('|' + PO_DEFAULT_CADRES[0].id) && cs > 0 && (idx + 1) > cs) {
+                r.deputation = true;
+                if (!r.remarks) r.remarks = 'Deputation: beyond Krishna sanctioned strength (' + cs + ').';
+            }
         });
     });
+
+    const vacantPosts = poVacantPosts();
 
     poState.fal = {
         version: 'v' + ver,
@@ -1830,6 +2125,7 @@ function poGenerateFal() {
         published_at: null, published_by: null,
         locked: false,
         rows: rows,
+        vacantPosts: vacantPosts,
         validation: { blocking: v.blocking, warnings: v.warnings }
     };
     poSave();
@@ -1911,7 +2207,8 @@ function poReviseFal(reason) {
 // ============================================================================
 
 function poCompetentAuthority() {
-    const chairman = poDlc()[0];
+    const dlc = poDlc();
+    const chairman = dlc.filter(d => d.role === 'Chairman')[0] || dlc[dlc.length - 1];
     return (chairman && String(chairman.designation || '').trim()) || 'DLC Chairman';
 }
 
