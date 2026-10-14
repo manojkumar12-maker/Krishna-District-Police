@@ -61,8 +61,7 @@ const PO_DEFAULT_CATEGORIES = [
     'Sweeper',
     'Barber',
     'Cobbler',
-    'Dhobi',
-    'Water boy'
+    'Dhobi'
 ];
 
 // Pre-populated strength data for the Erstwhile Krishna District (Step 2).
@@ -84,8 +83,7 @@ const PO_ERSTWHILE_STRENGTH = {
     'Sweeper':                                   { cadre_strength: 9, working: 3,   deputation: 0 },
     'Barber':                                    { cadre_strength: 4, working: 2,   deputation: 0 },
     'Cobbler':                                   { cadre_strength: 1, working: 1,   deputation: 0 },
-    'Dhobi':                                     { cadre_strength: 5, working: 1,   deputation: 0 },
-    'Water boy':                                 { cadre_strength: 1, working: 0,   deputation: 0 }
+    'Dhobi':                                     { cadre_strength: 5, working: 1,   deputation: 0 }
 };
 
 // --- The stage-based screens -------------------------------------------------
