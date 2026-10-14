@@ -650,22 +650,49 @@ function renderStepStrength(content) {
         '</div>';
     });
 
+    // Build erstwhile table with tfoot inside the table for valid HTML and input fields when editable
+    const colSpan = editable ? 8 : 7;
+    const erstwhileTableRows = poState.categories.map((cat, idx) => {
+        const data = PO_ERSTWHILE_STRENGTH[cat.name];
+        if (!data) return '';
+        const totalWorking = data.working + data.deputation;
+        const vacant = Math.max(0, data.cadre_strength - totalWorking);
+        const inp = (val, field) => '<input type="number" min="0" class="po-strength-input" style="width:80px" value="' + val +
+            '" onchange="poSetErstwhileStrength(\'' + poQs(cat.name) + '\',\'' + field + '\',this.value)">';
+        return '<tr>' +
+            poTd(String(idx + 1)) +
+            poTd(cat.name) +
+            (editable ? '<td>' + inp(data.cadre_strength, 'cadre_strength') + '</td>' : poTd(String(data.cadre_strength), 'text-align:center')) +
+            (editable ? '<td>' + inp(data.working, 'working') + '</td>' : poTd(String(data.working), 'text-align:center')) +
+            (editable ? '<td>' + inp(data.deputation, 'deputation') + '</td>' : poTd(String(data.deputation), 'text-align:center')) +
+            poTd(String(totalWorking), 'text-align:center;font-weight:600') +
+            poTd(String(vacant), 'text-align:center;' + (vacant > 0 ? 'color:var(--accent);font-weight:600' : 'color:var(--text-muted)')) +
+        '</tr>';
+    });
+
+    const erstwhileTable = '<div class="po-table-wrap"><table>' +
+        '<thead><tr>' +
+            '<th>Sl.No.</th><th>Name of the Cadre Post</th><th>Cadre Strength</th><th>Working Strength</th>' +
+            '<th>Deputation</th><th>Total Working</th><th>Vacant Posts</th>' +
+        '</tr></thead><tbody>' +
+        (erstwhileTableRows.join('') || '<tr><td colspan="' + colSpan + '">No cadre data available.</td></tr>') +
+        '</tbody><tfoot><tr style="font-weight:700;background:var(--surface-2)">' +
+            '<th></th><th style="text-align:right">Erstwhile Krishna District Total</th>' +
+            '<th style="text-align:center">' + totalCadre + '</th>' +
+            '<th style="text-align:center">' + totalWorkingIn + '</th>' +
+            '<th style="text-align:center">' + totalDeputation + '</th>' +
+            '<th style="text-align:center">' + totalWorkingOut + '</th>' +
+            '<th style="text-align:center">' + totalVacant + '</th>' +
+        '</tr></tfoot></table></div>';
+
     content.innerHTML =
         poCard('Step 2a &middot; Erstwhile Krishna District &mdash; Strength Summary',
             '<p class="po-hint">The <strong>Erstwhile Krishna District</strong> shows the sanctioned cadre strength, working strength ' +
             '(employees physically working in the district), deputation (employees borne on the cadre but posted elsewhere), ' +
             'total working (working + deputation), and vacant posts (sanctioned minus total working, minimum zero). ' +
-            'These figures are pre-populated from the official records and are the basis for the district bifurcation.</p>' +
-            poTable(['Sl.No.', 'Name of the Cadre Post', 'Cadre Strength', 'Working Strength', 'Deputation', 'Total Working', 'Vacant Posts'],
-                erstwhileRows.join('') ? erstwhileRows : ['<tr><td colspan="7">No cadre data available.</td></tr>']) +
-            '<tfoot><tr style="font-weight:700;background:var(--surface-2)"><th></th>' +
-                '<th style="text-align:right">Erstwhile Krishna District Total</th>' +
-                '<th style="text-align:center">' + totalCadre + '</th>' +
-                '<th style="text-align:center">' + totalWorkingIn + '</th>' +
-                '<th style="text-align:center">' + totalDeputation + '</th>' +
-                '<th style="text-align:center">' + totalWorkingOut + '</th>' +
-                '<th style="text-align:center">' + totalVacant + '</th>' +
-            '</tr></tfoot>' +
+            'These figures are pre-populated from the official records and are the basis for the district bifurcation. ' +
+            (editable ? '<strong>Edit the values below</strong>; total working and vacant posts are recalculated automatically.' : '') + '</p>' +
+            erstwhileTable +
             '<div class="po-note po-note-info">Total Working = Working Strength + Deputation. Vacant Posts = Cadre Strength &minus; Total Working (minimum 0). ' +
             'Employees on deputation remain borne on the cadre and are allocated to the new districts during the allocation process.</div>'
         ) +
@@ -690,6 +717,18 @@ function poSetStrengthField(categoryId, cadreId, field, value) {
 
 function poSetApprovedFromForm(categoryId, value) {
     poSetApprovedStrength(categoryId, value);
+    poAutoSplitWorkingStrength();
+    renderPOModule();
+}
+
+/** Edit a field in PO_ERSTWHILE_STRENGTH and re-seed the strength matrix. */
+function poSetErstwhileStrength(catName, field, value) {
+    const data = PO_ERSTWHILE_STRENGTH[catName];
+    if (!data) return;
+    const v = Math.max(0, parseInt(value) || 0);
+    data[field] = v;
+    // Re-seed so the FWS split and district blocks stay in sync
+    poSeedErstwhileStrength();
     poAutoSplitWorkingStrength();
     renderPOModule();
 }
@@ -2411,7 +2450,7 @@ showPage = function (pageId) {
     'poAdvanceStage', 'poSaveExerciseFromForm', 'poSaveMembersFromForm',
     'poDlcSeats', 'poDlcSignSeats', 'poDlc', 'poSeatLabel', 'poFreshDlc',
     'poEditCategory', 'poSaveCategoryForm', 'poDeleteCategory', 'poDownloadCategoryTemplate', 'poImportCategoryFile',
-    'poSetStrengthField', 'poSetApprovedFromForm',
+    'poSetStrengthField', 'poSetApprovedFromForm', 'poSetErstwhileStrength',
     'poValidateSeniorityNow', 'poDownloadSeniorityTemplate', 'poExportSeniorityCsv', 'poImportSeniorityFile',
     'poEditSeniorityRecord', 'poSaveSeniorityForm', 'poDeleteSeniorityRecord',
     'poOpenClaimPanel', 'poSaveClaims', 'poVerifyClaim',
