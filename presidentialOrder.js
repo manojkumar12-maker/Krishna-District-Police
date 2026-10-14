@@ -895,6 +895,9 @@ function renderStepSeniority(content) {
             poTd(r.gender) + poTd(r.cfms_id) + poTd(r.mobile) +
             poTd(poFmtDate(r.date_of_birth)) + poTd(poFmtDate(r.date_of_joining_category)) +
             poTd(r.sc_group) +
+            '<td>' + (r.service_status === 'DEPUTATION'
+                ? '<span class="po-badge po-badge-warn">DEPUTATION</span>'
+                : '<span class="po-badge po-badge-success">PRESENT</span>') + '</td>' +
             '<td>' + (pref ? '<span class="po-badge po-badge-success">VERIFIED: ' + escapeHtml(pref.label) + '</span>'
                 : (pending ? '<span class="po-badge po-badge-warn">' + pending.length + ' claim(s) pending verification</span>' : '-')) + '</td>' +
             '<td>' + (flag ? flag.map(f => '<span class="po-badge po-badge-' + (f.indexOf('ERROR') === 0 ? 'danger' : 'warn') + '">' + escapeHtml(f.split(':')[1]) + '</span>').join(' ') : '-') + '</td>' +
@@ -947,8 +950,8 @@ function renderStepSeniority(content) {
                       ? '<div class="po-table-actions"><label class="po-select-all"><input type="checkbox" id="poSelAll" onchange="document.querySelectorAll(\'.po-sel-row\').forEach(cb => cb.checked = this.checked)"> Select all</label>' +
                         '<button class="btn btn-danger btn-sm" onclick="poDeleteSelectedSeniority()">Delete selected</button></div>'
                       : '') +
-                  poTable(['', 'Seniority No', 'Employee Name', 'Gender', 'CFMS ID', 'Mobile',
-                           'Date of Birth', 'Date of Joining in Category', 'SC/ST Group', 'Preferential', 'Validation', ''], rows), '')
+                   poTable(['', 'Seniority No', 'Employee Name', 'Gender', 'CFMS ID', 'Mobile',
+                            'Date of Birth', 'Date of Joining in Category', 'SC/ST Group', 'Deputation', 'Preferential', 'Validation', ''], rows), '')
              : '<div class="empty-state">Select a rank above to upload its seniority list.</div>') +
              poStats([
                 { value: list.length, label: 'Records loaded' },

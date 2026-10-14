@@ -1037,6 +1037,7 @@ const PO_HEADER_ALIASES = {
     widow:                   ['ifwidowmentionyes', 'widow', 'iswidow', 'widowstatus'],
     disabled_children:       ['mentionyesifhavingmentallychallengedchildren', 'disabledchildren', 'disabled_children', 'mentallychallengedchildren', 'challengedchildren'],
     health_issues:           ['mentionifapplicableicanceriineurosurgeryiiikidneytransplantivopenheartsurgery', 'mentionifappilcabeicancer', 'cancer', 'healthissues', 'healthproblems', 'medicalcondition'],
+    deputation:              ['deputation', 'on_deputation', 'is_deputation', 'deputationyesno', 'deputationyes/no'],
     g_no:                    ['gno', 'g_no', 'pfno', 'pf_no', 'pfnumber'],
     qualification:           ['ssc', 'qualification', 'education', 'qual'],
     native_place:            ['nativeplace', 'native_place', 'native', 'hometown', 'nativetown'],
@@ -1102,7 +1103,7 @@ function poRowToSeniorityRecord(row, rowNo) {
         erstwhile_cadre_id: cadre(poField(row, 'erstwhile_cadre')),
         present_local_cadre_id: cadre(poField(row, 'present_local_cadre')),
         present_working_place: (poField(row, 'present_working_place') || '').trim(),
-        service_status: poNormalizeStatus(poField(row, 'service_status')),
+        service_status: poNormalizeStatus(poField(row, 'deputation') || poField(row, 'service_status')),
         deputation_unit: (poField(row, 'deputation_unit') || '').trim(),
         claims: poBlankClaims(),
         fsl_version: 0,
@@ -1267,6 +1268,7 @@ function poSeniorityTemplateCsv() {
         'if widow, mention Yes.',
         'Mention Yes\nIf having Mentally Challenged Children',
         'Mention, If applicable\n(i) Cancer (ii)Neuro Surgery (iii) Kidney Transplant (iv) Open Heart Surgery',
+        'Deputation\nYes/No',
         'G.No.'
     ];
     const sample = [
@@ -1283,6 +1285,7 @@ function poSeniorityTemplateCsv() {
         '30.05.1969',
         '21.01.1992',
         'SC-III',
+        'NO',
         'NO',
         'NO',
         'NO',
@@ -1396,6 +1399,9 @@ function poNormalizeYesNo(val) {
 function poNormalizeStatus(val) {
     const v = String(val || '').trim().toUpperCase().replace(/[\s\-/]+/g, '_');
     if (!v) return 'PRESENT';
+    // Handle Yes/No style deputation column: YES/Y/TRUE/1 => DEPUTATION
+    if (['YES', 'Y', 'TRUE', '1', 'AVAILABLE'].indexOf(v) !== -1) return 'DEPUTATION';
+    if (['NO', 'N', 'FALSE', '0', 'NIL', 'NONE', 'PRESENT'].indexOf(v) !== -1) return 'PRESENT';
     const hit = POEngine.PO_SERVICE_STATUS.find(s => s.id === v ||
         s.id.indexOf(v) !== -1 || v.indexOf(s.id) !== -1);
     return hit ? hit.id : String(val || '').trim();
