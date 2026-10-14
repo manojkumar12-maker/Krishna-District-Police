@@ -1253,7 +1253,6 @@ function poSeniorityTemplateCsv() {
     const headers = [
         'SI.No',
         'Type of Seniority\nFinal/ Provisional/ Tentative',
-        'Seniority List',
         '(a) Proceedings Number',
         '(b) Date',
         'Seniority Number',
@@ -1274,7 +1273,6 @@ function poSeniorityTemplateCsv() {
     const sample = [
         '1',
         'Provisional',
-        'C.No.125/A2/26',
         'C.No.125/A2/26',
         '09.03.26',
         '2',
