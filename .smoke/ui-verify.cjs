@@ -296,7 +296,7 @@ async function launchChromium() {
         poStepCheck.labels.join('|'));
     ok('PO workflow state machine has 19 stages', poStepCheck.stageCount === 19, String(poStepCheck.stageCount));
     ok('PO starts at DRAFT', poStepCheck.stage === 'DRAFT', String(poStepCheck.stage));
-    ok('PO_DATA_VERSION is 12', poStepCheck.version === 12, String(poStepCheck.version));
+    ok('PO_DATA_VERSION is 13', poStepCheck.version === 13, String(poStepCheck.version));
     ok('allocation engine version stamped', /^[0-9.]+$/.test(poStepCheck.engine), String(poStepCheck.engine));
     poStepCheck.steps.forEach((s, i) => {
         ok('PO step ' + (i + 1) + ' ' + s.key + ' renders', s.len > 200 && s.hasAdvance, s.len + 'b advance=' + s.hasAdvance);
